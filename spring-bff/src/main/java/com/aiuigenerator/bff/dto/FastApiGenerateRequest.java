@@ -1,0 +1,12 @@
+package com.aiuigenerator.bff.dto;
+
+import java.util.List;
+import java.util.Map;
+
+public class FastApiGenerateRequest {
+    public String generationId;
+    public String prompt;
+    public String mode; // full | codegen_only
+    public List<FileRefDto> fileRefs;
+    public Map<String, Object> uiSpec;
+}

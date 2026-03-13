@@ -1,0 +1,57 @@
+{
+  "realm": "ai-ui",
+  "enabled": true,
+  "displayName": "AI UI Generator",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "sslRequired": "external",
+  "clients": [
+    {
+      "clientId": "ai-ui-frontend",
+      "name": "AI UI Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost:5173/*"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "webOrigins": ["http://localhost:5173"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false
+    },
+    {
+      "clientId": "ai-ui-cli",
+      "name": "AI UI CLI",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost/*"],
+      "webOrigins": ["*"],
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "developpeur",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "developpeur@example.com",
+      "firstName": "Developpeur",
+      "lastName": "PFE",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "developpeur",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

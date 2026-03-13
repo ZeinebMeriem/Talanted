@@ -1,0 +1,206 @@
+name: ai-ui-generator
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: ai-ui-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: ai_ui_generator
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping').ok", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-express:
+    image: mongo-express:1.0.2-20
+    container_name: ai-ui-mongo-express
+    restart: unless-stopped
+    profiles: ["dev"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8082:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/
+      ME_CONFIG_BASICAUTH: "false"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.6
+    container_name: ai-ui-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "8083:8080"
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HOSTNAME_URL: http://localhost:8083
+    volumes:
+      - ./keycloak/realm-ai-ui.json:/opt/keycloak/data/import/realm-ai-ui.json:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -lc 'exec 3<>/dev/tcp/localhost/9000; echo -e \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; head -n 1 <&3 | grep -q \"200\"'",
+        ]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-28T09-55-16Z
+    container_name: ai-ui-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: ai-ui-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-lc"]
+    command: >
+      "
+      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
+        echo 'waiting for minio...';
+        sleep 2;
+      done;
+      mc mb -p local/${MINIO_BUCKET:-ai-ui-files} || true;
+      mc anonymous set none local/${MINIO_BUCKET:-ai-ui-files} || true;
+      echo 'minio bucket ready';
+      "
+
+  fastapi-ai:
+    build:
+      context: ./fastapi-ai
+      dockerfile: Dockerfile
+    container_name: ai-ui-fastapi
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      FASTAPI_HOST: 0.0.0.0
+      FASTAPI_PORT: 8000
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
+      AI_OUTPUT_TARGET: ${AI_OUTPUT_TARGET:-htmlcss}
+      AI_SPEC_BUILDER: ${AI_SPEC_BUILDER:-ollama}
+      # ── Per-role provider selection (groq|gemini|openai|ollama) ──
+      PLANNER_PROVIDER: ${PLANNER_PROVIDER:-}
+      CODER_PROVIDER: ${CODER_PROVIDER:-}
+      PLANNER_MAX_TOKENS: ${PLANNER_MAX_TOKENS:-1200}
+      CODER_MAX_TOKENS: ${CODER_MAX_TOKENS:-8192}
+      # ── Groq ──
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      GROQ_PLANNER_MODEL: ${GROQ_PLANNER_MODEL:-}
+      GROQ_CODER_MODEL: ${GROQ_CODER_MODEL:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      # ── Google Gemini ──
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GEMINI_PLANNER_MODEL: ${GEMINI_PLANNER_MODEL:-}
+      GEMINI_CODER_MODEL: ${GEMINI_CODER_MODEL:-}
+      # ── OpenAI-compatible (generic) ──
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_PLANNER_MODEL: ${OPENAI_PLANNER_MODEL:-}
+      OPENAI_CODER_MODEL: ${OPENAI_CODER_MODEL:-}
+      # ── Local Ollama (fallback) ──
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      OLLAMA_CODER_MODEL: ${OLLAMA_CODER_MODEL:-qwen2.5-coder:latest}
+      OLLAMA_TIMEOUT_S: ${OLLAMA_TIMEOUT_S:-600}
+      OLLAMA_CONNECT_TIMEOUT_S: ${OLLAMA_CONNECT_TIMEOUT_S:-5}
+      # ── Pexels (free image API) ──
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      PROJECTS_DIR: /app/projects
+    volumes:
+      - ./projects:/app/projects
+
+  spring-bff:
+    build:
+      context: ./spring-bff
+      dockerfile: Dockerfile
+    container_name: ai-ui-spring-bff
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      fastapi-ai:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/ai_ui_generator
+      FASTAPI_BASE_URL: http://fastapi-ai:8000
+      # Two-model pipeline: planner (~30s) + per-file coder (~600s × N files)
+      FASTAPI_TIMEOUT_SECONDS: ${FASTAPI_TIMEOUT_SECONDS:-3600}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+      OAUTH_ISSUER: http://localhost:8083/realms/ai-ui
+      OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-ui-frontend
+    restart: unless-stopped
+    depends_on:
+      - spring-bff
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_BFF_BASE_URL: http://localhost:8081
+      VITE_GENERATION_TIMEOUT_MS: 3600000
+      VITE_OIDC_AUTHORITY: http://localhost:8083/realms/ai-ui
+      VITE_OIDC_CLIENT_ID: ai-ui-frontend
+      VITE_OIDC_REDIRECT_URI: http://localhost:5173/auth/callback
+
+volumes:
+  mongo_data:
+  minio_data:

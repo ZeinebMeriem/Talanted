@@ -1,0 +1,46 @@
+
+# --- Node / Frontend ---
+node_modules/
+dist/
+.vite/
+.eslintcache
+.npm/
+.pnpm-store/
+.env
+.env.*
+!.env.example
+
+# --- Java / Spring ---
+target/
+.classpath
+.project
+.settings/
+.idea/
+*.iml
+
+# --- Python / FastAPI ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+.coverage
+*.log
+
+# --- OS ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Editors ---
+.vscode/
+
+# --- Runtime artifacts ---
+projects/
+tmp-*
+
+# --- Build caches ---
+tsconfig.tsbuildinfo

@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Syne','Inter',sans-serif;background:#070b14;color:#f1f5f9;min-height:100vh;overflow-x:hidden}
+#onboarding{background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(99,102,241,.18) 0%,transparent 70%),radial-gradient(ellipse 60% 40% at 80% 90%,rgba(168,85,247,.1) 0%,transparent 60%),#070b14}
+:root{--accent:#a5b4fc;--accent-dark:#6366f1;--border:rgba(255,255,255,.08);--text-muted:rgba(255,255,255,.35)}
+#ide{--accent:#a5b4fc;--accent-dark:#6366f1;--border:rgba(255,255,255,.08);--text-muted:rgba(255,255,255,.35)}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+.mono{font-family:'JetBrains Mono',monospace}
+.heading{font-family:'Syne','Inter',sans-serif}
+.glass{background:rgba(7,11,20,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{50%{opacity:0}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes progress{from{background-position:0 0}to{background-position:40px 0}}
+.spin{animation:spin 2s linear infinite}
+.blink{animation:blink 1s step-end infinite}
+.fade-up{animation:fadeUp .22s ease}
+.file-row:hover{background:rgba(255,255,255,.05)}
+.file-row:hover .del-btn{opacity:1!important}
+.tab-inactive{color:rgba(255,255,255,.35);border-bottom:2px solid transparent}
+.tab-inactive:hover{color:rgba(255,255,255,.65)}
+.fw-btn.selected{background:rgba(99,102,241,.12);border-color:#6366f1;color:#a5b4fc}
+.fw-btn:hover{background:rgba(255,255,255,.07)}
+.select-zone:hover{border:2px solid rgba(99,102,241,.5);background:rgba(99,102,241,.06)}
+.select-zone.picked{border:2px solid #6366f1;background:rgba(99,102,241,.12)}
+.custom-scrollbar::-webkit-scrollbar{width:3px}
+.custom-scrollbar::-webkit-scrollbar-thumb{background:rgba(99,102,241,.25);border-radius:3px}
+input:focus{outline:none}
+.progress-bar{transition:width .4s cubic-bezier(.4,0,.2,1)}

@@ -1,0 +1,1 @@
+﻿SPEC DOCUMENT\n\nBuild a pricing page with 3 plans: Free, Pro, Enterprise. Include a comparison table and a CTA button.\n\nAdd sections: FAQ and Contact form.
