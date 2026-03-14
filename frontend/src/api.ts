@@ -209,6 +209,45 @@ export async function downloadGenerationZip(generationId: string, accessToken?: 
   setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
+export type AdminUser = {
+  userId?: string
+  username?: string
+  email?: string
+  firstName?: string
+  lastName?: string
+  emailVerified?: boolean
+  enabled?: boolean
+  createdTimestamp?: number
+  projectCount?: number
+}
+
+export type AdminStats = {
+  totalUsers?: number
+  totalProjects?: number
+  completedProjects?: number
+  successRate?: number
+}
+
+export async function getAdminUsers(accessToken?: string): Promise<AdminUser[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/users`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return Array.isArray(data) ? (data as AdminUser[]) : []
+}
+
+export async function getAdminStats(accessToken?: string): Promise<AdminStats> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/stats`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as AdminStats) : {})
+}
+
 export async function rollbackGeneration(
   generationId: string,
   version: number,

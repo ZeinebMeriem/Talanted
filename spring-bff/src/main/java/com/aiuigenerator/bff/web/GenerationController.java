@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.aiuigenerator.bff.domain.AuditEvent;
@@ -36,9 +37,11 @@ public class GenerationController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<GenerationCreateResponse> create(
             @RequestParam("prompt") String prompt,
-            @RequestParam(name = "files", required = false) List<MultipartFile> files) {
+            @RequestParam(name = "files", required = false) List<MultipartFile> files,
+            JwtAuthenticationToken token) {
 
-        GenerationCreateResponse out = service.createGeneration(prompt, files);
+        String userId = (String) token.getToken().getClaims().get("sub");
+        GenerationCreateResponse out = service.createGeneration(userId, prompt, files);
         return ResponseEntity.status(201).body(out);
     }
 
@@ -48,8 +51,8 @@ public class GenerationController {
     }
 
     @GetMapping
-    public List<Generation> list() {
-        return service.listGenerations();
+    public List<Generation> list(JwtAuthenticationToken token) {
+        return service.listGenerations((String) token.getToken().getClaims().get("sub"));
     }
 
     @GetMapping("/{id}/code")

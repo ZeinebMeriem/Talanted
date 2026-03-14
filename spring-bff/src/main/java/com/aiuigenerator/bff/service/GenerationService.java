@@ -73,7 +73,7 @@ public class GenerationService {
         this.reportRepo = reportRepo;
     }
 
-    public GenerationCreateResponse createGeneration(String prompt, List<MultipartFile> files) {
+    public GenerationCreateResponse createGeneration(String userId, String prompt, List<MultipartFile> files) {
         long started = System.currentTimeMillis();
 
         validator.validatePrompt(prompt);
@@ -89,6 +89,7 @@ public class GenerationService {
         g.setStatus(GenerationStatus.PENDING);
         g.setCreatedAt(Instant.now());
         g.setUpdatedAt(Instant.now());
+        g.setUserId(userId);
         generationRepo.save(g);
 
         audit.recordEvent("GENERATION_REQUESTED", generationId, sessionId, 0,
@@ -213,8 +214,8 @@ public class GenerationService {
                 .orElseThrow(() -> new IllegalArgumentException("generation not found"));
     }
 
-    public List<Generation> listGenerations() {
-        return generationRepo.findTop50ByOrderByCreatedAtDesc();
+    public List<Generation> listGenerations(String userId) {
+        return generationRepo.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
     public GenerationVersionsResponse getVersions(String generationId) {

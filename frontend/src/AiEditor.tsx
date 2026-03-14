@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createGeneration,
   downloadGenerationZip,
+  getAdminStats,
+  getAdminUsers,
   getGenerationCode,
   getGenerationVersions,
   getMe,
@@ -9,6 +11,8 @@ import {
   listAuditEvents,
   listGenerations,
   rollbackGeneration,
+  type AdminStats,
+  type AdminUser,
   type AuditEventListItem,
   type GenerationListItem,
   type GenerationVersionsResponse,
@@ -118,18 +122,26 @@ function findNode(nodes: FileNode[], id: string): FileNode | null {
   return null
 }
 
-export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, onLogout }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; onLogout?: () => void }) {
+export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, roles = [], onLogout }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; roles?: string[]; onLogout?: () => void }) {
   const [selectedFw, setSelectedFw] = useState<Framework | null>(null)
   const [projectName, setProjectName] = useState('my-awesome-app')
   const [customPrompt, setCustomPrompt] = useState('')
 
+  const isAdmin = roles.includes('admin')
+
   // Navigation
-  const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile'>('create')
+  const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>('create')
 
   // User profile
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [userStats, setUserStats] = useState<UserStats | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
+
+  // Admin dashboard
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [adminError, setAdminError] = useState<string | null>(null)
 
   // IDE
   const [ideVisible, setIdeVisible] = useState(false)
@@ -255,6 +267,20 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     }
   }, [accessToken])
 
+  const loadAdminDashboard = useCallback(async () => {
+    try {
+      setAdminError(null)
+      setAdminLoading(true)
+      const [users, stats] = await Promise.all([getAdminUsers(accessToken), getAdminStats(accessToken)])
+      setAdminUsers(users)
+      setAdminStats(stats)
+    } catch (e: any) {
+      setAdminError(e?.message ?? 'Failed to load admin data')
+    } finally {
+      setAdminLoading(false)
+    }
+  }, [accessToken])
+
   // Load history on mount so Recent Projects appear immediately
   useEffect(() => {
     void loadHistory()
@@ -266,6 +292,13 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       void loadProfile()
     }
   }, [homeTab, userProfile, profileLoading, loadProfile])
+
+  // Load admin dashboard when tab is opened
+  useEffect(() => {
+    if (homeTab === 'admin' && adminUsers.length === 0 && !adminLoading) {
+      void loadAdminDashboard()
+    }
+  }, [homeTab, adminUsers.length, adminLoading, loadAdminDashboard])
 
   useEffect(() => {
     if (ideVisible && rightTab === 'logs') {
@@ -937,6 +970,7 @@ document.addEventListener('click', function(e) {
               { icon: '⌂', label: 'Home', action: () => setHomeTab('create'), active: homeTab === 'create' },
               { icon: '⊞', label: `All projects${validProjects.length > 0 ? ` (${validProjects.length})` : ''}`, action: () => setHomeTab('projects'), active: homeTab === 'projects' },
               { icon: '◉', label: 'Profile', action: () => setHomeTab('profile'), active: homeTab === 'profile' },
+              ...(isAdmin ? [{ icon: '⚙', label: 'Admin Dashboard', action: () => setHomeTab('admin'), active: homeTab === 'admin' }] : []),
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: item.active ? 'rgba(99,102,241,.16)' : 'transparent', color: item.active ? '#a5b4fc' : 'rgba(255,255,255,.55)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
@@ -1278,6 +1312,99 @@ document.addEventListener('click', function(e) {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── ADMIN DASHBOARD ── */}
+          {homeTab === 'admin' && isAdmin && (
+            <div style={{ maxWidth: 900, margin: '0 auto', padding: '56px 40px 80px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+                <div>
+                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 6px', fontFamily: "'Syne',sans-serif" }}>Admin Dashboard</h1>
+                  <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>Platform overview and user management</p>
+                </div>
+                <button onClick={() => void loadAdminDashboard()}
+                  style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  {adminLoading ? '…' : '↻ Refresh'}
+                </button>
+              </div>
+
+              {/* Platform stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+                {[
+                  { label: 'Total Users', value: adminStats?.totalUsers ?? '—', icon: '👥', color: '#6366f1' },
+                  { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', icon: '⊞', color: '#8b5cf6' },
+                  { label: 'Completed', value: adminStats?.completedProjects ?? '—', icon: '✓', color: '#34d399' },
+                  { label: 'Success Rate', value: adminStats?.successRate != null ? `${adminStats.successRate}%` : '—', icon: '◎', color: '#a78bfa' },
+                ].map(stat => (
+                  <div key={stat.label} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 16, padding: '22px 20px' }}>
+                    <div style={{ fontSize: 20, marginBottom: 10 }}>{stat.icon}</div>
+                    <p style={{ fontSize: 28, fontWeight: 900, color: '#f1f5f9', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{String(stat.value)}</p>
+                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', margin: 0 }}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* User table */}
+              <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Registered Developers</h3>
+                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', background: 'rgba(255,255,255,.05)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
+                </div>
+
+                {adminError && (
+                  <div style={{ padding: '20px 24px', color: '#f87171', fontSize: 14 }}>⚠ {adminError}</div>
+                )}
+
+                {adminLoading && (
+                  <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading users…</div>
+                )}
+
+                {!adminLoading && !adminError && adminUsers.length === 0 && (
+                  <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No users found</div>
+                )}
+
+                {!adminLoading && adminUsers.map((u, i) => {
+                  const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
+                  const initials = name.charAt(0).toUpperCase()
+                  const joinedDate = u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+                  return (
+                    <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', borderBottom: i < adminUsers.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none', transition: 'background .15s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                      {/* Avatar */}
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                        {initials}
+                      </div>
+                      {/* Name + email */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
+                      </div>
+                      {/* Joined */}
+                      <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 100 }}>
+                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: '0 0 2px' }}>Joined</p>
+                        <p style={{ fontSize: 13, color: 'rgba(255,255,255,.6)', margin: 0 }}>{joinedDate}</p>
+                      </div>
+                      {/* Projects */}
+                      <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 70 }}>
+                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: '0 0 2px' }}>Projects</p>
+                        <p style={{ fontSize: 18, fontWeight: 800, color: '#a5b4fc', margin: 0 }}>{u.projectCount ?? 0}</p>
+                      </div>
+                      {/* Badges */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                        {u.emailVerified
+                          ? <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>✓ Verified</span>
+                          : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#fbbf24' }}>⏳ Pending</span>
+                        }
+                        {u.enabled === false && (
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(248,113,113,.1)', color: '#f87171' }}>Disabled</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 

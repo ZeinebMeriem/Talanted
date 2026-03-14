@@ -10,6 +10,16 @@
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "sslRequired": "external",
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Super user with admin dashboard access",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
   "smtpServer": {
     "host": "smtp.gmail.com",
     "port": "587",
@@ -65,6 +75,22 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "superadmin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin@aiuigenerator.com",
+      "firstName": "Super",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Admin@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"]
     }
   ]
 }

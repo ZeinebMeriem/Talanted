@@ -11,5 +11,11 @@ public interface GenerationRepository extends MongoRepository<Generation, String
 
 	List<Generation> findTop50ByOrderByCreatedAtDesc();
 
+	List<Generation> findByUserIdOrderByCreatedAtDesc(String userId);
+
+	long countByUserId(String userId);
+
+	long countByUserIdAndStatus(String userId, GenerationStatus status);
+
 	long countByStatus(GenerationStatus status);
 }

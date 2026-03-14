@@ -39,6 +39,7 @@ export default function App() {
   const firstName = profile?.given_name as string | undefined
   const lastName = profile?.family_name as string | undefined
   const userSub = profile?.sub as string | undefined
+  const roles: string[] = (profile?.realm_access?.roles as string[] | undefined) ?? []
 
   const doLogout = async () => {
     try {
@@ -57,6 +58,7 @@ export default function App() {
       firstName={firstName}
       lastName={lastName}
       userSub={userSub}
+      roles={roles}
       onLogout={doLogout}
     />
   )
