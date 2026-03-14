@@ -45,7 +45,7 @@
       </#if>
 
       <div class="register-row" style="margin-top: 28px; flex-direction: column; gap: 12px;">
-        <a href="${url.loginUrl}" class="btn-submit" style="text-decoration: none; text-align: center;">
+        <a href="${url.loginUrl!'http://localhost:5173'}" class="btn-submit" style="text-decoration: none; text-align: center;">
           Back to Sign In
           <span class="btn-arrow">→</span>
         </a>
