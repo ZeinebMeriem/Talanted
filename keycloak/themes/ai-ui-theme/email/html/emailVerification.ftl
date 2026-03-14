@@ -61,7 +61,7 @@
                     <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
                       <tr>
                         <td style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:12px;">
-                          <a href="${link}" target="_blank"
+                          <a href="${link}"
                              style="display:inline-block;padding:16px 40px;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.2px;">
                             Verify my email &nbsp;→
                           </a>
