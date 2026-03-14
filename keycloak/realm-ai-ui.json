@@ -9,6 +9,17 @@
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "sslRequired": "external",
+  "smtpServer": {
+    "host": "smtp.gmail.com",
+    "port": "587",
+    "from": "REPLACE_WITH_YOUR_GMAIL",
+    "fromDisplayName": "AI UI Generator",
+    "auth": "true",
+    "user": "REPLACE_WITH_YOUR_GMAIL",
+    "password": "REPLACE_WITH_APP_PASSWORD",
+    "starttls": "true",
+    "ssl": "false"
+  },
   "clients": [
     {
       "clientId": "ai-ui-frontend",
