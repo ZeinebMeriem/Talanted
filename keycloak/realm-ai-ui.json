@@ -3,6 +3,7 @@
   "enabled": true,
   "displayName": "AI UI Generator",
   "loginTheme": "ai-ui-theme",
+  "emailTheme": "ai-ui-theme",
   "registrationAllowed": true,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
