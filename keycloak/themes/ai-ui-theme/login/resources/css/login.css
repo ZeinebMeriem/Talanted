@@ -426,6 +426,22 @@ html, body {
   color: #f87171;
 }
 
+/* ── Session expired icon ── */
+.expired-icon {
+  font-size: 40px;
+  margin-bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  animation: pulseGlow 3s ease-in-out infinite;
+  color: #fbbf24;
+}
+
 .verify-info {
   background: rgba(99, 102, 241, 0.06);
   border: 1px solid rgba(99, 102, 241, 0.15);
