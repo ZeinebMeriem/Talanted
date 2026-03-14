@@ -20,6 +20,42 @@ function extractErrorMessage(data: unknown): string | null {
   return null
 }
 
+export type UserProfile = {
+  userId?: string
+  username?: string
+  email?: string
+  emailVerified?: boolean
+  firstName?: string
+  lastName?: string
+  roles?: string[]
+}
+
+export type UserStats = {
+  totalGenerations?: number
+  completedGenerations?: number
+  successRate?: number
+}
+
+export async function getMe(accessToken?: string): Promise<UserProfile> {
+  const res = await fetch(`${BFF_BASE_URL}/api/user/me`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as UserProfile) : {})
+}
+
+export async function getUserStats(accessToken?: string): Promise<UserStats> {
+  const res = await fetch(`${BFF_BASE_URL}/api/user/stats`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as UserStats) : {})
+}
+
 export type GenerationListItem = {
   generationId?: string
   sessionId?: string

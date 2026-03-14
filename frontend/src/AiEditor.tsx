@@ -1,15 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createGeneration,
   downloadGenerationZip,
   getGenerationCode,
   getGenerationVersions,
+  getMe,
+  getUserStats,
   listAuditEvents,
   listGenerations,
   rollbackGeneration,
   type AuditEventListItem,
   type GenerationListItem,
   type GenerationVersionsResponse,
+  type UserProfile,
+  type UserStats,
 } from './api'
 
 type Framework =
@@ -31,8 +35,6 @@ type ChatMsg = {
 }
 
 type CodeFile = { path: string; content: string }
-
-const FRAMEWORKS: Framework[] = ['HTML/CSS', 'React']
 
 type GenerationApiResponse = {
   generationId?: string
@@ -105,15 +107,6 @@ function countFiles(nodes: FileNode[]): number {
   return total
 }
 
-function flattenFiles(nodes: FileNode[]): FileNode[] {
-  const out: FileNode[] = []
-  for (const n of nodes) {
-    if (n.type === 'file') out.push(n)
-    else out.push(...flattenFiles(n.children))
-  }
-  return out
-}
-
 function findNode(nodes: FileNode[], id: string): FileNode | null {
   for (const n of nodes) {
     if (n.id === id) return n
@@ -125,22 +118,18 @@ function findNode(nodes: FileNode[], id: string): FileNode | null {
   return null
 }
 
-export function AiEditor({ accessToken, username = 'there', onLogout }: { accessToken?: string; username?: string; onLogout?: () => void }) {
-  // Onboarding
-  const [currentStep, setCurrentStep] = useState<0 | 1 | 2 | 3>(0)
+export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, onLogout }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; onLogout?: () => void }) {
   const [selectedFw, setSelectedFw] = useState<Framework | null>(null)
   const [projectName, setProjectName] = useState('my-awesome-app')
-  const [buildingWhat, setBuildingWhat] = useState('A portfolio with contact form…')
-  const [authNeed, setAuthNeed] = useState('Yes / No / OAuth')
-  const [stylingApproach, setStylingApproach] = useState('Tailwind / CSS Modules / etc.')
   const [customPrompt, setCustomPrompt] = useState('')
-  const [sentPrompt, setSentPrompt] = useState('')
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [droppedFiles, setDroppedFiles] = useState<File[]>([])
 
   // Navigation
-  const [homeTab, setHomeTab] = useState<'create' | 'projects'>('create')
+  const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile'>('create')
+
+  // User profile
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [userStats, setUserStats] = useState<UserStats | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
 
   // IDE
   const [ideVisible, setIdeVisible] = useState(false)
@@ -191,11 +180,12 @@ export function AiEditor({ accessToken, username = 'there', onLogout }: { access
     }
   }, [accessToken])
 
-  const loadGeneration = useCallback(async (generationId: string, prompt?: string) => {
+  const loadGeneration = useCallback(async (generationId: string) => {
     try {
       setLoadingProjectId(generationId)
       const bundle = await getGenerationCode(generationId, accessToken)
       setApiResult({ generationId, codeBundle: bundle, uiSpec: undefined, aiReport: undefined })
+      setShowSuccessOverlay(false)
       setIdeVisible(true)
       setCenterTab('preview')
     } catch (e: any) {
@@ -252,10 +242,30 @@ export function AiEditor({ accessToken, username = 'there', onLogout }: { access
     [accessToken, loadAudit, loadHistory, loadVersions],
   )
 
+  const loadProfile = useCallback(async () => {
+    try {
+      setProfileLoading(true)
+      const [profile, stats] = await Promise.all([getMe(accessToken), getUserStats(accessToken)])
+      setUserProfile(profile)
+      setUserStats(stats)
+    } catch {
+      // non-critical — profile enrichment only
+    } finally {
+      setProfileLoading(false)
+    }
+  }, [accessToken])
+
   // Load history on mount so Recent Projects appear immediately
   useEffect(() => {
     void loadHistory()
   }, [loadHistory])
+
+  // Load profile when tab is first opened
+  useEffect(() => {
+    if (homeTab === 'profile' && !userProfile && !profileLoading) {
+      void loadProfile()
+    }
+  }, [homeTab, userProfile, profileLoading, loadProfile])
 
   useEffect(() => {
     if (ideVisible && rightTab === 'logs') {
@@ -502,12 +512,6 @@ document.addEventListener('click', function(e) {
     return `${gen}:${previewSrcDoc.length}:${previewReloadCount}`
   }, [apiResult?.generationId, previewSrcDoc, previewReloadCount])
 
-  const returnedFilePaths = useMemo(() => {
-    const files = apiResult?.codeBundle?.files
-    if (!files || files.length === 0) return []
-    return files.map((f) => f.path)
-  }, [apiResult])
-
   const logs = useMemo(
     () => [
       { type: 'info', msg: 'Server running on http://localhost:3000', t: '09:12:01' },
@@ -638,21 +642,6 @@ document.addEventListener('click', function(e) {
     })
   }
 
-  const pillTitles = ['Upload', 'Framework', 'Questions', 'Building']
-
-  const onDropFiles = (files: File[]) => {
-    setDroppedFiles((prev) => {
-      const map = new Map(prev.map((f) => [f.name + ':' + f.size, f]))
-      for (const f of files) map.set(f.name + ':' + f.size, f)
-      return Array.from(map.values())
-    })
-  }
-
-  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    onDropFiles(Array.from(e.dataTransfer.files || []))
-  }
-
   const startBuild = async () => {
     setIsBuilding(true)
     setBuildError(null)
@@ -682,10 +671,8 @@ document.addEventListener('click', function(e) {
     const interval = window.setInterval(tick, 800)
 
     try {
-      const autoPrompt = `Project name: ${projectName}\nFramework: ${selectedFw ?? 'HTML/CSS'}\nGoal: ${buildingWhat}\nAuth: ${authNeed}\nStyling: ${stylingApproach}`
-      const prompt = customPrompt.trim() || autoPrompt
-      setSentPrompt(prompt)
-      const result = (await createGeneration(prompt, droppedFiles, accessToken)) as GenerationApiResponse
+      const prompt = customPrompt.trim() || `New project: ${projectName}`
+      const result = (await createGeneration(prompt, [], accessToken)) as GenerationApiResponse
       setApiResult(result)
       void loadHistory().then(() => setHomeTab('projects'))
 
@@ -704,13 +691,6 @@ document.addEventListener('click', function(e) {
       setBuildError(e?.message ?? 'Build failed')
       // Refresh history — the server may have completed the generation even if the frontend timed out
       void loadHistory().then(() => setHomeTab('projects'))
-    }
-  }
-
-  const goStep = async (n: 0 | 1 | 2 | 3) => {
-    setCurrentStep(n)
-    if (n === 3) {
-      await startBuild()
     }
   }
 
@@ -744,7 +724,8 @@ document.addEventListener('click', function(e) {
   }
 
   if (!ideVisible) {
-    const displayName = username.charAt(0).toUpperCase() + username.slice(1)
+    const rawName = firstName || (username.includes('@') ? username.split('@')[0] : username)
+    const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
     const timeAgo = (iso?: string) => {
       if (!iso) return ''
@@ -955,6 +936,7 @@ document.addEventListener('click', function(e) {
             {([
               { icon: '⌂', label: 'Home', action: () => setHomeTab('create'), active: homeTab === 'create' },
               { icon: '⊞', label: `All projects${validProjects.length > 0 ? ` (${validProjects.length})` : ''}`, action: () => setHomeTab('projects'), active: homeTab === 'projects' },
+              { icon: '◉', label: 'Profile', action: () => setHomeTab('profile'), active: homeTab === 'profile' },
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: item.active ? 'rgba(99,102,241,.16)' : 'transparent', color: item.active ? '#a5b4fc' : 'rgba(255,255,255,.55)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
@@ -965,7 +947,7 @@ document.addEventListener('click', function(e) {
               </button>
             ))}
             {apiResult && (
-              <button onClick={() => setIdeVisible(true)}
+              <button onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: 'transparent', color: '#818cf8', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
@@ -996,11 +978,12 @@ document.addEventListener('click', function(e) {
 
           {/* Bottom: user + sign out */}
           <div style={{ padding: '12px 14px', borderTop: '1px solid #161c2c', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+            <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
               {displayName.charAt(0)}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div onClick={() => setHomeTab('profile')} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
               <p style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
+              {email && <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</p>}
             </div>
             {onLogout && (
               <button onClick={onLogout}
@@ -1295,6 +1278,112 @@ document.addEventListener('click', function(e) {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── PROFILE ── */}
+          {homeTab === 'profile' && (
+            <div style={{ maxWidth: 720, margin: '0 auto', padding: '56px 40px 80px' }}>
+
+              {/* Header */}
+              <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 32px', fontFamily: "'Syne',sans-serif" }}>My Profile</h1>
+
+              {/* Identity card */}
+              <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 20, padding: '32px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 28 }}>
+                <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 900, color: '#fff', flexShrink: 0, boxShadow: '0 0 40px rgba(99,102,241,.35)' }}>
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, color: '#f1f5f9', margin: 0 }}>
+                      {(firstName && lastName) ? `${firstName} ${lastName}` : displayName}
+                    </h2>
+                    {userProfile?.roles?.includes('admin') && (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)' }}>Admin</span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 15, color: 'rgba(255,255,255,.5)', margin: '0 0 4px' }}>@{userProfile?.username || username}</p>
+                  {(userProfile?.email || email) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>{userProfile?.email || email}</p>
+                      {(userProfile?.emailVerified) && (
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>✓ Verified</span>
+                      )}
+                    </div>
+                  )}
+                  {userSub && <p style={{ fontSize: 12, color: 'rgba(255,255,255,.2)', margin: '6px 0 0', fontFamily: 'monospace' }}>ID: {userSub}</p>}
+                </div>
+                <button onClick={() => void loadProfile()}
+                  style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                  {profileLoading ? '…' : '↻ Refresh'}
+                </button>
+              </div>
+
+              {/* Stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
+                {[
+                  { label: 'Total Projects', value: userStats?.totalGenerations ?? validProjects.length, icon: '⊞', color: '#6366f1' },
+                  { label: 'Completed', value: userStats?.completedGenerations ?? validProjects.filter(g => g.status === 'COMPLETED').length, icon: '✓', color: '#34d399' },
+                  { label: 'Success Rate', value: `${userStats?.successRate ?? (validProjects.length > 0 ? Math.round(validProjects.filter(g => g.status === 'COMPLETED').length * 100 / validProjects.length) : 0)}%`, icon: '◎', color: '#a78bfa' },
+                ].map(stat => (
+                  <div key={stat.label} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 16, padding: '24px 20px' }}>
+                    <div style={{ fontSize: 22, marginBottom: 10, color: stat.color }}>{stat.icon}</div>
+                    <p style={{ fontSize: 30, fontWeight: 900, color: '#f1f5f9', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{stat.value}</p>
+                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', margin: 0 }}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Recent Activity */}
+              {validProjects.length > 0 && (
+                <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, padding: '24px 28px', marginBottom: 20 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: '0 0 18px' }}>Recent Activity</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {validProjects.slice(0, 5).map(g => (
+                      <div key={g.generationId} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,.03)', cursor: 'pointer', transition: 'background .15s' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'}
+                        onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : 'rgba(251,191,36,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                          {g.status === 'COMPLETED' ? '✓' : '⟳'}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
+                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+                        </div>
+                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', flexShrink: 0 }}>→</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Account Actions */}
+              <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 20, padding: '24px 28px' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: '0 0 16px' }}>Account</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: '0 0 2px' }}>Authentication</p>
+                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: 0 }}>Managed by Keycloak SSO</p>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>Active</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: '#f87171', margin: '0 0 2px' }}>Sign out</p>
+                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: 0 }}>End your current session</p>
+                    </div>
+                    {onLogout && (
+                      <button onClick={onLogout}
+                        style={{ fontSize: 13, fontWeight: 700, padding: '9px 20px', borderRadius: 10, background: 'rgba(248,113,113,.1)', color: '#f87171', border: '1px solid rgba(248,113,113,.2)', cursor: 'pointer' }}>
+                        Sign out
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
         </main>
@@ -1856,7 +1945,7 @@ document.addEventListener('click', function(e) {
                             }}
                             onClick={(e) => {
                               e.stopPropagation()
-                              void loadGeneration(g.generationId!, g.prompt)
+                              void loadGeneration(g.generationId!)
                             }}
                             type="button"
                             disabled={loadingProjectId === g.generationId}

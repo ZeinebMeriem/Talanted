@@ -33,11 +33,12 @@ export default function App() {
     return <div>Redirecting to login…</div>
   }
 
-  const username =
-    (auth.user?.profile as any)?.preferred_username ||
-    (auth.user?.profile as any)?.email ||
-    auth.user?.profile?.sub ||
-    'user'
+  const profile = auth.user?.profile as any
+  const username = profile?.preferred_username || profile?.email || profile?.sub || 'user'
+  const email = profile?.email as string | undefined
+  const firstName = profile?.given_name as string | undefined
+  const lastName = profile?.family_name as string | undefined
+  const userSub = profile?.sub as string | undefined
 
   const doLogout = async () => {
     try {
@@ -49,6 +50,14 @@ export default function App() {
   }
 
   return (
-    <AiEditor accessToken={auth.user?.access_token} username={username} onLogout={doLogout} />
+    <AiEditor
+      accessToken={auth.user?.access_token}
+      username={username}
+      email={email}
+      firstName={firstName}
+      lastName={lastName}
+      userSub={userSub}
+      onLogout={doLogout}
+    />
   )
 }
