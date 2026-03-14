@@ -39,7 +39,16 @@ export default function App() {
   const firstName = profile?.given_name as string | undefined
   const lastName = profile?.family_name as string | undefined
   const userSub = profile?.sub as string | undefined
-  const roles: string[] = (profile?.realm_access?.roles as string[] | undefined) ?? []
+
+  // Roles are in the access token, not the ID token profile
+  const accessClaims = (() => {
+    try {
+      const token = auth.user?.access_token
+      if (!token) return {}
+      return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    } catch { return {} }
+  })()
+  const roles: string[] = (accessClaims?.realm_access?.roles as string[] | undefined) ?? []
 
   const doLogout = async () => {
     try {

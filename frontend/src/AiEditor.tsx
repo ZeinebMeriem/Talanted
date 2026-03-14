@@ -129,8 +129,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
   const isAdmin = roles.includes('admin')
 
-  // Navigation
-  const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>('create')
+  // Navigation — admin lands directly on admin dashboard
+  const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>(isAdmin ? 'admin' : 'create')
 
   // User profile
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
