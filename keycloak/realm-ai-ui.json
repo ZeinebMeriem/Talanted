@@ -12,11 +12,11 @@
   "smtpServer": {
     "host": "smtp.gmail.com",
     "port": "587",
-    "from": "REPLACE_WITH_YOUR_GMAIL",
+    "from": "meriemboukraa24@gmail.com",
     "fromDisplayName": "AI UI Generator",
     "auth": "true",
-    "user": "REPLACE_WITH_YOUR_GMAIL",
-    "password": "REPLACE_WITH_APP_PASSWORD",
+    "user": "meriemboukraa24@gmail.com",
+    "password": "${SMTP_PASSWORD}",
     "starttls": "true",
     "ssl": "false"
   },
