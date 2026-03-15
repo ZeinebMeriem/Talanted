@@ -238,6 +238,18 @@ export async function getAdminUsers(accessToken?: string): Promise<AdminUser[]> 
   return Array.isArray(data) ? (data as AdminUser[]) : []
 }
 
+export async function getAdminUserProjects(userId: string, accessToken?: string): Promise<GenerationListItem[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/users/${encodeURIComponent(userId)}/projects`, {
+    headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return Array.isArray(data) ? (data as GenerationListItem[]) : []
+}
+
 export async function getAdminStats(accessToken?: string): Promise<AdminStats> {
   const res = await fetch(`${BFF_BASE_URL}/api/admin/stats`, { headers: authHeaders(accessToken) })
   const data: unknown = await readJsonOrNull(res)
@@ -246,6 +258,54 @@ export async function getAdminStats(accessToken?: string): Promise<AdminStats> {
     throw new Error(message || `HTTP ${res.status}`)
   }
   return (typeof data === 'object' && data !== null ? (data as AdminStats) : {})
+}
+
+export async function deleteAdminUser(userId: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function setAdminUserEnabled(userId: string, enabled: boolean, accessToken?: string): Promise<void> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/admin/users/${encodeURIComponent(userId)}/enabled?enabled=${enabled}`,
+    { method: 'PUT', headers: authHeaders(accessToken) },
+  )
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function getAdminActivity(accessToken?: string): Promise<GenerationListItem[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/activity`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return Array.isArray(data) ? (data as GenerationListItem[]) : []
+}
+
+export async function getAdminFailed(accessToken?: string): Promise<GenerationListItem[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/failed`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return Array.isArray(data) ? (data as GenerationListItem[]) : []
+}
+
+export type DailyChartItem = { date: string; count: number }
+
+export async function getAdminDailyChart(accessToken?: string): Promise<DailyChartItem[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/chart/daily`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return Array.isArray(data) ? (data as DailyChartItem[]) : []
+}
+
+export type ServiceHealth = { fastapi: string; keycloak: string; minio: string; mongodb: string }
+
+export async function getAdminServiceHealth(accessToken?: string): Promise<ServiceHealth> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/health`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (typeof data === 'object' && data !== null ? (data as ServiceHealth) : { fastapi: 'DOWN', keycloak: 'DOWN', minio: 'DOWN', mongodb: 'DOWN' })
 }
 
 export async function rollbackGeneration(

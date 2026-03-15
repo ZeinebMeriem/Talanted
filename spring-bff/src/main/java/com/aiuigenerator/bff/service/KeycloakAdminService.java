@@ -49,6 +49,34 @@ public class KeycloakAdminService {
         return (String) tokenResponse.get("access_token");
     }
 
+    public void deleteUser(String userId) throws Exception {
+        String token = getAdminToken();
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users/" + userId))
+                .header("Authorization", "Bearer " + token)
+                .DELETE()
+                .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() >= 300) {
+            throw new RuntimeException("Keycloak error: " + res.statusCode());
+        }
+    }
+
+    public void toggleUserEnabled(String userId, boolean enabled) throws Exception {
+        String token = getAdminToken();
+        String bodyJson = "{\"enabled\":" + enabled + "}";
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users/" + userId))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(bodyJson))
+                .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() >= 300) {
+            throw new RuntimeException("Keycloak error: " + res.statusCode());
+        }
+    }
+
     public List<Map<String, Object>> listUsers() throws Exception {
         String token = getAdminToken();
         HttpRequest req = HttpRequest.newBuilder()

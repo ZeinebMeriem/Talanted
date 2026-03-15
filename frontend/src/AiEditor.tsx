@@ -2,7 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createGeneration,
   downloadGenerationZip,
+  getAdminActivity,
+  getAdminDailyChart,
+  getAdminFailed,
+  getAdminServiceHealth,
   getAdminStats,
+  getAdminUserProjects,
   getAdminUsers,
   getGenerationCode,
   getGenerationVersions,
@@ -10,12 +15,16 @@ import {
   getUserStats,
   listAuditEvents,
   listGenerations,
+  deleteAdminUser,
   rollbackGeneration,
+  setAdminUserEnabled,
   type AdminStats,
   type AdminUser,
   type AuditEventListItem,
+  type DailyChartItem,
   type GenerationListItem,
   type GenerationVersionsResponse,
+  type ServiceHealth,
   type UserProfile,
   type UserStats,
 } from './api'
@@ -126,6 +135,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [selectedFw, setSelectedFw] = useState<Framework | null>(null)
   const [projectName, setProjectName] = useState('my-awesome-app')
   const [customPrompt, setCustomPrompt] = useState('')
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [dragOver, setDragOver] = useState(false)
 
   const isAdmin = roles.includes('admin')
 
@@ -142,6 +153,14 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminError, setAdminError] = useState<string | null>(null)
+  const [selectedAdminUser, setSelectedAdminUser] = useState<AdminUser | null>(null)
+  const [selectedUserProjects, setSelectedUserProjects] = useState<GenerationListItem[]>([])
+  const [userProjectsLoading, setUserProjectsLoading] = useState(false)
+  const [adminActivity, setAdminActivity] = useState<GenerationListItem[]>([])
+  const [adminFailed, setAdminFailed] = useState<GenerationListItem[]>([])
+  const [adminDailyChart, setAdminDailyChart] = useState<DailyChartItem[]>([])
+  const [adminHealth, setAdminHealth] = useState<ServiceHealth | null>(null)
+  const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'users' | 'activity' | 'failed' | 'health'>('overview')
 
   // IDE
   const [ideVisible, setIdeVisible] = useState(false)
@@ -271,13 +290,39 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     try {
       setAdminError(null)
       setAdminLoading(true)
-      const [users, stats] = await Promise.all([getAdminUsers(accessToken), getAdminStats(accessToken)])
+      const [users, stats, activity, failed, chart, health] = await Promise.all([
+        getAdminUsers(accessToken),
+        getAdminStats(accessToken),
+        getAdminActivity(accessToken),
+        getAdminFailed(accessToken),
+        getAdminDailyChart(accessToken),
+        getAdminServiceHealth(accessToken),
+      ])
       setAdminUsers(users)
       setAdminStats(stats)
+      setAdminActivity(activity)
+      setAdminFailed(failed)
+      setAdminDailyChart(chart)
+      setAdminHealth(health)
     } catch (e: any) {
       setAdminError(e?.message ?? 'Failed to load admin data')
     } finally {
       setAdminLoading(false)
+    }
+  }, [accessToken])
+
+  const openUserProjects = useCallback(async (user: AdminUser) => {
+    setSelectedAdminUser(user)
+    setSelectedUserProjects([])
+    if (!user.userId) return
+    try {
+      setUserProjectsLoading(true)
+      const projects = await getAdminUserProjects(user.userId, accessToken)
+      setSelectedUserProjects(projects)
+    } catch {
+      setSelectedUserProjects([])
+    } finally {
+      setUserProjectsLoading(false)
     }
   }, [accessToken])
 
@@ -705,7 +750,8 @@ document.addEventListener('click', function(e) {
 
     try {
       const prompt = customPrompt.trim() || `New project: ${projectName}`
-      const result = (await createGeneration(prompt, [], accessToken)) as GenerationApiResponse
+      const result = (await createGeneration(prompt, attachedFiles, accessToken)) as GenerationApiResponse
+      setAttachedFiles([])
       setApiResult(result)
       void loadHistory().then(() => setHomeTab('projects'))
 
@@ -967,7 +1013,7 @@ document.addEventListener('click', function(e) {
           {/* Main nav */}
           <nav style={{ padding: '10px 10px 0' }}>
             {([
-              { icon: '⌂', label: 'Home', action: () => setHomeTab('create'), active: homeTab === 'create' },
+              ...(!isAdmin ? [{ icon: '⌂', label: 'Home', action: () => setHomeTab('create'), active: homeTab === 'create' }] : []),
               { icon: '⊞', label: `All projects${validProjects.length > 0 ? ` (${validProjects.length})` : ''}`, action: () => setHomeTab('projects'), active: homeTab === 'projects' },
               { icon: '◉', label: 'Profile', action: () => setHomeTab('profile'), active: homeTab === 'profile' },
               ...(isAdmin ? [{ icon: '⚙', label: 'Admin Dashboard', action: () => setHomeTab('admin'), active: homeTab === 'admin' }] : []),
@@ -1090,6 +1136,42 @@ document.addEventListener('click', function(e) {
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomPrompt(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customPrompt.trim() && projectName) startBuild() }}
                   />
+                </div>
+
+                {/* Document upload */}
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.5)', display: 'block', marginBottom: 8 }}>
+                    Attach documents <span style={{ fontWeight: 400, color: 'rgba(255,255,255,.3)' }}>(PDF, DOCX, TXT, PNG, JPG — optional)</span>
+                  </label>
+                  <div
+                    onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={e => {
+                      e.preventDefault(); setDragOver(false)
+                      const dropped = Array.from(e.dataTransfer.files)
+                      setAttachedFiles(prev => [...prev, ...dropped])
+                    }}
+                    onClick={() => { const el = document.getElementById('doc-file-input'); el && el.click() }}
+                    style={{ border: `2px dashed ${dragOver ? '#6366f1' : 'rgba(255,255,255,.1)'}`, borderRadius: 12, padding: '18px 20px', cursor: 'pointer', background: dragOver ? 'rgba(99,102,241,.08)' : 'rgba(255,255,255,.02)', transition: 'all .2s', textAlign: 'center' }}>
+                    <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg" style={{ display: 'none' }}
+                      onChange={e => { if (e.target.files) setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
+                    {attachedFiles.length === 0 ? (
+                      <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,.3)' }}>
+                        📎 &nbsp;Drag & drop or <span style={{ color: '#818cf8', fontWeight: 600 }}>browse</span> — specification, wireframes, design docs…
+                      </p>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                        {attachedFiles.map((f, i) => (
+                          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,.15)', border: '1px solid rgba(99,102,241,.3)', borderRadius: 8, padding: '4px 10px', fontSize: 12, color: '#a5b4fc' }}>
+                            📄 {f.name}
+                            <button onClick={e => { e.stopPropagation(); setAttachedFiles(prev => prev.filter((_, j) => j !== i)) }}
+                              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
+                          </span>
+                        ))}
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', alignSelf: 'center' }}>+ click to add more</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Template chips */}
@@ -1226,8 +1308,8 @@ document.addEventListener('click', function(e) {
             <div style={{ padding: '48px 40px 80px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
                 <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>My Projects</h1>
-                  <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>{validProjects.length} project{validProjects.length !== 1 ? 's' : ''} generated</p>
+                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{isAdmin ? 'All Projects' : 'My Projects'}</h1>
+                  <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>{isAdmin ? adminActivity.length : validProjects.length} project{(isAdmin ? adminActivity.length : validProjects.length) !== 1 ? 's' : ''} generated</p>
                 </div>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                   <button onClick={() => void loadHistory()} style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.45)', borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>↻ Refresh</button>
@@ -1242,7 +1324,32 @@ document.addEventListener('click', function(e) {
                 </div>
               </div>
 
-              {historyLoading ? (
+              {isAdmin ? (
+                /* Admin: show all projects as a list */
+                adminActivity.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(255,255,255,.08)', borderRadius: 20 }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>✦</div>
+                    <p style={{ fontSize: 20, fontWeight: 700, color: '#e2e8f0', marginBottom: 8 }}>No projects yet</p>
+                    <p style={{ fontSize: 15, color: 'rgba(255,255,255,.4)' }}>No generations have been created on this platform.</p>
+                  </div>
+                ) : (
+                  <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
+                    {adminActivity.map((g, i) => (
+                      <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
+                          background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
+                          color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
+                          {g.status}
+                        </span>
+                        <p style={{ flex: 1, fontSize: 13, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', flexShrink: 0 }}>
+                          {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : historyLoading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
                   {[1,2,3,4,5,6].map(i => (
                     <div key={i} style={{ borderRadius: 16, overflow: 'hidden', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
@@ -1304,7 +1411,7 @@ document.addEventListener('click', function(e) {
                 </div>
               )}
 
-              {!showAllProjects && validProjects.length > 6 && (
+              {!isAdmin && !showAllProjects && validProjects.length > 6 && (
                 <div style={{ textAlign: 'center', marginTop: 36 }}>
                   <button onClick={() => setShowAllProjects(true)}
                     style={{ background: 'rgba(99,102,241,.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.2)', borderRadius: 12, padding: '13px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
@@ -1317,20 +1424,42 @@ document.addEventListener('click', function(e) {
 
           {/* ── ADMIN DASHBOARD ── */}
           {homeTab === 'admin' && isAdmin && (
-            <div style={{ maxWidth: 900, margin: '0 auto', padding: '56px 40px 80px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+            <div style={{ maxWidth: 980, margin: '0 auto', padding: '48px 40px 80px' }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
                 <div>
                   <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 6px', fontFamily: "'Syne',sans-serif" }}>Admin Dashboard</h1>
                   <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>Platform overview and user management</p>
                 </div>
-                <button onClick={() => void loadAdminDashboard()}
-                  style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                  {adminLoading ? '…' : '↻ Refresh'}
-                </button>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => {
+                    const rows = [['Name', 'Username', 'Email', 'Joined', 'Projects', 'Verified', 'Status']]
+                    adminUsers.forEach(u => rows.push([
+                      [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '',
+                      u.username || '',
+                      u.email || '',
+                      u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString() : '',
+                      String(u.projectCount ?? 0),
+                      u.emailVerified ? 'Yes' : 'No',
+                      u.enabled === false ? 'Disabled' : 'Active',
+                    ]))
+                    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+                    const a = document.createElement('a')
+                    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
+                    a.download = 'users.csv'
+                    a.click()
+                  }} style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.2)', color: '#a5b4fc', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    ↓ Export CSV
+                  </button>
+                  <button onClick={() => void loadAdminDashboard()}
+                    style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    {adminLoading ? '…' : '↻ Refresh'}
+                  </button>
+                </div>
               </div>
 
-              {/* Platform stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+              {/* Stats cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
                 {[
                   { label: 'Total Users', value: adminStats?.totalUsers ?? '—', icon: '👥', color: '#6366f1' },
                   { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', icon: '⊞', color: '#8b5cf6' },
@@ -1345,65 +1474,235 @@ document.addEventListener('click', function(e) {
                 ))}
               </div>
 
-              {/* User table */}
-              <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
-                <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Registered Developers</h3>
-                  <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', background: 'rgba(255,255,255,.05)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
+              {/* Inner tabs */}
+              <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'rgba(255,255,255,.03)', borderRadius: 12, padding: 4, width: 'fit-content' }}>
+                {([
+                  { key: 'overview', label: '⊞ Overview' },
+                  { key: 'users', label: '👥 Users' },
+                  { key: 'activity', label: '⚡ Activity' },
+                  { key: 'failed', label: '✕ Failed' },
+                  { key: 'health', label: '◉ Health' },
+                ] as { key: typeof adminActiveTab; label: string }[]).map(t => (
+                  <button key={t.key} onClick={() => setAdminActiveTab(t.key)}
+                    style={{ background: adminActiveTab === t.key ? 'rgba(99,102,241,.2)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#a5b4fc' : 'rgba(255,255,255,.4)', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {adminError && <div style={{ padding: '16px 20px', color: '#f87171', fontSize: 14, background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.15)', borderRadius: 12, marginBottom: 20 }}>⚠ {adminError}</div>}
+
+              {/* ── OVERVIEW TAB: chart ── */}
+              {adminActiveTab === 'overview' && (
+                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, padding: '28px 28px 20px' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: '0 0 24px' }}>Generations — last 7 days</h3>
+                  {adminDailyChart.length === 0
+                    ? <p style={{ color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No data yet</p>
+                    : (() => {
+                        const max = Math.max(...adminDailyChart.map(d => d.count), 1)
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 140 }}>
+                            {adminDailyChart.map(d => (
+                              <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#a5b4fc' }}>{d.count || ''}</span>
+                                <div style={{ width: '100%', background: 'linear-gradient(to top,#6366f1,#a78bfa)', borderRadius: '6px 6px 0 0', height: `${Math.max((d.count / max) * 100, d.count ? 4 : 0)}px`, minHeight: d.count ? 4 : 0, transition: 'height .3s' }} />
+                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()
+                  }
+                </div>
+              )}
+
+              {/* ── USERS TAB ── */}
+              {adminActiveTab === 'users' && (
+                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Registered Developers</h3>
+                    <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', background: 'rgba(255,255,255,.05)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
+                  </div>
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminUsers.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No users found</div>}
+                  {!adminLoading && adminUsers.map((u, i) => {
+                    const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
+                    const initials = name.charAt(0).toUpperCase()
+                    const joinedDate = u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+                    return (
+                      <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminUsers.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none', transition: 'background .15s', cursor: 'pointer' }}
+                        onClick={() => void openUserProjects(u)}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.04)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
+                          <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', margin: '0 0 1px' }}>Joined</p>
+                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', margin: 0 }}>{joinedDate}</p>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 60 }}>
+                          <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', margin: '0 0 1px' }}>Projects</p>
+                          <p style={{ fontSize: 17, fontWeight: 800, color: '#a5b4fc', margin: 0 }}>{u.projectCount ?? 0}</p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                          {u.emailVerified
+                            ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>✓ Verified</span>
+                            : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#fbbf24' }}>⏳ Pending</span>
+                          }
+                        </div>
+                        {/* Enable/disable toggle */}
+                        <button onClick={e => {
+                          e.stopPropagation()
+                          if (!u.userId) return
+                          const next = u.enabled !== false
+                          void setAdminUserEnabled(u.userId, !next, accessToken).then(() => {
+                            setAdminUsers(prev => prev.map(x => x.userId === u.userId ? { ...x, enabled: !next } : x))
+                          })
+                        }} style={{ background: u.enabled === false ? 'rgba(52,211,153,.1)' : 'rgba(248,113,113,.08)', border: u.enabled === false ? '1px solid rgba(52,211,153,.2)' : '1px solid rgba(248,113,113,.15)', color: u.enabled === false ? '#34d399' : '#f87171', borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                          {u.enabled === false ? 'Enable' : 'Disable'}
+                        </button>
+                        {/* Delete button */}
+                        <button onClick={e => {
+                          e.stopPropagation()
+                          if (!u.userId) return
+                          if (!window.confirm(`Delete user "${u.username}"? This cannot be undone.`)) return
+                          void deleteAdminUser(u.userId, accessToken).then(() => {
+                            setAdminUsers(prev => prev.filter(x => x.userId !== u.userId))
+                          })
+                        }} style={{ background: 'rgba(248,113,113,.06)', border: '1px solid rgba(248,113,113,.12)', color: '#f87171', borderRadius: 8, padding: '4px 8px', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
+                          title="Delete user">
+                          🗑
+                        </button>
+                        <div style={{ color: 'rgba(255,255,255,.2)', fontSize: 16, flexShrink: 0 }}>›</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* ── ACTIVITY TAB ── */}
+              {adminActiveTab === 'activity' && (
+                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Recent Activity</h3>
+                  </div>
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No activity yet</div>}
+                  {!adminLoading && adminActivity.map((g, i) => (
+                    <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
+                        background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
+                        color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
+                        {g.status}
+                      </span>
+                      <p style={{ flex: 1, fontSize: 13, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', flexShrink: 0 }}>
+                        {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── FAILED TAB ── */}
+              {adminActiveTab === 'failed' && (
+                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Failed Generations</h3>
+                    <span style={{ fontSize: 13, background: 'rgba(248,113,113,.1)', color: '#f87171', padding: '4px 10px', borderRadius: 20 }}>{adminFailed.length} failed</span>
+                  </div>
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminFailed.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No failed generations</div>}
+                  {!adminLoading && adminFailed.map((g, i) => (
+                    <div key={g.generationId || i} style={{ padding: '16px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 16)}…</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
+                          {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 13, color: '#fca5a5', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── HEALTH TAB ── */}
+              {adminActiveTab === 'health' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+                  {adminHealth
+                    ? Object.entries(adminHealth).map(([svc, status]) => (
+                        <div key={svc} style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                          <div style={{ width: 12, height: 12, borderRadius: '50%', background: status === 'UP' ? '#34d399' : '#f87171', boxShadow: status === 'UP' ? '0 0 8px #34d399' : '0 0 8px #f87171', flexShrink: 0 }} />
+                          <div>
+                            <p style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
+                            <p style={{ fontSize: 13, color: status === 'UP' ? '#34d399' : '#f87171', margin: 0, fontWeight: 600 }}>{status}</p>
+                          </div>
+                        </div>
+                      ))
+                    : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading health status…</div>
+                  }
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── USER PROJECTS SIDE PANEL ── */}
+          {selectedAdminUser && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }} onClick={() => setSelectedAdminUser(null)}>
+              <div style={{ flex: 1, background: 'rgba(0,0,0,.5)' }} />
+              <div style={{ width: 480, height: '100%', background: '#0f1117', borderLeft: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}
+                onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div style={{ padding: '28px 28px 20px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                    {([selectedAdminUser.firstName, selectedAdminUser.lastName].filter(Boolean).join(' ') || selectedAdminUser.username || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: '0 0 2px' }}>
+                      {[selectedAdminUser.firstName, selectedAdminUser.lastName].filter(Boolean).join(' ') || selectedAdminUser.username}
+                    </p>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', margin: 0 }}>{selectedAdminUser.email}</p>
+                  </div>
+                  <button onClick={() => setSelectedAdminUser(null)}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
                 </div>
 
-                {adminError && (
-                  <div style={{ padding: '20px 24px', color: '#f87171', fontSize: 14 }}>⚠ {adminError}</div>
-                )}
+                {/* Projects list */}
+                <div style={{ padding: '20px 28px' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.4)', margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: 1 }}>
+                    Projects ({selectedUserProjects.length})
+                  </p>
 
-                {adminLoading && (
-                  <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading users…</div>
-                )}
+                  {userProjectsLoading && (
+                    <div style={{ textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14, padding: '40px 0' }}>Loading…</div>
+                  )}
 
-                {!adminLoading && !adminError && adminUsers.length === 0 && (
-                  <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No users found</div>
-                )}
+                  {!userProjectsLoading && selectedUserProjects.length === 0 && (
+                    <div style={{ textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14, padding: '40px 0' }}>No projects yet</div>
+                  )}
 
-                {!adminLoading && adminUsers.map((u, i) => {
-                  const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
-                  const initials = name.charAt(0).toUpperCase()
-                  const joinedDate = u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
-                  return (
-                    <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', borderBottom: i < adminUsers.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none', transition: 'background .15s' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.02)'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-                      {/* Avatar */}
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                        {initials}
+                  {!userProjectsLoading && selectedUserProjects.map((p, i) => (
+                    <div key={p.generationId || i} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                          background: p.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : p.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
+                          color: p.status === 'COMPLETED' ? '#34d399' : p.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
+                          {p.status}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
+                          {p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        </span>
                       </div>
-                      {/* Name + email */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
-                      </div>
-                      {/* Joined */}
-                      <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 100 }}>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: '0 0 2px' }}>Joined</p>
-                        <p style={{ fontSize: 13, color: 'rgba(255,255,255,.6)', margin: 0 }}>{joinedDate}</p>
-                      </div>
-                      {/* Projects */}
-                      <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 70 }}>
-                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: '0 0 2px' }}>Projects</p>
-                        <p style={{ fontSize: 18, fontWeight: 800, color: '#a5b4fc', margin: 0 }}>{u.projectCount ?? 0}</p>
-                      </div>
-                      {/* Badges */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                        {u.emailVerified
-                          ? <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>✓ Verified</span>
-                          : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#fbbf24' }}>⏳ Pending</span>
-                        }
-                        {u.enabled === false && (
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(248,113,113,.1)', color: '#f87171' }}>Disabled</span>
-                        )}
-                      </div>
+                      <p style={{ fontSize: 13, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.prompt || 'No prompt'}
+                      </p>
                     </div>
-                  )
-                })}
+                  ))}
+                </div>
               </div>
             </div>
           )}

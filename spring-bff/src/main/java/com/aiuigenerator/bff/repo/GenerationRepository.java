@@ -1,5 +1,6 @@
 package com.aiuigenerator.bff.repo;
 
+import java.time.Instant;
 import java.util.List;
 
 import org.springframework.data.mongodb.repository.MongoRepository;
@@ -12,6 +13,10 @@ public interface GenerationRepository extends MongoRepository<Generation, String
 	List<Generation> findTop50ByOrderByCreatedAtDesc();
 
 	List<Generation> findByUserIdOrderByCreatedAtDesc(String userId);
+
+	List<Generation> findByStatusOrderByCreatedAtDesc(GenerationStatus status);
+
+	List<Generation> findByCreatedAtAfterOrderByCreatedAtAsc(Instant after);
 
 	long countByUserId(String userId);
 
