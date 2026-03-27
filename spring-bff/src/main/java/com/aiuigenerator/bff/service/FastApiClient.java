@@ -4,6 +4,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import com.aiuigenerator.bff.dto.EditFileRequest;
+import com.aiuigenerator.bff.dto.EditFileResponse;
 import com.aiuigenerator.bff.dto.FastApiGenerateRequest;
 import com.aiuigenerator.bff.dto.FastApiGenerateResponse;
 
@@ -24,6 +26,17 @@ public class FastApiClient {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(FastApiGenerateResponse.class)
+                .block();
+    }
+
+    public EditFileResponse editFile(EditFileRequest request) {
+        return webClient.post()
+                .uri("/internal/edit-file")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(EditFileResponse.class)
                 .block();
     }
 }

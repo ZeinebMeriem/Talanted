@@ -24,7 +24,7 @@
         <li><span class="feature-dot"></span>Live preview &amp; code editor</li>
         <li><span class="feature-dot"></span>Download as ZIP</li>
       </ul>
-      <div class="brand-badge">Powered by Gemini AI</div>
+      <div class="brand-badge">Powered by AI</div>
     </div>
   </div>
 

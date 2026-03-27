@@ -24,7 +24,7 @@
         <li><span class="feature-dot"></span>Live preview &amp; code editor</li>
         <li><span class="feature-dot"></span>Download as ZIP</li>
       </ul>
-      <div class="brand-badge">Powered by Gemini AI</div>
+      <div class="brand-badge">Powered by AI</div>
     </div>
   </div>
 
@@ -45,7 +45,7 @@
       </#if>
 
       <div class="register-row" style="margin-top: 28px; flex-direction: column; gap: 12px;">
-        <a href="${url.loginUrl!'http://localhost:5173'}" class="btn-submit" style="text-decoration: none; text-align: center;">
+        <a href="http://localhost:5173" class="btn-submit" style="text-decoration: none; text-align: center;">
           Back to Sign In
           <span class="btn-arrow">→</span>
         </a>

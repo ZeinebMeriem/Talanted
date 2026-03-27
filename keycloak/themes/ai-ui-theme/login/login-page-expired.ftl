@@ -24,7 +24,7 @@
         <li><span class="feature-dot"></span>Live preview &amp; code editor</li>
         <li><span class="feature-dot"></span>Download as ZIP</li>
       </ul>
-      <div class="brand-badge">Powered by Gemini AI</div>
+      <div class="brand-badge">Powered by AI</div>
     </div>
   </div>
 
@@ -38,14 +38,16 @@
       </div>
 
       <div class="register-row" style="margin-top: 28px; flex-direction: column; gap: 12px;">
-        <a href="${url.loginRestartFlowUrl}" class="btn-submit" style="text-decoration: none; text-align: center;">
+        <a href="${url.loginRestartFlowUrl!''}" class="btn-submit" style="text-decoration: none; text-align: center;">
           Restart sign in
           <span class="btn-arrow">→</span>
         </a>
+        <#if url.loginContinueFlowUrl?has_content>
         <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
           <span>Already started?</span>
           <a href="${url.loginContinueFlowUrl}" class="register-link">Continue</a>
         </div>
+        </#if>
       </div>
 
     </div>

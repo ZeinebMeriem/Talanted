@@ -92,11 +92,14 @@ export type GenerationRollbackResponse = {
   updatedAt?: string
 }
 
-export async function createGeneration(prompt: string, files: File[], accessToken?: string): Promise<unknown> {
+export async function createGeneration(prompt: string, files: File[], accessToken?: string, domain?: string | null): Promise<unknown> {
   const form = new FormData()
   form.append('prompt', prompt)
   for (const f of files) {
     form.append('files', f)
+  }
+  if (domain) {
+    form.append('domain', domain)
   }
 
   // Avoid UI getting stuck forever if the request never returns (large PDFs, slow extraction/LLM, etc.).
@@ -306,6 +309,35 @@ export async function getAdminServiceHealth(accessToken?: string): Promise<Servi
   const data: unknown = await readJsonOrNull(res)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (typeof data === 'object' && data !== null ? (data as ServiceHealth) : { fastapi: 'DOWN', keycloak: 'DOWN', minio: 'DOWN', mongodb: 'DOWN' })
+}
+
+export type EditFileResponse = {
+  filePath?: string
+  content?: string
+  buildSuccess?: boolean
+  buildOutput?: string
+}
+
+export async function editFile(
+  generationId: string,
+  filePath: string,
+  instruction: string,
+  accessToken?: string,
+): Promise<EditFileResponse> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/edit-file`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders(accessToken) },
+      body: JSON.stringify({ generationId, filePath, instruction }),
+    },
+  )
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as EditFileResponse) : {})
 }
 
 export async function rollbackGeneration(

@@ -9,4 +9,5 @@ public class FastApiGenerateRequest {
     public String mode; // full | codegen_only
     public List<FileRefDto> fileRefs;
     public Map<String, Object> uiSpec;
+    public String domain; // ecommerce | medical | dashboard | education | saas | portfolio | restaurant | real_estate | null (auto-detect)
 }

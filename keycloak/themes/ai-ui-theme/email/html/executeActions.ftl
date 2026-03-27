@@ -109,7 +109,7 @@
           <!-- Footer -->
           <tr>
             <td align="center" style="padding-top:28px;">
-              <p style="margin:0 0 6px;font-size:13px;color:#9ca3af;">AI UI Generator &nbsp;·&nbsp; Powered by Gemini AI</p>
+              <p style="margin:0 0 6px;font-size:13px;color:#9ca3af;">AI UI Generator &nbsp;·&nbsp; Powered by AI</p>
               <p style="margin:0;font-size:12px;color:#d1d5db;">This email was sent automatically. Please do not reply.</p>
             </td>
           </tr>

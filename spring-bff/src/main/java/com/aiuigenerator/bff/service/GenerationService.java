@@ -22,6 +22,8 @@ import com.aiuigenerator.bff.domain.UiSpecVersion;
 import com.aiuigenerator.bff.dto.AiReportDto;
 import com.aiuigenerator.bff.dto.CodeBundleDto;
 import com.aiuigenerator.bff.dto.CodeFileDto;
+import com.aiuigenerator.bff.dto.EditFileRequest;
+import com.aiuigenerator.bff.dto.EditFileResponse;
 import com.aiuigenerator.bff.dto.FileRefDto;
 import com.aiuigenerator.bff.dto.FastApiGenerateRequest;
 import com.aiuigenerator.bff.dto.FastApiGenerateResponse;
@@ -73,7 +75,7 @@ public class GenerationService {
         this.reportRepo = reportRepo;
     }
 
-    public GenerationCreateResponse createGeneration(String userId, String prompt, List<MultipartFile> files) {
+    public GenerationCreateResponse createGeneration(String userId, String prompt, List<MultipartFile> files, String domain) {
         long started = System.currentTimeMillis();
 
         validator.validatePrompt(prompt);
@@ -139,6 +141,7 @@ public class GenerationService {
         req.prompt = prompt;
         req.mode = "full";
         req.fileRefs = fileRefs;
+        req.domain = (domain != null && !domain.isBlank()) ? domain : null;
 
         FastApiGenerateResponse fastResp = fastApi.generate(req);
 
@@ -177,6 +180,8 @@ public class GenerationService {
             report.setLlmProvider(fastResp.aiReport.llm_provider);
             report.setDurations(fastResp.aiReport.durations);
             report.setRetriesCount(fastResp.aiReport.retries_count);
+            report.setBuildRetries(fastResp.aiReport.build_retries);
+            report.setUiEvaluation(fastResp.aiReport.ui_evaluation);
         } else {
             report.setScore(0);
             report.setIssues(List.of());
@@ -274,6 +279,50 @@ public class GenerationService {
             return dto;
         }).collect(Collectors.toList());
         return bundle;
+    }
+
+    public EditFileResponse editFile(String generationId, String filePath, String instruction) {
+        EditFileRequest req = new EditFileRequest();
+        req.generationId = generationId;
+        req.filePath = filePath;
+        req.instruction = instruction;
+        EditFileResponse resp = fastApi.editFile(req);
+
+        // On successful edit, create a new CodeVersion (activeVersion + 1) so that
+        // every chat edit becomes a rollback checkpoint.
+        if (resp.buildSuccess) {
+            Generation g = generationRepo.findById(generationId).orElse(null);
+            if (g != null) {
+                int currentVersion = g.getActiveVersion();
+                codeRepo.findByGenerationIdAndVersion(generationId, currentVersion)
+                        .ifPresent(currentCv -> {
+                            // Build new file list: copy all files, replace the edited one
+                            String editedPath = resp.filePath.startsWith("src/")
+                                    ? resp.filePath : "src/" + resp.filePath;
+                            List<FileEntry> newFiles = new ArrayList<>(
+                                    currentCv.getFiles() == null ? List.of() : currentCv.getFiles());
+                            newFiles.removeIf(fe -> fe.path().equals(editedPath)
+                                    || fe.path().equals(resp.filePath));
+                            newFiles.add(new FileEntry(editedPath, resp.content));
+
+                            // Save new version
+                            CodeVersion newCv = new CodeVersion();
+                            newCv.setCodeVersionId(ulid.nextULID());
+                            newCv.setGenerationId(generationId);
+                            newCv.setVersion(currentVersion + 1);
+                            newCv.setFiles(newFiles);
+                            newCv.setCreatedAt(Instant.now());
+                            codeRepo.save(newCv);
+
+                            // Advance activeVersion on the generation
+                            g.setActiveVersion(currentVersion + 1);
+                            g.setUpdatedAt(Instant.now());
+                            generationRepo.save(g);
+                        });
+            }
+        }
+
+        return resp;
     }
 
     public GenerationRollbackResponse rollback(String generationId, int targetVersion) {

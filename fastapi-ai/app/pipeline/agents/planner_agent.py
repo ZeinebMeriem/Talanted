@@ -14,67 +14,54 @@ logger = logging.getLogger(__name__)
 # Project-type taxonomy
 # ---------------------------------------------------------------------------
 PROJECT_PROFILES: dict[str, dict[str, Any]] = {
-        "react": {
-            "keywords": ["react", "component", "tsx", "spa", "single page", "frontend", "vite", "typescript", "ui", "app", "dashboard", "admin", "analytics", "multi-file", "modular"],
-            "layout": "src/App.tsx entry, src/components/ for modular views, global styles, and utility files",
-            "required_files": [
-                "index.html",
-                "styles.css",
-                "src/App.tsx",
-                "src/components/Dashboard.tsx",
-                "src/components/Users.tsx",
-                "src/components/Analytics.tsx",
-                "src/components/Billing.tsx",
-                "src/components/Settings.tsx",
-                "src/components/Support.tsx",
-                "src/components/Navbar.tsx",
-                "src/components/Sidebar.tsx",
-                "src/components/Footer.tsx",
-                "src/components/Modal.tsx",
-                "src/components/Table.tsx",
-                "src/components/Chart.tsx",
-                "src/pages/Login.tsx",
-                "src/pages/Register.tsx",
-                "src/pages/Profile.tsx",
-                "src/pages/NotFound.tsx"
-            ],
-            "aesthetic": "modern React SPA, Google Fonts, professional color palette, modular and reusable components, responsive and accessible",
-            "min_pages": 10,
-        },
     "dashboard": {
         "keywords": ["dashboard", "analytics", "metrics", "kpi", "chart", "widget", "admin", "panel", "crm", "erp"],
-        "layout": "sticky sidebar + top navbar with user profile",
-        "required_files": ["index.html", "analytics.html", "users.html", "settings.html", "styles.css", "script.js"],
-        "aesthetic": "clean card layout, Chart.js charts, KPI grid, data tables, sidebar navigation",
+        "layout": "React SPA: sticky sidebar + top navbar, multiple page components rendered by state router",
+        "required_files": ["index.html", "analytics.html", "users.html", "settings.html", "styles.css"],
+        "aesthetic": "React components with hooks, Tailwind CSS, Chart.js, KPI cards, data tables, sidebar navigation",
         "min_pages": 4,
     },
     "landing": {
         "keywords": ["landing", "marketing", "saas", "product", "homepage", "hero", "pricing", "waitlist"],
-        "layout": "full-width sections with sticky top nav",
-        "required_files": ["index.html", "styles.css", "script.js"],
-        "aesthetic": "bold hero typography, gradient CTAs, scroll-reveal sections, testimonial cards",
+        "layout": "React SPA: full-width sections with sticky nav, all sections as separate React components",
+        "required_files": ["index.html", "styles.css"],
+        "aesthetic": "React components, Tailwind CSS, bold hero, gradient CTAs, scroll-reveal, testimonials, pricing",
         "min_pages": 1,
     },
     "ecommerce": {
-        "keywords": ["shop", "store", "ecommerce", "product", "cart", "checkout", "catalog", "buy"],
-        "layout": "top nav with cart icon + product grid layout",
-        "required_files": ["index.html", "products.html", "cart.html", "styles.css", "script.js"],
-        "aesthetic": "product hover zoom, sticky add-to-cart bar, badge notifications, skeleton loaders",
+        "keywords": ["shop", "store", "ecommerce", "product", "cart", "checkout", "catalog", "buy", "boutique"],
+        "layout": "React SPA: top nav with cart state, product grid, filter sidebar, cart drawer as React components",
+        "required_files": ["index.html", "products.html", "cart.html", "styles.css"],
+        "aesthetic": "React with useState for cart, Tailwind CSS, product cards, skeleton loaders, toast notifications",
         "min_pages": 3,
     },
     "portfolio": {
         "keywords": ["portfolio", "resume", "cv", "showcase", "personal", "freelance", "agency"],
-        "layout": "single-page parallax or multi-section scroll",
-        "required_files": ["index.html", "styles.css", "script.js"],
-        "aesthetic": "cursor trail effects, project card flips, typewriter hero text, smooth scroll anchors",
+        "layout": "React SPA: single-page with section components, smooth scroll, animated entries",
+        "required_files": ["index.html", "styles.css"],
+        "aesthetic": "React components, Tailwind CSS, typewriter effect, project cards, skills section, contact form",
         "min_pages": 1,
     },
     "app": {
         "keywords": ["app", "tool", "platform", "workflow", "productivity", "management", "tracker", "scheduler"],
-        "layout": "app shell with sidebar, topbar, and main content pane",
-        "required_files": ["index.html", "app.html", "settings.html", "styles.css", "script.js"],
-        "aesthetic": "modal dialogs, toast notifications, drag-and-drop lists, command palette",
+        "layout": "React SPA: app shell with sidebar, topbar, modal system, all as React components with hooks",
+        "required_files": ["index.html", "settings.html", "styles.css"],
+        "aesthetic": "React with useReducer for state, Tailwind CSS, modal dialogs, toast notifications, drag-and-drop",
         "min_pages": 3,
+    },
+    "medical": {
+        "keywords": ["medical", "health", "patient", "doctor", "clinic", "hospital", "appointment"],
+        "layout": "React SPA: clean professional layout, forms with validation, patient records table",
+        "required_files": ["index.html", "patients.html", "appointments.html", "styles.css"],
+        "aesthetic": "React components, Tailwind CSS blue/white palette, accessible forms, status badges",
+        "min_pages": 3,
+    },
+    "education": {
+        "keywords": ["education", "course", "learning", "student", "teacher", "quiz", "formation"],
+        "layout": "React SPA: course listing, lesson view, progress tracking as React components",
+        "required_files": ["index.html", "courses.html", "styles.css"],
+        "aesthetic": "React components, Tailwind CSS, progress bars, course cards, quiz components",
+        "min_pages": 2,
     },
 }
 
@@ -86,7 +73,7 @@ DEFAULT_PROFILE = {
 }
 
 # Core files that must always be present, in preferred output order
-CORE_FILES = ["index.html", "styles.css", "script.js"]
+CORE_FILES = ["index.html", "styles.css"]
 
 # Files that should appear AFTER pages but BEFORE scripts
 STYLE_FILES = {"styles.css", "variables.css", "animations.css", "components.css"}
@@ -114,17 +101,122 @@ def _detect_project_type(context: str) -> tuple[str, dict[str, Any]]:
 
 
 def _sort_files(files: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Return files in logical generation order: HTML pages → CSS → JS."""
+    """Return files in logical generation order.
+
+    React TSX:  components/ → pages/ → other src/ → App.tsx last
+    HTML/CSS/JS: index.html first → other pages → CSS → JS
+    """
+    # ── React multi-file (TSX) ordering ──────────────────────────────────────
+    tsx_files = [f for f in files if f["path"].endswith(".tsx") or f["path"].endswith(".ts")]
+    if tsx_files:
+        mock_data  = [f for f in files if f["path"].startswith("src/data/")]
+        components = [f for f in files if "src/components/" in f["path"] and f["path"].endswith(".tsx")]
+        pages      = [f for f in files if "src/pages/" in f["path"] and f["path"].endswith(".tsx")]
+        root_app   = [f for f in files if f["path"] in ("src/App.tsx", "App.tsx")]
+        other_tsx  = [f for f in files if f not in mock_data and f not in components and f not in pages and f not in root_app and (f["path"].endswith(".tsx") or f["path"].endswith(".ts"))]
+        non_tsx    = [f for f in files if not f["path"].endswith(".tsx") and not f["path"].endswith(".ts")]
+        return mock_data + components + pages + other_tsx + non_tsx + root_app
+
+    # ── Legacy HTML/CSS/JS ordering ───────────────────────────────────────────
     pages   = [f for f in files if f["path"].endswith(".html")]
     styles  = [f for f in files if f["path"] in STYLE_FILES or (f["path"].endswith(".css") and f["path"] not in {p["path"] for p in pages})]
-    scripts = [f for f in files if f["path"] in SCRIPT_FILES or (f["path"].endswith(".js")  and f["path"] not in {p["path"] for p in pages})]
+    scripts = [f for f in files if f["path"] in SCRIPT_FILES or (f["path"].endswith(".js") and f["path"] not in {p["path"] for p in pages})]
     other   = [f for f in files if f not in pages and f not in styles and f not in scripts]
 
-    # index.html always first
     idx = next((f for f in pages if f["path"] == "index.html"), None)
     rest_pages = [f for f in pages if f["path"] != "index.html"]
-    ordered = ([idx] if idx else []) + rest_pages + other + styles + scripts
-    return ordered
+    return ([idx] if idx else []) + rest_pages + other + styles + scripts
+
+
+def _build_react_file_plan(project_type: str, plan: dict, raw_html_files: list) -> list[dict[str, str]]:
+    """Build a dynamic React multi-file TSX plan from HTML-based planner output.
+
+    Converts the LLM-planned HTML pages into proper React architecture:
+    src/components/ (reusable layout) + src/pages/ (page-level) + src/App.tsx (router).
+    """
+    import os as _os
+
+    def to_page_name(html_path: str) -> str:
+        stem = re.sub(r"\.html?$", "", html_path)
+        name = "".join(p.capitalize() for p in re.split(r"[-_]", stem))
+        if name.lower() in ("index", ""):
+            name = "Dashboard"
+        return name if name.endswith("Page") else name + "Page"
+
+    html_pages = [f for f in raw_html_files if str(f.get("path", "")).endswith(".html")]
+    # Always start with mock data file
+    files: list[dict[str, str]] = [
+        {"path": "src/data/mockData.ts",
+         "description": "TypeScript interfaces and all mock data arrays used across pages (no imports needed from here)"},
+    ]
+
+    if project_type in ("dashboard", "app"):
+        files += [
+            {"path": "src/components/Sidebar.tsx",
+             "description": "Sidebar: brand logo, nav <button> items calling setActivePage(), active=bg-indigo-600, bottom upgrade CTA"},
+            {"path": "src/components/Navbar.tsx",
+             "description": "Sticky top navbar: page title left, search input center, Bell + user avatar right"},
+        ]
+        for hf in html_pages:
+            pname = to_page_name(hf.get("path", ""))
+            files.append({"path": f"src/pages/{pname}.tsx", "description": hf.get("description", pname)})
+        if not any("pages/" in f["path"] for f in files):
+            files.insert(2, {
+                "path": "src/pages/OverviewPage.tsx",
+                "description": "Main overview: KPI cards, charts, data table with status badges"
+            })
+        if not any("SettingsPage" in f["path"] for f in files):
+            files.append({
+                "path": "src/pages/SettingsPage.tsx",
+                "description": "Settings: profile form fields, notification toggles, save button"
+            })
+
+    elif project_type == "ecommerce":
+        files += [
+            {"path": "src/components/Navbar.tsx",
+             "description": "Top nav: brand logo, nav links, ShoppingCart icon with red badge counter"},
+            {"path": "src/components/ProductCard.tsx",
+             "description": "ProductCard: picsum.photos image, badge, brand, name, star rating, price, add-to-cart button"},
+            {"path": "src/components/CartDrawer.tsx",
+             "description": "Slide-in cart: fixed right panel, items list, subtotal, checkout button, backdrop overlay"},
+        ]
+        for hf in html_pages:
+            pname = to_page_name(hf.get("path", ""))
+            if pname not in ("IndexPage", "CartPage"):
+                files.append({"path": f"src/pages/{pname}.tsx", "description": hf.get("description", pname)})
+
+    elif project_type in ("medical", "education"):
+        files += [
+            {"path": "src/components/Sidebar.tsx",
+             "description": "Sidebar navigation with setActivePage routing and active state highlighting"},
+            {"path": "src/components/Navbar.tsx",
+             "description": "Top navbar with search bar and user profile avatar"},
+        ]
+        for hf in html_pages:
+            pname = to_page_name(hf.get("path", ""))
+            files.append({"path": f"src/pages/{pname}.tsx", "description": hf.get("description", pname)})
+
+    else:
+        # landing, portfolio, generic — single file is sufficient
+        return [{"path": "src/App.tsx",
+                 "description": plan.get("summary", "Complete React SPA with all sections inline")}]
+
+    comp_names = [_os.path.basename(f["path"]).replace(".tsx", "") for f in files if "components/" in f["path"]]
+    page_names = [_os.path.basename(f["path"]).replace(".tsx", "") for f in files if "pages/" in f["path"]]
+    first_page = page_names[0].replace("Page", "").lower() if page_names else "dashboard"
+
+    files.append({
+        "path": "src/App.tsx",
+        "description": (
+            f"Root: useState('{first_page}') router. "
+            f"Layout: [{', '.join(comp_names)}]. "
+            f"Pages: [{', '.join(page_names)}]. "
+            f"Conditional rendering per activePage."
+        )
+    })
+
+    logger.info("PlannerAgent: React multi-file plan → %s", [f["path"] for f in files])
+    return files
 
 
 def _ensure_core_files(files: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -141,20 +233,31 @@ def _ensure_core_files(files: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def _clean_files(raw: list[Any]) -> list[dict[str, str]]:
-    """Sanitize and deduplicate a list of file entries from the LLM."""
+    """Sanitize and deduplicate a list of file entries from the LLM.
+
+    Accepts both flat paths (index.html) and React multi-file paths
+    (src/components/Sidebar.tsx, src/pages/DashboardPage.tsx, src/App.tsx).
+    """
     clean: list[dict[str, str]] = []
     seen: set[str] = set()
+    _ALLOWED = re.compile(
+        r"^(?:"
+        r"[\w\-]+\.(html|css|js|json|svg|webmanifest)"   # flat HTML/CSS/JS
+        r"|src/data/[\w\-]+\.ts"                          # mock data (TypeScript)
+        r"|src/components/[\w\-]+\.tsx"                   # React component
+        r"|src/pages/[\w\-]+\.tsx"                        # React page
+        r"|src/[\w\-]+\.tsx"                              # React root (App.tsx etc.)
+        r")$",
+        re.IGNORECASE,
+    )
     for item in raw:
         if not isinstance(item, dict):
             continue
         path = str(item.get("path") or "").strip()
-        # Strip any leading directory components to stay flat
-        path = path.split("/")[-1].strip()
         if not path or path in seen:
             continue
-        # Only allow safe web file extensions (add tsx for React)
-        if not re.match(r"^[\w\-]+\.(html|css|js|json|svg|webmanifest|tsx)$", path, re.IGNORECASE):
-            logger.warning("PlannerAgent: skipping suspicious file path '%s'", path)
+        if not _ALLOWED.match(path):
+            logger.warning("PlannerAgent: skipping unrecognised file path '%s'", path)
             continue
         seen.add(path)
         clean.append({
@@ -209,7 +312,7 @@ class PlannerAgent:
 
         plan = self.provider.chat_json(sys_msg, user_msg)
 
-        plan = self._validate_and_enrich(plan, profile)
+        plan = self._validate_and_enrich(plan, profile, project_type)
         plan["_meta"] = {"project_type": project_type, "model": self.model}
         return plan
 
@@ -293,8 +396,26 @@ class PlannerAgent:
             "    GOOD → 'Handles sidebar collapse toggle, Intersection Observer scroll-reveal",
             "             on .widget elements, and debounced live-search filtering of #table-rows'",
             "",
-            "R5. File paths must be flat (no subdirectories), kebab-case,",
-            "    extension from: .html  .css  .js  .json  .svg  .webmanifest",
+            "R5. React file paths must follow this structure:",
+            "    src/data/mockData.ts               — ALL mock data arrays & types (FIRST file)",
+            "    src/components/ComponentName.tsx   — reusable layout pieces",
+            "    src/pages/PageNamePage.tsx          — full page views",
+            "    src/App.tsx                         — root router (always last)",
+            "    Name files after what they DO, not generic names.",
+            "    Examples: KanbanBoard.tsx, PatientRecords.tsx, InvoiceTable.tsx",
+            "",
+            "R6. The template includes shadcn/ui components. Import them as:",
+            "    import { Button } from '@/components/ui/button'",
+            "    import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'",
+            "    import { Badge } from '@/components/ui/badge'",
+            "    import { Input } from '@/components/ui/input'",
+            "    import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'",
+            "    import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'",
+            "    import { Progress } from '@/components/ui/progress'",
+            "    import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'",
+            "    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'",
+            "    import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'",
+            "    Use these instead of building raw Tailwind components from scratch.",
         ])
 
     def _build_user_prompt(
@@ -324,34 +445,72 @@ class PlannerAgent:
             "animations.js":  ("MOTION ENGINE",  "Intersection Observer setup, GSAP-style timeline sequencer"),
         }
 
-        required_files = profile["required_files"]
+        import os as _os
+        _output_target = _os.environ.get("AI_OUTPUT_TARGET", "react").lower().strip()
 
-        # Build an annotated file table aligned for readability
-        file_rows: list[str] = []
-        for path in required_files:
-            role, purpose = file_roles.get(path, ("ASSET", f"Supporting file for {path}"))
-            file_rows.append(f"  {path:<22} [{role:<14}]  →  {purpose}")
-
-        # Add any extra common files not in the profile but worth considering
-        optional_hints: list[str] = []
-        type_optional_map: dict[str, list[str]] = {
-            "dashboard":  ["charts.js", "animations.css", "utils.js"],
-            "landing":    ["animations.css", "animations.js"],
-            "ecommerce":  ["utils.js", "components.css"],
-            "portfolio":  ["animations.js", "animations.css"],
-            "app":        ["utils.js", "charts.js", "components.css"],
-            "generic":    ["utils.js"],
-        }
-        for opt in type_optional_map.get(project_type, []):
-            if opt not in required_files and opt in file_roles:
-                role, purpose = file_roles[opt]
-                optional_hints.append(f"  {opt:<22} [{role:<14}]  →  {purpose}  ← ADD if scope warrants")
-
-        required_files_block = "\n".join(file_rows)
-        optional_files_block = (
-            "\nOPTIONAL (include only if they add clear value):\n" + "\n".join(optional_hints)
-            if optional_hints else ""
-        )
+        if _output_target == "react":
+            # ── React mode: give LLM a TSX-specific file guide ────────────────
+            _react_file_guide: dict[str, list[str]] = {
+                "dashboard": [
+                    "src/data/mockData.ts         — TypeScript types + ALL mock data arrays (properties, users, stats...)",
+                    "src/components/Sidebar.tsx   — vertical nav, brand logo, nav buttons calling setActivePage()",
+                    "src/components/Navbar.tsx    — sticky top bar, search, notifications, user avatar",
+                    "src/pages/[Subject]Page.tsx  — one per major screen (name it after what IT does)",
+                    "src/App.tsx                  — useState router, renders layout + active page",
+                ],
+                "app": [
+                    "src/data/mockData.ts         — TypeScript types + ALL mock data arrays",
+                    "src/components/Sidebar.tsx   — app shell sidebar with nav items",
+                    "src/components/[Widget].tsx  — any domain-specific reusable widget",
+                    "src/pages/[Subject]Page.tsx  — one per major view",
+                    "src/App.tsx                  — root router",
+                ],
+                "ecommerce": [
+                    "src/data/mockData.ts           — product catalog data, categories, cart types",
+                    "src/components/Navbar.tsx      — top nav with cart badge counter",
+                    "src/components/ProductCard.tsx — reusable product card (image, price, add-to-cart)",
+                    "src/components/CartDrawer.tsx  — slide-in cart panel",
+                    "src/pages/[Subject]Page.tsx    — catalog, checkout, etc.",
+                    "src/App.tsx                    — root router with cart state",
+                ],
+                "landing": [
+                    "src/App.tsx  — single file with all sections inline (Hero, Features, Pricing, Footer)",
+                ],
+                "portfolio": [
+                    "src/App.tsx  — single file with all sections inline (Hero, Projects, Skills, Contact)",
+                ],
+            }
+            guide_lines = _react_file_guide.get(project_type, _react_file_guide["dashboard"])
+            required_files_block = (
+                "SUGGESTED FILE STRUCTURE (adapt names to this specific project):\n"
+                + "\n".join(f"  {line}" for line in guide_lines)
+            )
+            optional_files_block = ""
+        else:
+            # ── Legacy HTML mode ──────────────────────────────────────────────
+            required_files = profile["required_files"]
+            file_rows: list[str] = []
+            for path in required_files:
+                role, purpose = file_roles.get(path, ("ASSET", f"Supporting file for {path}"))
+                file_rows.append(f"  {path:<22} [{role:<14}]  →  {purpose}")
+            optional_hints: list[str] = []
+            type_optional_map: dict[str, list[str]] = {
+                "dashboard": ["charts.js", "animations.css", "utils.js"],
+                "landing":   ["animations.css", "animations.js"],
+                "ecommerce": ["utils.js", "components.css"],
+                "portfolio": ["animations.js", "animations.css"],
+                "app":       ["utils.js", "charts.js", "components.css"],
+                "generic":   ["utils.js"],
+            }
+            for opt in type_optional_map.get(project_type, []):
+                if opt not in required_files and opt in file_roles:
+                    role, purpose = file_roles[opt]
+                    optional_hints.append(f"  {opt:<22} [{role:<14}]  →  {purpose}  ← ADD if scope warrants")
+            required_files_block = "\n".join(file_rows)
+            optional_files_block = (
+                "\nOPTIONAL (include only if they add clear value):\n" + "\n".join(optional_hints)
+                if optional_hints else ""
+            )
 
         # ── Requirement quality bar with type-specific examples ───────────────
         req_examples_by_type: dict[str, list[str]] = {
@@ -438,9 +597,31 @@ class PlannerAgent:
             f"  Aesthetic focus :  {profile['aesthetic']}",
             f"  Min pages       :  {profile['min_pages']}",
             "",
-            "REQUIRED FILE MANIFEST (annotated):",
             required_files_block,
             optional_files_block,
+            "",
+            "╔══════════════════════════════════════════════════════════════════╗",
+            "║              ENTITY-DRIVEN FILE NAMING (MANDATORY)              ║",
+            "╚══════════════════════════════════════════════════════════════════╝",
+            "",
+            "The PROJECT CONTEXT block in the USER SPECIFICATION above contains extracted",
+            "entities (e.g. Property, Patient, Order) and key features for THIS project.",
+            "",
+            "You MUST derive every file name from those entities — not from generic templates.",
+            "",
+            "  Rule: file name = core entity + role suffix",
+            "  ✅  PropertyCard.tsx        (entity=Property, role=Card)",
+            "  ✅  PatientRecordsPage.tsx  (entity=Patient, role=Page)",
+            "  ✅  OrderTable.tsx          (entity=Order, role=Table)",
+            "  ❌  Dashboard.tsx / Page1.tsx / Component1.tsx  ← forbidden",
+            "",
+            "  If entities=[Appointment, Doctor, Patient]:",
+            "    → AppointmentCalendarPage, DoctorCard, PatientListPage, BookingForm",
+            "  If entities=[Product, Cart, Order]:",
+            "    → ProductGridPage, CartSidebar, OrderHistoryPage, ProductCard",
+            "",
+            "The extracted 'layout_type' (dashboard/catalog/landing/app/ecommerce) already",
+            "matches the AUTO-DETECTED PROJECT TYPE above — use it to confirm your file split.",
             "",
             "╔══════════════════════════════════════════════════════════════════╗",
             "║                       YOUR MISSION                              ║",
@@ -451,18 +632,21 @@ class PlannerAgent:
             "",
             "━━━ PLANNING CONSTRAINTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "",
-            "FILES:",
-            "  • Minimum 3 files, maximum 6 files.",
-            "  • MUST include: index.html, styles.css, script.js.",
-            "  • Add a 2nd HTML page only if the project clearly needs separate screens.",
-            "  • Only add helper JS/CSS files if they own a distinct, non-trivial concern.",
-            "  • Do NOT invent file paths outside the allowed extensions.",
-            "  • For simple prompts (landing, portfolio, basic app): 3 files is ideal.",
+            "FILES (Vite + React multi-file architecture):",
+            "  • Minimum 3 files, maximum 10 files.",
+            "  • MUST always end with src/App.tsx as the root router.",
+            "  • src/components/*.tsx  — reusable layout pieces (Sidebar, Navbar, specific widgets).",
+            "  • src/pages/*.tsx       — one file per major screen, named after its content.",
+            "  • Name every file after what it DOES for this specific project:",
+            "      ✅ KanbanBoard.tsx, PatientRecordsPage.tsx, InvoiceTable.tsx",
+            "      ❌ Component1.tsx, Page1.tsx, Dashboard.tsx (too generic)",
+            "  • For apps/dashboards: 2 components + 3-5 pages + App.tsx.",
+            "  • For landing/portfolio: src/App.tsx only (single file is fine).",
+            "  • For ecommerce: 2-3 components (cart, product card) + 1-2 pages + App.tsx.",
             "",
             "REQUIREMENTS (produce exactly 8–12):",
             "  • Each requirement = one concrete, implementable UI/UX behaviour.",
             "  • Must name the element + the technique + the values/timing.",
-            "  • Must be achievable with vanilla HTML/CSS/JS (no React, no Vue).",
             "  • Must cover: Layout, Motion, Interactivity, Responsive, Accessibility.",
             "",
             "QUALITY GATE — your requirements will be auto-scored:",
@@ -480,7 +664,7 @@ class PlannerAgent:
             "Return a SINGLE valid JSON object — no fences, no comments:",
             "",
             "{",
-            '  "_thinking": "2–5 sentences: why this file split, what layout pattern, key risks",',
+            '  "_thinking": "2–5 sentences: why this file split, what components make sense for this specific project",',
             '  "summary":   "Specific, evocative project title (not generic)",',
             '  "language":  "en",',
             '  "needsJs":   true,',
@@ -491,36 +675,60 @@ class PlannerAgent:
             '    "... (8 to 12 total)"',
             "  ],",
             '  "files": [',
-            '    {"path": "index.html",     "description": "Specific responsibility + key contents"},',
-            '    {"path": "analytics.html", "description": "Specific responsibility + key contents"},',
-            '    {"path": "styles.css",     "description": "Specific responsibility + key contents"},',
-            '    {"path": "script.js",      "description": "Specific responsibility + key contents"}',
+            '    {"path": "src/components/[LayoutPiece].tsx",  "description": "What this layout piece does"},',
+            '    {"path": "src/components/[Widget].tsx",       "description": "What this widget/component does"},',
+            '    {"path": "src/pages/[FirstScreen]Page.tsx",   "description": "What the user sees on this screen"},',
+            '    {"path": "src/pages/[SecondScreen]Page.tsx",  "description": "What the user sees on this screen"},',
+            '    {"path": "src/App.tsx",                       "description": "Root: useState router wiring all components and pages"}',
             "  ]",
             "}",
+            "",
+            "⚠️  CRITICAL — [LayoutPiece], [Widget], [FirstScreen], [SecondScreen] are PLACEHOLDERS.",
+            "You MUST invent names that describe THIS specific project based on the user description above.",
+            "NEVER use DashboardPage, AnalyticsPage, Component1, Page1 — those are forbidden generic names.",
+            "Good examples for a restaurant app  : MenuPage, ReservationsPage, OrdersPage, KitchenPage",
+            "Good examples for a hospital app    : PatientRecordsPage, AppointmentsPage, DoctorCard",
+            "Good examples for a kanban tool     : KanbanBoard, TaskCard, BoardPage, SprintPage",
+            "Good examples for an e-learning app : CourseCatalogPage, LessonPage, QuizPage, ProgressCard",
         ])
 
     def _validate_and_enrich(
         self,
         plan: dict[str, Any],
         profile: dict[str, Any],
+        project_type: str = "generic",
     ) -> dict[str, Any]:
         # --- Files ---
         raw_files = plan.get("files")
-        files = _clean_files(raw_files) if isinstance(raw_files, list) else []
-        files = _ensure_core_files(files)
+        raw_html_files = _clean_files(raw_files) if isinstance(raw_files, list) else []
+        files = _ensure_core_files(list(raw_html_files))
         files = _sort_files(files)
-        # Debug log: print planned file paths
-        logger.info("PlannerAgent: planned files before .tsx injection: %s", [f['path'] for f in files])
-        # Ensure .tsx files are always included for React projects
-        if plan.get('_meta', {}).get('project_type') == 'react':
-            tsx_required = [f for f in PROJECT_PROFILES['react']['required_files'] if f.endswith('.tsx')]
-            existing_paths = {f['path'] for f in files}
-            for tsx_file in tsx_required:
-                if tsx_file not in existing_paths:
-                    files.append({"path": tsx_file, "description": f"React component: {tsx_file}"})
-            files = _sort_files(files)
-            logger.info("PlannerAgent: .tsx files forced into plan: %s", [f['path'] for f in files if f['path'].endswith('.tsx')])
-        plan["files"] = files[:6]
+        logger.info("PlannerAgent: LLM planned HTML files: %s", [f['path'] for f in files])
+
+        import os as _os
+        output_target = _os.environ.get("AI_OUTPUT_TARGET", "react").lower().strip()
+        if output_target == "react":
+            # Prefer the LLM's own TSX/TS file plan (dynamic, project-specific names)
+            tsx_files = [f for f in raw_html_files if f["path"].endswith(".tsx") or f["path"].endswith(".ts")]
+            if tsx_files:
+                logger.info("PlannerAgent: using LLM-generated TSX file plan (%d files)", len(tsx_files))
+                plan["files"] = _sort_files(tsx_files)
+            else:
+                # LLM returned HTML paths — fall back to hardcoded template
+                logger.warning("PlannerAgent: LLM gave no TSX paths, falling back to static template")
+                plan["files"] = _build_react_file_plan(project_type, plan, raw_html_files)
+
+            # Always ensure src/data/mockData.ts is in the plan (first file)
+            has_mock_data = any(f["path"].startswith("src/data/") for f in plan.get("files", []))
+            if not has_mock_data and any("pages/" in f["path"] for f in plan.get("files", [])):
+                plan["files"] = [
+                    {"path": "src/data/mockData.ts",
+                     "description": "TypeScript interfaces and all mock data arrays used across the project"}
+                ] + plan["files"]
+                logger.info("PlannerAgent: injected src/data/mockData.ts as first file")
+        else:
+            index_file = next((f for f in files if f["path"] == "index.html"), None)
+            plan["files"] = [index_file] if index_file else [{"path": "index.html", "description": "Main app"}]
         logger.info("PlannerAgent: final planned files: %s", [f['path'] for f in plan["files"]])
 
         # --- Scalar fields ---

@@ -7,6 +7,10 @@ spring:
   data:
     mongodb:
       uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/ai_ui_generator}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
 
 management:
   endpoints:
@@ -24,8 +28,8 @@ app:
     secret-key: ${MINIO_SECRET_KEY:minioadmin}
     bucket: ${MINIO_BUCKET:ai-ui-files}
   upload:
-    max-bytes: 10485760 # 10MB
-    allowed-mime: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,image/png,image/jpeg
+    max-bytes: 52428800 # 50MB
+    allowed-mime: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/csv,text/html,text/css,text/javascript,application/json,application/xml,application/yaml,image/png,image/jpeg,image/gif,image/webp,image/bmp,image/svg+xml
   keycloak:
     internal-url: ${KEYCLOAK_INTERNAL_URL:http://keycloak:8080}
     realm: ${KEYCLOAK_REALM:ai-ui}

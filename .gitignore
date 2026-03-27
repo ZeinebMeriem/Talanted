@@ -42,5 +42,8 @@ Desktop.ini
 projects/
 tmp-*
 
+# --- Local analysis / notes (not for repo) ---
+PROJECT_ANALYSIS.md
+
 # --- Build caches ---
 tsconfig.tsbuildinfo

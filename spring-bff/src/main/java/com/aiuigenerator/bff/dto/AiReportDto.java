@@ -10,4 +10,6 @@ public class AiReportDto {
     public String llm_provider;
     public Map<String, Object> durations;
     public int retries_count;
+    public int build_retries;
+    public Map<String, Object> ui_evaluation;
 }

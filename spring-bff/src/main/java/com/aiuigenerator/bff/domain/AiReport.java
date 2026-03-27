@@ -29,6 +29,10 @@ public class AiReport {
 
     private int retriesCount;
 
+    private int buildRetries;
+
+    private Map<String, Object> uiEvaluation;
+
     private Instant createdAt;
 
     public String getReportId() {
@@ -101,6 +105,22 @@ public class AiReport {
 
     public void setRetriesCount(int retriesCount) {
         this.retriesCount = retriesCount;
+    }
+
+    public int getBuildRetries() {
+        return buildRetries;
+    }
+
+    public void setBuildRetries(int buildRetries) {
+        this.buildRetries = buildRetries;
+    }
+
+    public Map<String, Object> getUiEvaluation() {
+        return uiEvaluation;
+    }
+
+    public void setUiEvaluation(Map<String, Object> uiEvaluation) {
+        this.uiEvaluation = uiEvaluation;
     }
 
     public Instant getCreatedAt() {

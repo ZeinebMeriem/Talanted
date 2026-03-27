@@ -6,6 +6,7 @@ import re as _re
 import time as _time
 from typing import Any
 
+import os
 import httpx
 
 from ...schemas import CodeBundle, CodeFile, GenerateRequest
@@ -14,6 +15,8 @@ from ..models import SourcePack
 from .design_system_agent import DesignSystemAgent
 
 logger = logging.getLogger(__name__)
+
+
 
 
 class LlmCodegenAgent:
@@ -27,6 +30,7 @@ class LlmCodegenAgent:
 
     def __init__(self, provider: LlmProvider) -> None:
         self.provider = provider
+
 
     @property
     def model(self) -> str:
@@ -84,6 +88,31 @@ class LlmCodegenAgent:
             text = text.split("\n", 1)[1]
 
         return text.strip()
+
+    @staticmethod
+    def _repair_truncated_jsx(content: str) -> str:
+        """Close unclosed strings/braces/parens caused by LLM token-limit truncation."""
+        repair = content.rstrip()
+        # Fix unclosed string on the last line (e.g. className="text-lg hover:text-indigo-600)
+        lines = repair.split('\n')
+        last_line = lines[-1] if lines else ''
+        if last_line.count('"') % 2 != 0:
+            repair += '"'
+        elif last_line.count("'") % 2 != 0:
+            repair += "'"
+        # Close unclosed JSX tag if last line looks like an open tag
+        if last_line.rstrip().endswith(('<', '>')):
+            repair += '/>'
+        open_braces = repair.count('{') - repair.count('}')
+        open_parens = repair.count('(') - repair.count(')')
+        if open_braces <= 0 and open_parens <= 0:
+            return repair
+        # Close in reverse order: parens first, then braces
+        for _ in range(min(open_parens, 20)):
+            repair += '\n  )'
+        for _ in range(min(open_braces, 20)):
+            repair += '\n}'
+        return repair
 
     @staticmethod
     def _extract_classes(html: str) -> list[str]:
@@ -271,11 +300,32 @@ class LlmCodegenAgent:
                     )
             elif ext == "js":
                 gen_ctx = "\nHTML class selectors available: .hamburger, .nav-links, .reveal, .nav-link\n"
+            elif ext == "tsx":
+                tsx_done = [g for g in generated_so_far if g["path"].endswith(".tsx")]
+                if tsx_done:
+                    lines = []
+                    for gf in tsx_done:
+                        gf_name = os.path.basename(gf["path"]).replace(".tsx", "")
+                        if "components/" in gf["path"]:
+                            gf_rel = f"./components/{gf_name}"
+                        elif "pages/" in gf["path"]:
+                            gf_rel = f"./pages/{gf_name}"
+                        else:
+                            gf_rel = f"./{gf_name}"
+                        lines.append(f"  import {gf_name} from '{gf_rel}'")
+                    gen_ctx = (
+                        "\nALREADY GENERATED FILES (use these imports — DO NOT redefine):\n"
+                        + "\n".join(lines) + "\n"
+                    )
 
         design_ctx = ""
         if design_tokens and ext not in ("css",):
             colors = design_tokens.get("colors", {})
-            design_ctx = f"\nDESIGN COLORS: primary={colors.get('primary','#3b82f6')}, bg={colors.get('background','#0f172a')}\n"
+            design_ctx = (
+                f"\nDESIGN COLORS: primary={colors.get('primary','#6366f1')}, bg={colors.get('background','#0f172a')}\n"
+                "IMPORTANT: Use real Tailwind CSS classes only — NEVER use bg-primary or text-primary. "
+                "Use bg-indigo-600, bg-violet-600, bg-blue-600, text-indigo-600 etc. instead.\n"
+            )
 
         # ── SPEC BLOCK — this is the #1 priority for the LLM ──
         spec_block = context[:4000] if context else "Generic modern website"
@@ -286,10 +336,6 @@ class LlmCodegenAgent:
             f'{p.replace(".html","").replace("index","Home").title()}</a>'
             for p in html_paths
         ) if html_paths else ""
-
-        # ── Derive a real brand name from the plan summary ──
-        _summary_words = plan.get("summary", "My App").split()
-        brand_name = " ".join(_summary_words[:4]) if _summary_words else "My App"
 
         # ── Always inject Google Fonts Inter (+ any design-token fonts) ──
         font_link = (
@@ -320,260 +366,482 @@ class LlmCodegenAgent:
         is_ecommerce = project_type == "ecommerce"
         is_landing = project_type in ("landing", "portfolio", "generic")
 
-        # ── CDN libraries injected into every HTML <head> ──
-        # Tailwind CDN for atomic utility classes — eliminates CSS class mismatch problems
-        _tailwind_cdn = '  <script src="/tailwind.min.js"></script>\n'
-        cdn_links = (
-            _tailwind_cdn
-            + '  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>\n'
+        # ── React CDN libraries — React 18 + Babel Standalone + Tailwind ──
+        _react_cdn = (
+            '  <!-- React 18 via CDN -->\n'
+            '  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>\n'
+            '  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>\n'
+            '  <!-- Babel Standalone: transpiles JSX in the browser -->\n'
+            '  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>\n'
+            '  <!-- Tailwind CSS -->\n'
+            '  <script src="https://cdn.tailwindcss.com"></script>\n'
         )
+        cdn_links = _react_cdn
         if is_app:
             cdn_links = (
-                _tailwind_cdn
+                _react_cdn
+                + '  <!-- Chart.js for data visualization -->\n'
                 + '  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>\n'
-                + '  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>\n'
             )
 
-        # ── Deterministic HTML shell — navbar/footer built here, not by LLM ──
-        _html_top = ""
-        _html_bottom = ""
-        if ext in ("html", "htm"):
-            # Nav list items for marketing/ecommerce navbars
-            _nav_li = "\n".join(
-                f'        <li><a href="{p}">{p.replace(".html","").replace("index","Home").title()}</a></li>'
-                for p in html_paths
-            ) if html_paths else ""
-            _has_script = "script.js" in all_paths
+        # ── Detect output target: TSX (Vite) or legacy HTML (CDN) ──
+        output_target = _re.sub(r"\s", "", os.environ.get("AI_OUTPUT_TARGET", "react").lower())
+        is_tsx_mode = output_target == "react"
 
+        # Normalize: tsx files use same prompt logic as html, just different wrapper
+        is_component_file = ext in ("html", "htm", "tsx")
+
+        # ── Multi-file TSX detection ──
+        is_multi_tsx = "/" in path  # e.g. src/components/Sidebar.tsx
+        is_tsx_component = "components/" in path and path.endswith(".tsx")
+        is_tsx_page = "pages/" in path and path.endswith(".tsx")
+        is_tsx_root_app = path in ("src/App.tsx", "App.tsx") and is_multi_tsx
+        is_mock_data = path.startswith("src/data/") and path.endswith(".ts")
+        tsx_component_name = os.path.basename(path).replace(".tsx", "").replace(".ts", "") if is_multi_tsx else "App"
+
+        # ── Multi-file role instruction (needs is_tsx_mode + is_multi_tsx) ──
+        # Build the full list of planned pages from the plan (not just generated so far)
+        all_planned_pages = [
+            os.path.basename(f.get("path", "")).replace(".tsx", "")
+            for f in plan.get("files", [])
+            if "pages/" in str(f.get("path", ""))
+        ]
+
+        # Shadcn UI components available in the template
+        _SHADCN_IMPORTS_HINT = (
+            "╔══════════════════════════════════════════════════════════════╗\n"
+            "║  INSTALLED COMPONENTS — USE THESE, NEVER RECREATE THEM      ║\n"
+            "╚══════════════════════════════════════════════════════════════╝\n"
+            "import { cn } from '@/lib/utils'  ← ALWAYS use cn() for conditional classes\n"
+            "\n"
+            "// Layout & Typography\n"
+            "import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'\n"
+            "import { Separator } from '@/components/ui/separator'\n"
+            "import { ScrollArea } from '@/components/ui/scroll-area'\n"
+            "\n"
+            "// Forms & Inputs\n"
+            "import { Button } from '@/components/ui/button'\n"
+            "import { Input } from '@/components/ui/input'\n"
+            "import { Label } from '@/components/ui/label'\n"
+            "import { Textarea } from '@/components/ui/textarea'\n"
+            "import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'\n"
+            "import { Checkbox } from '@/components/ui/checkbox'\n"
+            "import { Switch } from '@/components/ui/switch'\n"
+            "\n"
+            "// Data Display\n"
+            "import { Badge } from '@/components/ui/badge'\n"
+            "import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'\n"
+            "import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'\n"
+            "import { Progress } from '@/components/ui/progress'\n"
+            "\n"
+            "// Navigation & Overlays\n"
+            "import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'\n"
+            "import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'\n"
+            "import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'\n"
+            "import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'\n"
+            "\n"
+            "// Charts (recharts)\n"
+            "import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts'\n"
+            "\n"
+            "// Icons (lucide-react — icons ONLY, not components)\n"
+            "import { LayoutDashboard, Users, Settings, Bell, Search, TrendingUp, BarChart2,\n"
+            "         Home, Plus, Edit, Trash2, Download, Upload, Filter, ChevronRight,\n"
+            "         LogOut, Menu, X, Check, AlertCircle, Info } from 'lucide-react'\n"
+            "\n"
+            "MANDATORY RULES:\n"
+            "1. ALWAYS use <Card><CardHeader><CardTitle> for stat cards — NEVER raw divs\n"
+            "2. ALWAYS use <Table><TableHeader><TableRow> for tables — NEVER raw <table>\n"
+            "3. ALWAYS use <Badge> for status chips — NEVER raw <span>\n"
+            "4. ALWAYS use <Button> for actions — NEVER raw <button>\n"
+            "5. ALWAYS use cn() for conditional classes: className={cn('base', condition && 'active')}\n"
+            "6. lucide-react = ICONS ONLY. NEVER import Card/Button/Badge/Table from lucide-react\n"
+        )
+
+        multi_file_role = ""
+        if is_tsx_mode and is_mock_data:
+            mock_data_summary = plan.get("summary", "")
+            multi_file_role = (
+                f"\n═══ MOCK DATA FILE: {path} ═══\n"
+                f"Generate a TypeScript file with ALL mock data for the project.\n"
+                f"Project context: {mock_data_summary[:200]}\n"
+                f"\n"
+                f"RULES:\n"
+                f"• Export TypeScript interfaces/types at the top (e.g. export interface Property, export interface Client)\n"
+                f"• Export const arrays with 6-10 realistic items each (no imports needed)\n"
+                f"• Use domain-specific realistic data (real-sounding names, addresses, prices, dates)\n"
+                f"• Include all data that pages will need: items for tables, stats for KPIs, chart series\n"
+                f"• End the file with export statements for each const\n"
+                f"• NO imports. NO React. ONLY TypeScript types + data.\n"
+                f"• Output ONLY the TypeScript file content, no markdown fences\n"
+            )
+        elif is_tsx_mode and is_multi_tsx:
+            if is_tsx_component:
+                sidebar_nav = ""
+                if "Sidebar" in tsx_component_name and all_planned_pages:
+                    page_keys = [p.replace("Page", "").lower() for p in all_planned_pages]
+                    sidebar_nav = (
+                        f"\n• Navigation must have EXACTLY these items (no more, no less):\n"
+                        + "\n".join(
+                            f"  - '{key}' → renders {page}"
+                            for key, page in zip(page_keys, all_planned_pages)
+                        ) + "\n"
+                        f"• Each button calls setActivePage('{page_keys[0] if page_keys else 'home'}')\n"
+                    )
+                is_sidebar = "Sidebar" in tsx_component_name or "sidebar" in tsx_component_name.lower()
+                router_hint = (
+                    "NAVIGATION (React Router v6 — MANDATORY for Sidebar/Navbar):\n"
+                    "  import { Link, useLocation } from 'react-router-dom'\n"
+                    "  const location = useLocation()\n"
+                    "  const isActive = (path: string) => location.pathname === path\n"
+                    "  // Use <Link to='/dashboard'> instead of <button onClick>\n"
+                    "  // Active state: className={cn('...base', isActive('/dashboard') && 'bg-indigo-600 text-white')}\n"
+                ) if is_sidebar else ""
+                multi_file_role = (
+                    f"\n═══ STANDALONE COMPONENT: {tsx_component_name} ═══\n"
+                    f"Generate ONLY the `{tsx_component_name}` function.\n"
+                    f"• Start with: import React from 'react' + any lucide-react icons you use\n"
+                    f"• End with: export default {tsx_component_name}\n"
+                    f"• Do NOT include other page components or App\n"
+                    f"• Use TypeScript props interface\n"
+                    f"CRITICAL: lucide-react exports ICONS ONLY (Bell, Search, Home, User, Settings…).\n"
+                    f"NEVER import Button, Card, CardContent, CardHeader, CardTitle, Badge, Avatar,\n"
+                    f"AvatarFallback, Input, Label, Table, Tabs, Dialog, Progress from lucide-react.\n"
+                    f"Those are shadcn/ui components — use the import paths listed below.\n"
+                    + sidebar_nav
+                    + "\n" + router_hint
+                    + "\n" + _SHADCN_IMPORTS_HINT
+                )
+            elif is_tsx_page:
+                # Check if mockData.ts was generated so we can reference it
+                mock_data_file = next(
+                    (gf for gf in generated_so_far if gf["path"].startswith("src/data/")), None
+                )
+                mock_import_hint = (
+                    f"• Import data from '@/data/mockData' (already generated) instead of hardcoding inline\n"
+                    if mock_data_file else
+                    "• Include realistic hardcoded data inline (charts, tables, KPIs)\n"
+                )
+                multi_file_role = (
+                    f"\n═══ PAGE COMPONENT: {tsx_component_name} ═══\n"
+                    f"Generate ONLY the `{tsx_component_name}` function (no Sidebar/Navbar/layout).\n"
+                    f"• Start with: import React from 'react' + recharts/lucide imports you use\n"
+                    f"• End with: export default {tsx_component_name}\n"
+                    + mock_import_hint +
+                    f"• This page is rendered inside the app layout — no wrapper div needed\n"
+                    f"CRITICAL: lucide-react exports ICONS ONLY (Bell, Search, Home, User, Settings…).\n"
+                    f"NEVER import Button, Card, CardContent, CardHeader, CardTitle, Badge, Avatar,\n"
+                    f"AvatarFallback, Input, Label, Table, Tabs, Dialog, Progress from lucide-react.\n"
+                    f"Those are shadcn/ui components — use the import paths listed below.\n"
+                    + "\n" + _SHADCN_IMPORTS_HINT
+                )
+            elif is_tsx_root_app:
+                comp_imports = []
+                for gf in generated_so_far:
+                    if not gf["path"].endswith(".tsx"):
+                        continue
+                    gf_name = os.path.basename(gf["path"]).replace(".tsx", "")
+                    gf_rel = (
+                        f"./components/{gf_name}" if "components/" in gf["path"]
+                        else f"./pages/{gf_name}" if "pages/" in gf["path"]
+                        else f"./{gf_name}"
+                    )
+                    comp_imports.append(f"import {gf_name} from '{gf_rel}'")
+                page_comps = [
+                    os.path.basename(g["path"]).replace(".tsx", "")
+                    for g in generated_so_far if "pages/" in g["path"]
+                ]
+                layout_comps = [
+                    os.path.basename(g["path"]).replace(".tsx", "")
+                    for g in generated_so_far if "components/" in g["path"]
+                ]
+                first_page = page_comps[0].replace("Page", "").lower() if page_comps else "dashboard"
+                import_block = "\n".join(comp_imports)
+                route_entries = "\n".join(
+                    f"          <Route path='/{p.replace('Page','').lower()}' element={{<{p} />}} />"
+                    for p in page_comps
+                )
+                multi_file_role = (
+                    f"\n═══ ROOT APP (multi-file mode) ═══\n"
+                    f"App.tsx ONLY wires together already-generated components using React Router v6.\n"
+                    f"\n"
+                    f"COPY THESE IMPORT LINES EXACTLY — do not modify them:\n"
+                    f"import React from 'react'\n"
+                    f"import {{ BrowserRouter, Routes, Route, Navigate }} from 'react-router-dom'\n"
+                    f"{import_block}\n"
+                    f"\n"
+                    f"🚨 ABSOLUTE RULES — VIOLATIONS WILL BREAK THE BUILD:\n"
+                    f"1. NEVER redefine {', '.join(page_comps + layout_comps)} as functions inside App.tsx\n"
+                    f"2. NEVER use useState for navigation — use React Router <Route> instead\n"
+                    f"3. NEVER put components inside a lucide-react import\n"
+                    f"4. App.tsx must contain ONLY: imports + one App() function + export default App\n"
+                    f"\n"
+                    f"STRUCTURE OF App() using React Router v6:\n"
+                    f"function App() {{\n"
+                    f"  return (\n"
+                    f"    <BrowserRouter>\n"
+                    f"      <div className='flex min-h-screen'>\n"
+                    f"        {f'<{layout_comps[0]} />' if layout_comps else ''}\n"
+                    f"        <div className='flex-1 flex flex-col'>\n"
+                    f"          {f'<{layout_comps[1]} />' if len(layout_comps) > 1 else ''}\n"
+                    f"          <Routes>\n"
+                    f"            <Route path='/' element={{<Navigate to='/{first_page}' replace />}} />\n"
+                    f"{route_entries}\n"
+                    f"          </Routes>\n"
+                    f"        </div>\n"
+                    f"      </div>\n"
+                    f"    </BrowserRouter>\n"
+                    f"  )\n"
+                    f"}}\n"
+                    f"\n"
+                    f"• Sidebar links must use <Link to='/pagename'> from react-router-dom\n"
+                    f"• Active link detection: use useLocation() hook\n"
+                    f"• End with: export default App\n"
+                )
+
+        # ── TSX wrapper (Vite build mode) ──
+        _tsx_top = ""
+        _tsx_bottom = ""
+        if is_component_file and is_tsx_mode:
+            ext = "tsx"  # normalize
             if is_app:
-                _sidebar_links = "\n".join(
-                    f'      <a href="{p}" class="sidebar__link">'
-                    f'<i data-lucide="layout-dashboard"></i> '
-                    f'{p.replace(".html","").replace("index","Dashboard").title()}</a>'
-                    for p in html_paths
-                ) if html_paths else ""
-                _nav_html = (
-                    '<body class="app-layout">\n'
-                    '  <aside class="sidebar">\n'
-                    '    <div class="sidebar__brand">\n'
-                    '      <div class="sidebar__logo-icon"><i data-lucide="zap"></i></div>\n'
-                    f'      <a href="index.html" class="logo">{brand_name}</a>\n'
-                    '    </div>\n'
-                    '    <nav class="sidebar__nav">\n'
-                    f'{_sidebar_links}\n'
-                    '    </nav>\n'
-                    '    <div class="sidebar__footer"><div class="sidebar__plan">\n'
-                    '      <div class="sidebar__plan-name">Free Plan</div>\n'
-                    '      <div class="sidebar__plan-sub">Upgrade to unlock all features</div>\n'
-                    '      <a href="#" class="sidebar__upgrade-btn">Upgrade</a>\n'
-                    '    </div></div>\n'
-                    '  </aside>\n'
-                    '  <div class="main-container">\n'
-                    '    <header class="navbar">\n'
-                    '      <div class="navbar__left"><h1 class="navbar__title">Dashboard</h1></div>\n'
-                    '      <div class="navbar__search"><i data-lucide="search"></i>'
-                    '<input type="text" placeholder="Search..." class="input-search" autocomplete="off"></div>\n'
-                    '      <div class="navbar__actions">\n'
-                    '        <button class="btn-icon"><i data-lucide="bell"></i></button>\n'
-                    '        <button class="btn-icon btn-export"><i data-lucide="download"></i> Export</button>\n'
-                    '        <div class="user-profile">JD</div>\n'
-                    '        <button class="hamburger">&#9776;</button>\n'
-                    '      </div>\n'
-                    '    </header>\n'
+                _tsx_top = (
+                    "import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'\n"
+                    "import { LayoutDashboard, Users, TrendingUp, Settings, Bell, Search, "
+                    "BarChart2, ChevronUp, ChevronDown, DollarSign, Activity, ShoppingCart, "
+                    "LogOut, Menu, X, Download, Filter, Plus } from 'lucide-react'\n"
+                    "import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, "
+                    "XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'\n\n"
                 )
-                _main_open = '    <main class="main-view"><div class="view-content">\n'
-                _main_close = '    </div></main>\n  </div>\n'
-                _footer = ''
             elif is_ecommerce:
-                _nav_li_css = "\n".join(
-                    f'        <li><a href="{p}">{p.replace(".html","").replace("index","Home").title()}</a></li>'
-                    for p in html_paths
-                ) if html_paths else ""
-                _nav_html = (
-                    '<body class="ecommerce-layout">\n'
-                    '  <div class="cart-overlay" id="cart-overlay"></div>\n'
-                    '  <div class="cart-drawer" id="cart-drawer">\n'
-                    '    <div class="cart-drawer__header"><span class="cart-drawer__title">Your Cart</span>'
-                    '<button id="cart-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:#64748b">&times;</button></div>\n'
-                    '    <div class="cart-items"><p style="color:#94a3b8;text-align:center;padding:40px 0;font-size:14px">Your cart is empty.</p></div>\n'
-                    '    <div class="cart-footer"><div class="cart-total"><span>Total</span><span id="cart-total-price">$0.00</span></div>'
-                    '<button class="btn-checkout"><i data-lucide="shopping-bag"></i> Checkout</button></div>\n'
-                    '  </div>\n'
-                    '  <header class="navbar">\n'
-                    '    <div class="navbar__inner">\n'
-                    f'      <a href="index.html" class="nav-logo">{brand_name}</a>\n'
-                    '      <ul class="nav-links">\n'
-                    f'{_nav_li_css}\n'
-                    '      </ul>\n'
-                    '      <div class="nav-actions">\n'
-                    '        <button class="cart-btn" id="cart-trigger"><i data-lucide="shopping-cart"></i> Cart <span class="cart-count">0</span></button>\n'
-                    '        <button class="hamburger">&#9776;</button>\n'
-                    '      </div>\n'
-                    '    </div>\n'
-                    '  </header>\n'
-                )
-                _main_open = '  <main class="main-view">\n'
-                _main_close = '  </main>\n'
-                _footer = (
-                    '  <footer class="footer">\n'
-                    '    <div class="footer__grid">\n'
-                    f'      <div><div class="footer__brand-name">{brand_name}</div>'
-                    '<div class="footer__brand-desc">Premium products delivered fast.</div></div>\n'
-                    '      <div><div class="footer__col-title">Shop</div>'
-                    '<ul class="footer__links"><li><a href="#">New Arrivals</a></li>'
-                    '<li><a href="#">Sale</a></li><li><a href="#">Bestsellers</a></li></ul></div>\n'
-                    '      <div><div class="footer__col-title">Support</div>'
-                    '<ul class="footer__links"><li><a href="#">FAQ</a></li>'
-                    '<li><a href="#">Shipping</a></li><li><a href="#">Returns</a></li></ul></div>\n'
-                    '      <div><div class="footer__col-title">Follow</div>'
-                    '<ul class="footer__links"><li><a href="#">Instagram</a></li>'
-                    '<li><a href="#">Twitter</a></li><li><a href="#">TikTok</a></li></ul></div>\n'
-                    '    </div>\n'
-                    f'    <div class="footer__bottom"><span class="footer__copy">&copy; 2026 {brand_name}. All rights reserved.</span></div>\n'
-                    '  </footer>\n'
+                _tsx_top = (
+                    "import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'\n"
+                    "import { ShoppingCart, X, Star, Heart, Search, Menu, ChevronRight, "
+                    "Truck, Shield, RotateCcw, Tag, Plus, Minus } from 'lucide-react'\n"
+                    "import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'\n\n"
                 )
             else:
-                _nav_li_css = "\n".join(
-                    f'        <li><a href="{p}">{p.replace(".html","").replace("index","Home").title()}</a></li>'
-                    for p in html_paths
-                ) if html_paths else ""
-                _nav_html = (
-                    '<body class="marketing-layout">\n'
-                    '  <header class="navbar">\n'
-                    '    <div class="navbar__inner">\n'
-                    f'      <a href="index.html" class="logo">{brand_name}</a>\n'
-                    '      <ul class="nav-links">\n'
-                    f'{_nav_li_css}\n'
-                    '      </ul>\n'
-                    '      <button class="hamburger">&#9776;</button>\n'
-                    '    </div>\n'
-                    '  </header>\n'
+                _tsx_top = (
+                    "import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'\n"
+                    "import { ArrowRight, CheckCircle, Star, Menu, X, ChevronDown, "
+                    "Zap, Shield, Users, TrendingUp, Mail, Phone, MapPin } from 'lucide-react'\n\n"
                 )
-                _main_open = '  <main class="main-view">\n'
-                _main_close = '  </main>\n'
-                _footer = (
-                    '  <footer class="footer">\n'
-                    '    <div class="footer__grid">\n'
-                    f'      <div><div class="footer__brand-name">{brand_name}</div>'
-                    '<div class="footer__brand-desc">The modern platform for modern teams.</div></div>\n'
-                    '      <div><div class="footer__col-title">Product</div>'
-                    '<ul class="footer__links"><li><a href="#">Features</a></li>'
-                    '<li><a href="#">Pricing</a></li><li><a href="#">Changelog</a></li></ul></div>\n'
-                    '      <div><div class="footer__col-title">Company</div>'
-                    '<ul class="footer__links"><li><a href="#">About</a></li>'
-                    '<li><a href="#">Blog</a></li><li><a href="#">Careers</a></li></ul></div>\n'
-                    '      <div><div class="footer__col-title">Legal</div>'
-                    '<ul class="footer__links"><li><a href="#">Privacy</a></li>'
-                    '<li><a href="#">Terms</a></li><li><a href="#">Security</a></li></ul></div>\n'
-                    '    </div>\n'
-                    f'    <div class="footer__bottom"><span class="footer__copy">&copy; 2026 {brand_name}. All rights reserved.</span></div>\n'
-                    '  </footer>\n'
-                )
+            _tsx_bottom = "\nexport default App\n"
 
+        # Multi-file override: each component/page manages its own imports
+        if is_tsx_mode and is_multi_tsx:
+            _tsx_top = ""
+            _tsx_bottom = ""
+
+        # ── React CDN HTML shell — legacy fallback ──
+        _html_top = ""
+        _html_bottom = ""
+        if is_component_file and not is_tsx_mode:
+            ext = "html"  # normalize
             _html_top = (
                 '<!doctype html>\n<html lang="en">\n<head>\n'
                 '  <meta charset="UTF-8">\n'
                 '  <meta name="viewport" content="width=device-width,initial-scale=1.0">\n'
-                f'  <title>{plan.get("summary","Page")[:50]}</title>\n'
+                f'  <title>{plan.get("summary","App")[:50]}</title>\n'
                 + font_link + cdn_links
                 + '  <link rel="stylesheet" href="styles.css">\n'
                 '</head>\n'
-                + _nav_html + _main_open
+                '<body>\n'
+                '  <div id="root"></div>\n'
+                '  <script type="text/babel" data-presets="env,react">\n'
+                '  const { useState, useEffect, useRef, useMemo, useCallback } = React;\n\n'
             )
             _html_bottom = (
-                _main_close + _footer
-                + (f'  <script src="script.js" defer></script>\n' if _has_script else '')
-                + '</body>\n</html>\n'
+                "\n\n  ReactDOM.createRoot(document.getElementById('root')).render(<App />);\n"
+                '  </script>\n'
+                '</body>\n</html>\n'
             )
 
         # ── File-type specific RULES (for LLM prompt) ──
-        if ext in ("html", "htm"):
-            type_rules = (
-                "OUTPUT ONLY the inner content sections for <main> — DO NOT output <!doctype>, <html>, <head>, <body>, <header>, <nav>, <footer>, or <script> tags. Those are pre-built.\n"
-                "TAILWIND CSS IS LOADED — use Tailwind utility classes for ALL styling. Examples:\n"
-                "  Layout: flex, grid, grid-cols-3, gap-6, p-8, py-20, max-w-screen-xl, mx-auto, px-8\n"
-                "  Colors: bg-white, bg-slate-50, bg-indigo-600, text-slate-900, text-slate-500, text-white\n"
-                "  Typography: text-5xl, font-black, tracking-tight, leading-tight, text-sm, font-medium\n"
-                "  Cards: rounded-2xl, shadow-sm, hover:shadow-lg, overflow-hidden, border, border-slate-200\n"
-                "  Buttons: px-6, py-3, rounded-xl, font-bold, hover:-translate-y-0.5, transition-all\n"
-                "  Gradients: bg-gradient-to-br, from-indigo-600, to-violet-600, from-indigo-50\n"
-                "Icons: <i data-lucide='name' class='w-5 h-5'></i>\n"
-                "EVERY top-level section: add class=\"reveal\" AND padding classes like py-20 or py-16.\n"
-                "NEVER Lorem Ipsum — use realistic product names, real prices, real stats.\n"
-                "Be VERBOSE — more sections, more content, more rows is always better.\n\n"
-                + (
-                "SECTIONS TO GENERATE (in order):\n"
-                "1. <section class=\"reveal\" style=\"padding:40px 28px 0\"> — KPI CARDS ROW:\n"
-                "   <div class=\"kpi-cards\">\n"
-                "     <div class=\"kpi-card\"><div class=\"kpi-card__body\"><span class=\"kpi-card__title\">Total Revenue</span>"
-                "<span class=\"kpi-value\" data-target=\"127840\">$127,840</span>"
-                "<span class=\"kpi-change\"><i data-lucide=\"trending-up\"></i> +12.4%</span></div>"
-                "<div class=\"kpi-card__icon\"><i data-lucide=\"dollar-sign\"></i></div></div>\n"
-                "     ... (4 kpi-cards total)\n"
-                "   </div>\n"
-                "2. <section class=\"reveal\"> — CHARTS GRID:\n"
-                "   <div class=\"charts-grid\">\n"
-                "     <div class=\"chart-card\"><div class=\"chart-card__title\">Revenue</div><div class=\"chart-card__sub\">Last 12 months</div>"
-                "<div class=\"chart-container\"><canvas id=\"chart-revenue\" class=\"chart-canvas\"></canvas></div></div>\n"
-                "     <div class=\"chart-card\"> ... donut chart ... </div>\n"
-                "   </div>\n"
-                "3. <section class=\"reveal\"> — DATA TABLE:\n"
-                "   <div class=\"table-card\"><div class=\"table-card__header\"><span class=\"table-card__title\">Recent Users</span></div>"
-                "<table class=\"data-table\"><thead>...</thead><tbody>5+ rows with .badge status</tbody></table></div>\n"
-                if is_app else
-                "SECTIONS TO GENERATE (in order):\n"
-                "1. HERO: <section class=\"hero reveal\" style=\"background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)\">\n"
-                "   <div class=\"hero__inner\"><div class=\"hero__content\">\n"
-                "   <span class=\"hero__tag\">🔥 New Collection 2026</span>\n"
-                "   <h1 class=\"hero__title\" style=\"color:#fff\">YOUR BRAND-SPECIFIC HEADLINE</h1>\n"
-                "   <p class=\"hero__sub\" style=\"color:rgba(255,255,255,.8)\">Subtitle text...</p>\n"
-                "   <div class=\"hero__cta\"><button class=\"btn-primary\">Shop Now</button><button class=\"btn-secondary\">View Lookbook</button></div>\n"
-                "   </div></div></section>\n"
-                "2. PRODUCTS: <div class=\"container\"><div class=\"products-section reveal\">\n"
-                "   <div class=\"products-header\"><h2>New Arrivals</h2></div>\n"
-                "   <div class=\"product-grid\"> (6 product-card divs using exact structure below) </div>\n"
-                "   product-card structure:\n"
-                "   <div class=\"product-card\"><div class=\"product-card__image\"><div style=\"background:#f1f5f9;height:240px;display:flex;align-items:center;justify-content:center;font-size:64px\">EMOJI</div>"
-                "<div class=\"product-card__badges\"><span class=\"badge badge--new\">NEW</span></div></div>\n"
-                "   <div class=\"product-card__body\"><div class=\"product-card__brand\">BRAND</div><div class=\"product-card__name\">PRODUCT NAME</div>"
-                "<div class=\"product-card__rating\"><span class=\"stars\">★★★★★</span><span class=\"rating-count\">(2,341)</span></div>"
-                "<div class=\"product-card__footer\"><div><span class=\"product-price\">$189</span><span class=\"product-price--original\">$249</span></div>"
-                "<button class=\"btn-add-cart\"><i data-lucide=\"shopping-cart\"></i></button></div></div></div>\n"
-                "3. NEWSLETTER: <section class=\"newsletter reveal\" style=\"background:linear-gradient(135deg,#6366f1,#8b5cf6)\">\n"
-                "   <h2>Stay in the Loop</h2><p>Get early access to drops and exclusive deals.</p>\n"
-                "   <div class=\"newsletter-form\"><input type=\"email\" placeholder=\"your@email.com\"><button>Subscribe</button></div>\n"
-                "   </section>\n"
-                if is_ecommerce else
-                "SECTIONS TO GENERATE (in order, all with class=\"reveal\"):\n"
-                "1. HERO: <section class=\"hero reveal\" style=\"background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);padding:100px 0\">\n"
-                "   <div class=\"content\" style=\"text-align:center\">\n"
-                "   <span class=\"badge\" style=\"margin-bottom:20px;display:inline-block\">✨ NEW IN 2026</span>\n"
-                "   <h1 class=\"hero__title\" style=\"color:#fff;font-size:clamp(40px,6vw,72px);font-weight:900;letter-spacing:-0.04em;margin-bottom:20px\">YOUR HEADLINE HERE</h1>\n"
-                "   <p style=\"font-size:18px;color:rgba(255,255,255,.8);max-width:560px;margin:0 auto 32px\">Subtitle...</p>\n"
-                "   <div class=\"hero__cta\"><a href=\"#\" class=\"btn--primary\">Get Started Free</a><a href=\"#\" class=\"btn--secondary\" style=\"color:#fff;border-color:rgba(255,255,255,.3)\">Watch Demo <i data-lucide=\"play\"></i></a></div>\n"
-                "   </div></section>\n"
-                "2. STATS: <section class=\"section reveal\"><div class=\"content\">\n"
-                "   <div class=\"stats-grid\"><div><div class=\"stat-value\">50K+</div><div class=\"stat-label\">Teams</div></div>...</div>\n"
-                "   </div></section>\n"
-                "3. FEATURES: <section class=\"section bg-muted reveal\"><div class=\"content\">\n"
-                "   <h2 class=\"section__title\">Everything you need</h2>\n"
-                "   <div class=\"card-grid\"> (3+ feature cards using class=\"card\") </div>\n"
-                "   </div></section>\n"
-                "4. TESTIMONIALS: <section class=\"section reveal\"><div class=\"content\">\n"
-                "   <h2 class=\"section__title\">Loved by teams</h2>\n"
-                "   <div class=\"testimonial-grid\"> (3 testimonial-card) </div>\n"
-                "   </div></section>\n"
-                "5. PRICING: <section class=\"section bg-muted reveal\"><div class=\"content\">\n"
-                "   <h2 class=\"section__title\">Simple pricing</h2>\n"
-                "   <div class=\"pricing-grid\"> (3 pricing-card, middle has class='popular') </div>\n"
-                "   </div></section>\n"
-                "6. CTA: <section class=\"section reveal\" style=\"background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:24px;margin:0 32px 64px;text-align:center;color:#fff\">\n"
-                "   <div style=\"padding:60px 32px\"><h2>Ready to get started?</h2><p>...</p><a href=\"#\" class=\"btn--primary\">Start Free Trial</a></div>\n"
-                "   </section>\n"
-                if is_landing else
-                "SECTIONS TO GENERATE:\n"
-                "Generate all appropriate page sections for this page.\n"
+        if ext in ("html", "htm", "tsx"):
+            # Determine layout guide for this project type
+            if is_app:
+                _layout_desc = "DASHBOARD APP with dark sidebar navigation, top navbar with search, KPI cards, charts, and data table"
+                _component_guide = (
+                    "CRITICAL RULE: You MUST generate a COMPLETE function component for EVERY nav item — no stubs, no placeholders.\n\n"
+                    "COMPONENTS TO WRITE (in this order):\n\n"
+                    "function Sidebar({ activePage, setActivePage }) {\n"
+                    "  // Dark sidebar: logo + brand name, nav links with lucide icons, upgrade CTA at bottom\n"
+                    "  // className='w-60 shrink-0 h-screen sticky top-0 bg-indigo-950 flex flex-col overflow-y-auto'\n"
+                    "  // Each nav item is a <button> (NEVER <a href='#'>) that calls setActivePage\n"
+                    "  // Active: bg-indigo-600 text-white  |  Inactive: text-indigo-300 hover:bg-indigo-800\n"
+                    "  // <button onClick={() => setActivePage('dashboard')} className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-left transition-colors ${activePage==='dashboard'?'bg-indigo-600 text-white':'text-indigo-300 hover:bg-indigo-800'}`}>\n"
+                    "}\n\n"
+                    "function Navbar({ activePage }) {\n"
+                    "  // h-16 sticky top bar: capitalize(activePage) as page title left, search bar center, bell+avatar right\n"
+                    "}\n\n"
+                    "// ── PAGE COMPONENTS ─────────────────────────────────────────────────────────\n"
+                    "// Write ONE complete function for EACH nav item. Name them <NavItemName>Page.\n"
+                    "// Every page must have: a page header row (title + action button), then 2-4 content\n"
+                    "// sections filled with realistic hardcoded data.\n\n"
+                    "function DashboardPage() {\n"
+                    "  // SECTION 1 — KPI cards grid (4 cards): metric name, large value, +/-% badge, icon\n"
+                    "  // KPIs: Total Revenue $127,840 (+12.4%), Active Users 8,429 (+3.1%), Conversion 4.7% (-0.3%), Churn 1.2% (-0.8%)\n"
+                    "  // SECTION 2 — Charts row (use recharts):\n"
+                    + (
+                    "  const revenueData = [{month:'Jan',value:42000},{month:'Feb',value:67000},{month:'Mar',value:55000},{month:'Apr',value:81000},{month:'May',value:73000},{month:'Jun',value:95000}]\n"
+                    "  const donutData = [{name:'Enterprise',value:45},{name:'Pro',value:35},{name:'Starter',value:20}]\n"
+                    "  const COLORS = ['#3b82f6','#8b5cf6','#06b6d4']\n"
+                    "  //   col-span-2: <ResponsiveContainer><AreaChart data={revenueData}>...</AreaChart></ResponsiveContainer>\n"
+                    "  //   col-span-1: <ResponsiveContainer><PieChart><Pie data={donutData} innerRadius={60} outerRadius={90}>...</Pie></PieChart></ResponsiveContainer>\n"
+                    if is_tsx_mode else
+                    "  //   Use Chart.js canvas refs for line chart and doughnut chart\n"
+                    )
+                    + "  // SECTION 3 — DataTable: 5 rows with Name, Plan, Revenue, Status badge (Active/Trial/Paused), Date\n"
+                    "}\n\n"
+                    "// Write the remaining page components below — one per additional nav item.\n"
+                    "// Each page must be a REAL, COMPLETE UI with hardcoded data. Examples of what to include:\n"
+                    "// - A 'Users' or 'Audience' page: search bar, filter pills, user table with avatars/names/status\n"
+                    "// - A 'Campaigns' page: New Campaign button, campaigns table with status badges/metrics\n"
+                    "// - An 'Analytics' page: multiple charts (bar, line, pie), metric breakdown table\n"
+                    "// - A 'Settings' page: profile form fields, notification toggles, billing info, danger zone\n"
+                    "// - An 'Integrations' page: card grid of tools (Slack, Stripe, HubSpot...) with Connect button\n"
+                    "// Use whatever fits this specific app. Every component must have 15+ JSX elements of real content.\n\n"
+                    "function App() {\n"
+                    "  const [activePage, setActivePage] = useState('dashboard');\n"
+                    "  return (\n"
+                    "    <div className='flex min-h-screen bg-slate-100'>\n"
+                    "      <Sidebar activePage={activePage} setActivePage={setActivePage} />\n"
+                    "      <div className='flex-1 flex flex-col min-w-0'>\n"
+                    "        <Navbar activePage={activePage} />\n"
+                    "        <main className='flex-1 p-7 flex flex-col gap-6'>\n"
+                    "          {activePage === 'dashboard' && <DashboardPage />}\n"
+                    "          {/* ADD ONE LINE FOR EVERY OTHER NAV ITEM: {activePage === 'key' && <KeyPage />} */}\n"
+                    "        </main>\n"
+                    "      </div>\n"
+                    "    </div>\n"
+                    "  );\n"
+                    "}\n"
                 )
+            elif is_ecommerce:
+                _layout_desc = "ECOMMERCE STORE with sticky navbar, slide-in cart drawer, product grid, newsletter, and footer"
+                _component_guide = (
+                    "COMPONENTS TO WRITE (in this order):\n\n"
+                    "function CartDrawer({ isOpen, onClose, cartItems, cartCount }) {\n"
+                    "  // Slide-in drawer from right: cart items list, total price, checkout button\n"
+                    "  // Use inline style for transform: isOpen ? 'translateX(0)' : 'translateX(100%)'\n"
+                    "}\n\n"
+                    "function Navbar({ onCartOpen, cartCount }) {\n"
+                    "  // Sticky header: logo left, nav links center, cart button + count right\n"
+                    "  // Mobile: hamburger menu\n"
+                    "}\n\n"
+                    "function Hero() {\n"
+                    "  // Full-width hero with gradient bg, large headline, subtitle, 2 CTA buttons\n"
+                    "  // style={{ background: 'linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)' }}\n"
+                    "}\n\n"
+                    "function ProductCard({ product, onAddToCart }) {\n"
+                    "  // Card: image placeholder div, badges (NEW/SALE/BEST), brand, name, rating stars, price, add-to-cart button\n"
+                    "  // Image: <div className='bg-slate-100 h-60 flex items-center justify-content-center text-6xl'>{product.emoji}</div>\n"
+                    "}\n\n"
+                    "function ProductGrid({ onAddToCart }) {\n"
+                    "  // 4-column responsive grid of 6 ProductCard components with real product data\n"
+                    "}\n\n"
+                    "function Newsletter() {\n"
+                    "  // Gradient section: headline, subtitle, email input + subscribe button\n"
+                    "}\n\n"
+                    "function Footer() {\n"
+                    "  // Dark footer: 4 columns (brand/desc, Shop links, Support links, Social links), copyright\n"
+                    "}\n\n"
+                    "function App() {\n"
+                    "  const [cartOpen, setCartOpen] = useState(false);\n"
+                    "  const [cartItems, setCartItems] = useState([]);\n"
+                    "  const addToCart = (product) => setCartItems(prev => [...prev, product]);\n"
+                    "  return (\n"
+                    "    <div className='min-h-screen bg-white'>\n"
+                    "      {cartOpen && <div className='fixed inset-0 bg-black/40 z-40' onClick={() => setCartOpen(false)} />}\n"
+                    "      <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} cartItems={cartItems} cartCount={cartItems.length} />\n"
+                    "      <Navbar onCartOpen={() => setCartOpen(true)} cartCount={cartItems.length} />\n"
+                    "      <main>\n"
+                    "        <Hero />\n"
+                    "        <div className='max-w-screen-xl mx-auto px-8 py-16'>\n"
+                    "          <ProductGrid onAddToCart={addToCart} />\n"
+                    "        </div>\n"
+                    "        <Newsletter />\n"
+                    "      </main>\n"
+                    "      <Footer />\n"
+                    "    </div>\n"
+                    "  );\n"
+                    "}\n"
+                )
+            else:
+                _layout_desc = "SAAS/MARKETING LANDING PAGE with sticky navbar, hero, stats, features, testimonials, pricing, CTA banner, and footer"
+                _component_guide = (
+                    "COMPONENTS TO WRITE (in this order):\n\n"
+                    "function Navbar() {\n"
+                    "  // Sticky header: logo left, nav links (Features/Pricing/Blog/About) center, Sign In + Get Started right\n"
+                    "  // Add scrolled shadow via useState + useEffect on window.scroll\n"
+                    "}\n\n"
+                    "function Hero() {\n"
+                    "  // Gradient bg hero: badge pill, large headline (clamp 48-80px), subtitle, 2 CTA buttons, trust badges row\n"
+                    "  // style={{ background: 'linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#a78bfa 100%)' }}\n"
+                    "}\n\n"
+                    "function Stats() {\n"
+                    "  // 4-stat row: 50K+ Teams | 99.9% Uptime | 4.9/5 Rating | <10min Setup\n"
+                    "}\n\n"
+                    "function Features() {\n"
+                    "  // 3-column grid of feature cards: emoji icon, title, 2-sentence description\n"
+                    "  // At least 6 feature cards covering real use-cases\n"
+                    "}\n\n"
+                    "function Testimonials() {\n"
+                    "  // 3 testimonial cards: quote, avatar initials, name, title, company, star rating\n"
+                    "}\n\n"
+                    "function Pricing() {\n"
+                    "  // 3 pricing cards: Free $0/mo, Pro $29/mo (highlighted with indigo bg), Enterprise $99/mo\n"
+                    "  // Each card: plan name, price, feature list with checkmarks, CTA button\n"
+                    "}\n\n"
+                    "function CtaBanner() {\n"
+                    "  // Gradient banner: large headline, subtitle, 'Start Free Trial' button\n"
+                    "}\n\n"
+                    "function Footer() {\n"
+                    "  // Dark footer (bg-slate-900): 4 columns (Product/Company/Legal/Social), copyright row\n"
+                    "}\n\n"
+                    "function App() {\n"
+                    "  return (\n"
+                    "    <div className='min-h-screen bg-white'>\n"
+                    "      <Navbar />\n"
+                    "      <main>\n"
+                    "        <Hero />\n"
+                    "        <Stats />\n"
+                    "        <Features />\n"
+                    "        <Testimonials />\n"
+                    "        <Pricing />\n"
+                    "        <CtaBanner />\n"
+                    "      </main>\n"
+                    "      <Footer />\n"
+                    "    </div>\n"
+                    "  );\n"
+                    "}\n"
+                )
+
+            type_rules = (
+                f"Generate a COMPLETE React app {'as TSX' if is_tsx_mode else 'as JSX (Babel Standalone)'} for a {_layout_desc}.\n\n"
+                "═══ MANDATORY RULES ═══\n"
+                "- Use className (NOT class) on ALL elements\n"
+                "- Tailwind utility classes for ALL styling — bg-white, rounded-2xl, shadow-md, p-6, flex, grid, gap-4, text-4xl, font-black\n"
+                "- Gradients: use style={{ background: 'linear-gradient(...)' }} — NOT bg-gradient-to-br (Tailwind CDN JIT may not generate it)\n"
+                "- useState/useEffect/useRef/useCallback/useMemo already imported from React\n"
+                "- IMAGES: use <img src='https://picsum.photos/seed/KEYWORD/600/400' alt='description' className='w-full h-48 object-cover rounded-xl' /> — replace KEYWORD with a relevant word (shoe, jacket, wallet, food, tech, etc.) — NEVER use emojis for images\n"
+                + ("- ICONS: Use lucide-react icons already imported (e.g. <LayoutDashboard size={20} />, <Users size={20} />, <Bell size={20} />)\n"
+                   "- CHARTS: Use recharts components already imported (AreaChart, BarChart, PieChart, ResponsiveContainer, etc.)\n"
+                   if is_tsx_mode else
+                   "- ICONS: use emoji (💰 📊 👥 🛒 🔔 ✨ 🚀 ⚡ 💼 🎯 ✅ ⭐) — DO NOT use data-lucide\n")
+                + "- NEVER Lorem Ipsum — real product names, prices, stats, testimonials, team names\n"
+                "- Be VERBOSE: full realistic content in every component, no stubs, no TODOs\n"
+                "- Transitions: className='transition-all duration-300 hover:-translate-y-1 hover:shadow-xl'\n"
+                + ("- NAVIGATION: sidebar links MUST be <button onClick={() => setActivePage('key')}> — NEVER <a href='#'>\n"
+                   "- ROUTING: App() tracks const [activePage, setActivePage] = useState('defaultKey') and renders each page with {activePage==='key' && <PageComponent />}\n"
+                   "- Every nav item needs its own full page component with realistic content — no empty stubs\n\n"
+                   if is_app and is_tsx_mode else "\n")
+                + "═══ OUTPUT FORMAT ═══\n"
+                + ("Output ONLY the React function definitions as TSX. NO import statements. NO export default. NO markdown fences. Start with 'function'.\n\n"
+                   if is_tsx_mode else
+                   "Output ONLY the React function definitions. NO markdown fences. NO prose. Start directly with 'function'.\n"
+                   "DO NOT output ReactDOM.createRoot() — that is handled by the wrapper.\n\n")
+                + _component_guide
             )
         elif ext == "css":
             css_vars = DesignSystemAgent.tokens_to_css_vars(design_tokens) if design_tokens else ""
@@ -852,59 +1120,77 @@ class LlmCodegenAgent:
         else:
             type_rules = f"Generate complete content for this {ext} file.\n"
 
-        _is_html = ext in ("html", "htm")
+        _is_component = ext in ("html", "htm", "tsx")
         sys_msg = (
             f"You are an elite UI engineer building production software at the level of Lovable.dev, v0.dev, Linear, and Vercel.\n"
+            + multi_file_role
             + (
-                "Output ONLY the inner HTML sections for <main>. NO <!doctype>, NO <html>, NO <head>, NO <body>, NO <header>, NO <footer>, NO <nav>. Just the content sections.\n"
-                "TAILWIND IS LOADED — use Tailwind utility classes for ALL styling (layout, spacing, colors, typography, shadows, rounded corners).\n"
-                "Tailwind color palette: indigo-600=#6366f1, indigo-500=#6366f1, violet-600=#7c3aed, slate-900=#0f172a, slate-600=#475569, slate-400=#94a3b8\n"
-                "You MAY also add inline style= for gradients and custom values Tailwind can't express.\n"
-                "Keep custom CSS classes ONLY for: .reveal animation, .chart-canvas, and .product-card hover image zoom.\n"
-                if _is_html else
+                (
+                    (
+                        "Output ONLY the complete standalone TSX file. Include your own imports at the top.\n"
+                        "Use className (NOT class). Tailwind utility classes for styling. style={{}} for gradients.\n"
+                        "IMAGES: <img src='https://picsum.photos/seed/KEYWORD/600/400' className='w-full h-48 object-cover rounded-xl' />\n"
+                        "ICONS: import only the lucide-react icons you use.\n"
+                    ) if is_multi_tsx else (
+                        "Output ONLY React function definitions as TSX. No markdown fences, no prose, no explanations.\n"
+                        "Start directly with 'function'. DO NOT add import statements or 'export default' — those are handled by the wrapper.\n"
+                        "Use className (NOT class). Tailwind utility classes for styling. style={{}} for gradients.\n"
+                        "IMAGES: use <img src='https://picsum.photos/seed/KEYWORD/600/400' alt='description' className='w-full h-48 object-cover rounded-xl' /> with a relevant seed word — NEVER emojis for images.\n"
+                        "ICONS: Use lucide-react icons already imported (e.g. <LayoutDashboard size={20} />, <Users size={20} />, <TrendingUp size={20} />).\n"
+                    )
+                ) if is_tsx_mode else (
+                    "Output ONLY React function definitions as JSX (Babel Standalone). No markdown fences, no prose, no explanations.\n"
+                    "Start directly with 'function'. DO NOT output ReactDOM.createRoot() — that is already in the wrapper.\n"
+                    "Use className (NOT class). Tailwind utility classes for styling. style={{}} for gradients.\n"
+                    "IMAGES: use <img src='https://picsum.photos/seed/KEYWORD/600/400' alt='description' className='w-full h-48 object-cover rounded-xl' /> with a relevant seed word — NEVER emojis for images.\n"
+                    "ICONS: emoji only (💰 📊 👥 🛒 🚀 ✨ ⚡ ✅ ⭐ 🎯) — DO NOT use data-lucide.\n"
+                )
+            ) if _is_component else (
                 f"Output ONLY raw {ext.upper() if ext else 'code'} for '{path}'. Zero markdown fences. Zero prose. Zero explanations.\n"
             )
             + "MANDATORY QUALITY BAR — violating any of these is a failure:\n"
             "  - TAILWIND-FIRST: Every element styled with Tailwind classes. bg-white, rounded-2xl, shadow-md, p-6, flex, grid, gap-4 etc.\n"
-            "  - VIBRANT: Rich indigo/violet gradients on hero. bg-gradient-to-br from-indigo-600 to-violet-600. White text on dark backgrounds.\n"
-            "  - TYPOGRAPHY: font-bold, font-extrabold, font-black for headings. tracking-tight. text-slate-900 for body.\n"
-            "  - DEPTH: shadow-sm on cards, shadow-lg on hover. transition hover:-translate-y-1.5 for card lifts.\n"
-            "  - POPULATED: Real names, real numbers, real dates everywhere. ZERO Lorem Ipsum.\n"
+            "  - VIBRANT: Rich gradients on hero. bg-gradient-to-br with 2-3 color stops. White text on dark backgrounds.\n"
+            "  - TYPOGRAPHY: font-bold, font-extrabold, font-black for headings. tracking-tight. text-4xl/5xl/6xl for hero titles.\n"
+            "  - DEPTH: shadow-sm on cards, shadow-xl on hover. transition-all duration-300 hover:-translate-y-2 for card lifts.\n"
+            "  - POPULATED: Real names, real numbers, real dates, real prices everywhere. ZERO Lorem Ipsum.\n"
             "  - COMPLETE: Generate ALL sections listed. No stubs, no TODOs, no '...' or ellipsis.\n"
             "  - RICH: More sections, more content, more rows is always better than sparse output.\n"
+            "  - IMAGES: Use <div class=\"card__image\">KEYWORD</div> for EVERY image. NEVER use <img> tags.\n"
+            "  - SPACING: Generous padding py-20 or py-24 for sections. Cards with p-8. Gaps of gap-6 to gap-10.\n"
+            "  - MODERN: rounded-3xl for cards, rounded-full for badges. Subtle borders. Professional Lovable-level quality.\n"
         )
 
         # Realistic dummy data injected per project type
         dummy_data = ""
-        if ext in ("html", "htm"):
+        if ext in ("html", "htm", "tsx"):
             if is_app:
                 dummy_data = (
                     "\n=== REALISTIC DATA — populate EVERY element with this (never use Lorem Ipsum) ===\n"
                     "KPIs: Total Revenue $127,840 (+12.4%) | Active Users 8,429 (+3.1%) | Conversion 4.7% (-0.3%) | Churn 1.2% (-0.8%)\n"
-                    "Chart canvas IDs to include: chart-revenue (line), chart-users (bar), chart-distribution (donut)\n"
-                    "Add data-target attribute on .kpi-value for animated counters: data-target='127840'\n"
-                    "Table rows:\n"
-                    "  Sarah Johnson | Enterprise | $4,200/mo | <span class='badge'>Active</span> | Mar 10 2026 | sarah@acme.com\n"
-                    "  Marcus Chen   | Pro        | $299/mo   | <span class='badge'>Active</span> | Mar 8 2026  | m.chen@startup.io\n"
-                    "  Priya Patel   | Starter    | $49/mo    | <span class='badge'>Trial</span>  | Mar 5 2026  | priya@patel.dev\n"
-                    "  James Wilson  | Enterprise | $4,200/mo | <span class='badge'>Paused</span> | Feb 28 2026 | jwilson@corp.com\n"
-                    "  Aisha Torres  | Pro        | $299/mo   | <span class='badge'>Active</span> | Feb 25 2026 | aisha.t@ventures.co\n"
-                    "NOTE: Navbar, sidebar, and footer are pre-built — generate ONLY the main content sections.\n"
+                    "Charts: use useRef + useEffect + Chart.js. canvasRef for line chart (revenue, 12 months), donutRef for doughnut (plan distribution)\n"
+                    "Line chart data: [42000,67000,55000,81000,73000,95000,88000,71000,84000,92000,87000,110000] labels: Jan-Dec\n"
+                    "Donut data: [45,35,20] labels: ['Enterprise','Pro','Starter'] colors: ['#3b82f6','#8b5cf6','#06b6d4']\n"
+                    "Table rows (use className not class, use spans for badges):\n"
+                    "  Sarah Johnson | Enterprise | $4,200/mo | Active (green) | Mar 10 2026 | sarah@acme.com\n"
+                    "  Marcus Chen   | Pro        | $299/mo   | Active (green) | Mar 8 2026  | m.chen@startup.io\n"
+                    "  Priya Patel   | Starter    | $49/mo    | Trial (yellow) | Mar 5 2026  | priya@patel.dev\n"
+                    "  James Wilson  | Enterprise | $4,200/mo | Paused (red)   | Feb 28 2026 | jwilson@corp.com\n"
+                    "  Aisha Torres  | Pro        | $299/mo   | Active (green) | Feb 25 2026 | aisha.t@ventures.co\n"
+                    "NOTE: Generate ALL components including Sidebar, Navbar, KpiCards, Charts, DataTable, and App.\n"
                 )
             elif is_ecommerce:
                 dummy_data = (
                     "\n=== REALISTIC DATA — populate EVERY element with this ===\n"
-                    "MANDATORY: Use class='product-grid' with display:grid of 4 columns for ALL product listings.\n"
-                    "MANDATORY: Each product MUST use class='product-card' structure shown in CLASS NAMES section above.\n"
-                    "Products to include (fill in ALL 6 in the product-grid):\n"
+                    "MANDATORY: Use className (NOT class) on all JSX elements.\n"
+                    "Products to include (fill in ALL 6 in the ProductGrid):\n"
                     "  1. Nike Air Max Pro 2026 | Brand: Nike | $189 (was $249) | ★★★★★ 4.8 (2,341 reviews) | badge: badge--new\n"
                     "  2. Urban Slim Hoodie     | Brand: Adidas | $79          | ★★★★☆ 4.6 (891 reviews) | badge: badge--sale -30%\n"
                     "  3. Leather Minimal Wallet| Brand: Coach | $49           | ★★★★★ 4.9 (456 reviews) | badge: badge--best BESTSELLER\n"
                     "  4. Retro Runner 90s      | Brand: New Balance | $159    | ★★★★★ 4.7 (1,204 reviews) | badge: badge--low Only 3 left\n"
                     "  5. Cargo Utility Pants   | Brand: Carhartt | $129       | ★★★★☆ 4.5 (673 reviews) |\n"
                     "  6. Merino Wool Tee       | Brand: Uniqlo | $65          | ★★★★★ 4.8 (329 reviews) |\n"
-                    "NOTE: Navbar and footer are pre-built — generate ONLY the hero + products + newsletter sections.\n"
-                    "Footer: class='footer' with footer__grid, footer__links — 4 columns: Brand, Shop, Support, Follow.\n"
+                    "NOTE: Generate ALL components including CartDrawer, Navbar, Hero, ProductCard, ProductGrid, Newsletter, Footer, and App.\n"
                 )
             elif is_landing:
                 dummy_data = (
@@ -934,11 +1220,13 @@ class LlmCodegenAgent:
         raw = self.provider.chat(sys_msg, user_msg)
         content = self._clean_code_output(raw)
 
-        # Post-process HTML: extract inner sections, fix classes, wrap with deterministic shell
-        if ext in ("html", "htm"):
-            inner = self._extract_main_content(content)
-            inner = self._fix_html_classes(inner)
-            content = _html_top + inner + _html_bottom
+        # Post-process: wrap in TSX imports or legacy HTML shell
+        if ext == "tsx" and is_tsx_mode:
+            content = self._repair_truncated_jsx(content)
+            content = _tsx_top + content + _tsx_bottom
+        elif ext in ("html", "htm"):
+            content = self._repair_truncated_jsx(content)
+            content = _html_top + content + _html_bottom
 
         # Sanity check: detect degenerate repetitive output from small models
         if ext == "js" and len(content) > 5000:
@@ -966,12 +1254,21 @@ class LlmCodegenAgent:
         if not plan_files:
             raise ValueError("Plan has no files to generate")
 
-        # Order: HTML first → CSS (can reference HTML classes) → JS → rest
-        html_files = [f for f in plan_files if str(f.get("path", "")).endswith((".html", ".htm"))]
-        css_files = [f for f in plan_files if str(f.get("path", "")).endswith(".css")]
-        js_files = [f for f in plan_files if str(f.get("path", "")).endswith(".js")]
-        other = [f for f in plan_files if f not in html_files and f not in css_files and f not in js_files]
-        ordered = html_files + css_files + js_files + other
+        # Multi-file React: components → pages → App.tsx (dependency order)
+        is_multi_file_react = any("/" in str(f.get("path", "")) for f in plan_files)
+        if is_multi_file_react:
+            comp_files = [f for f in plan_files if "components/" in str(f.get("path", ""))]
+            page_files = [f for f in plan_files if "pages/" in str(f.get("path", ""))]
+            root_files = [f for f in plan_files if str(f.get("path", "")) in ("src/App.tsx", "App.tsx")]
+            other_tsx  = [f for f in plan_files if f not in comp_files and f not in page_files and f not in root_files]
+            ordered = comp_files + page_files + other_tsx + root_files
+        else:
+            # Order: HTML first → CSS (can reference HTML classes) → JS → rest
+            html_files = [f for f in plan_files if str(f.get("path", "")).endswith((".html", ".htm"))]
+            css_files  = [f for f in plan_files if str(f.get("path", "")).endswith(".css")]
+            js_files   = [f for f in plan_files if str(f.get("path", "")).endswith(".js")]
+            other      = [f for f in plan_files if f not in html_files and f not in css_files and f not in js_files]
+            ordered    = html_files + css_files + js_files + other
 
         generated: list[dict[str, str]] = []
         errors: list[str] = []
@@ -986,7 +1283,7 @@ class LlmCodegenAgent:
             logger.info("LlmCodegenAgent: generating %s (%d/%d)", path, idx, len(ordered))
             # Small delay between calls to stay within rate-limit windows
             if idx > 1:
-                _time.sleep(3)
+                _time.sleep(30)
             max_retries = 4
             for attempt in range(max_retries + 1):
                 try:

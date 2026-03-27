@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createGeneration,
   downloadGenerationZip,
@@ -16,6 +16,7 @@ import {
   listAuditEvents,
   listGenerations,
   deleteAdminUser,
+  editFile,
   rollbackGeneration,
   setAdminUserEnabled,
   type AdminStats,
@@ -35,7 +36,7 @@ type Framework =
 
 type CenterTab = 'preview' | 'code' | 'terminal'
 
-type RightTab = 'console' | 'logs' | 'component'
+type RightTab = 'chat' | 'console' | 'logs' | 'component'
 
 type FileNode =
   | { id: string; type: 'file'; name: string }
@@ -137,6 +138,42 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [customPrompt, setCustomPrompt] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
+
+  // Auto-detect domain from prompt keywords (mirrors Python detect_domain())
+  const autoDetectedDomain = useMemo(() => {
+    const p = customPrompt.toLowerCase()
+    const keywords: Record<string, string[]> = {
+      ecommerce:  ['shop', 'store', 'product', 'cart', 'checkout', 'price', 'buy', 'boutique', 'catalogue', 'panier'],
+      medical:    ['patient', 'doctor', 'appointment', 'medical', 'health', 'clinic', 'hospital', 'médecin', 'santé'],
+      dashboard:  ['dashboard', 'analytics', 'metrics', 'chart', 'graph', 'stats', 'kpi', 'tableau de bord'],
+      education:  ['course', 'lesson', 'student', 'teacher', 'quiz', 'learning', 'cours', 'formation', 'élève'],
+      saas:       ['saas', 'subscription', 'plan', 'api', 'integration', 'enterprise', 'abonnement', 'plateforme'],
+      portfolio:  ['portfolio', 'skill', 'designer', 'developer', 'creative', 'réalisation', 'compétence'],
+      restaurant: ['restaurant', 'menu', 'food', 'reservation', 'chef', 'dish', 'cuisine', 'repas'],
+      real_estate:['property', 'house', 'apartment', 'rent', 'immobilier', 'appartement', 'maison', 'agence'],
+    }
+    let best: string | null = null
+    let bestScore = 0
+    for (const [domain, kws] of Object.entries(keywords)) {
+      const score = kws.filter(kw => p.includes(kw)).length
+      if (score > bestScore) { bestScore = score; best = domain }
+    }
+    return bestScore > 0 ? best : null
+  }, [customPrompt])
+
+  const DOMAINS = [
+    { value: 'ecommerce',  emoji: '🛒', label: 'E-commerce' },
+    { value: 'dashboard',  emoji: '📊', label: 'Dashboard' },
+    { value: 'medical',    emoji: '🏥', label: 'Médical' },
+    { value: 'education',  emoji: '🎓', label: 'Éducation' },
+    { value: 'saas',       emoji: '💼', label: 'SaaS' },
+    { value: 'portfolio',  emoji: '🎨', label: 'Portfolio' },
+    { value: 'restaurant', emoji: '🍽️', label: 'Restaurant' },
+    { value: 'real_estate',emoji: '🏠', label: 'Immobilier' },
+  ]
+
+  const activeDomain = selectedDomain ?? autoDetectedDomain
 
   const isAdmin = roles.includes('admin')
 
@@ -165,7 +202,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   // IDE
   const [ideVisible, setIdeVisible] = useState(false)
   const [centerTab, setCenterTab] = useState<CenterTab>('preview')
-  const [rightTab, setRightTab] = useState<RightTab>('console')
+  const [rightTab, setRightTab] = useState<RightTab>('chat')
   const [isMobile, setIsMobile] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedEl, setSelectedEl] = useState<string | null>(null)
@@ -175,6 +212,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [diffEdits, setDiffEdits] = useState<{ file: string; added: number; removed: number }[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [previewReloadCount, setPreviewReloadCount] = useState(0)
+  const previewContainerRef = useRef<HTMLDivElement>(null)
+  const [previewScale, setPreviewScale] = useState(0.7)
 
   const [buildMsg, setBuildMsg] = useState('Scaffolding project…')
   const [buildPct, setBuildPct] = useState(0)
@@ -405,7 +444,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     map.set('src/App.jsx', {
       path: 'src/App.jsx',
       content:
-        "import { useState } from 'react'\nimport Navbar from './components/Navbar'\nimport Hero from './components/Hero'\nimport './index.css'\n\nfunction App() {\n  const [count, setCount] = useState(0)\n\n  return (\n    <div className=\"app\">\n      <Navbar />\n      <Hero\n        count={count}\n        onCount={() => setCount(c => c + 1)}\n      />\n    </div>\n  )\n}\n\nexport default App",
+        "import { useState, useMemo } from 'react'\nimport Navbar from './components/Navbar'\nimport Hero from './components/Hero'\nimport './index.css'\n\nfunction App() {\n  const [count, setCount] = useState(0)\n\n  return (\n    <div className=\"app\">\n      <Navbar />\n      <Hero\n        count={count}\n        onCount={() => setCount(c => c + 1)}\n      />\n    </div>\n  )\n}\n\nexport default App",
     })
     map.set('src/main.jsx', {
       path: 'src/main.jsx',
@@ -504,10 +543,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
     let result = html
 
-    // Strip any CDN scripts that hide <body> during initialization (Tailwind browser runtime etc.)
-    result = result.replace(/<script[^>]+src=["'][^"']*tailwind[^"']*["'][^>]*><\/script>/gi, '')
-    // Strip any other external scripts that may interfere with the preview
-    result = result.replace(/<script[^>]+src=["']https?:\/\/[^"']*["'][^>]*><\/script>/gi, '')
+    // Strip only local /tailwind.min.js (doesn't exist in preview server)
+    result = result.replace(/<script[^>]+src=["']\/tailwind\.min\.js["'][^>]*><\/script>/gi, '')
 
     // NUCLEAR visibility override — appended last so it beats all LLM CSS including !important
     // Targets every known pattern that causes blank previews:
@@ -584,38 +621,70 @@ document.addEventListener('click', function(e) {
     return () => window.removeEventListener('message', handleMessage)
   }, [effectiveFileContents])
 
+  // Auto-scale preview like Lovable: observe container width and scale to fit 1280px
+  useEffect(() => {
+    const el = previewContainerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(entries => {
+      const width = entries[0].contentRect.width
+      if (width > 0) setPreviewScale(width / 1280)
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  // Derived — always in sync with apiResult, no separate state needed
+  const builtProjectUrl = apiResult?.generationId
+    ? `http://localhost:8000/projects/${apiResult.generationId}/dist/index.html`
+    : null
+
   const previewKey = useMemo(() => {
-    if (!previewSrcDoc) return 'no-preview'
+    if (!builtProjectUrl && !previewSrcDoc) return 'no-preview'
     const gen = apiResult?.generationId ?? 'no-gen'
-    return `${gen}:${previewSrcDoc.length}:${previewReloadCount}`
-  }, [apiResult?.generationId, previewSrcDoc, previewReloadCount])
+    return `${gen}:${(previewSrcDoc?.length ?? 0)}:${previewReloadCount}`
+  }, [apiResult?.generationId, builtProjectUrl, previewSrcDoc, previewReloadCount])
 
-  const logs = useMemo(
-    () => [
-      { type: 'info', msg: 'Server running on http://localhost:3000', t: '09:12:01' },
-      { type: 'warn', msg: 'React DevTools not detected', t: '09:12:02' },
-      { type: 'info', msg: 'HMR ready', t: '09:12:02' },
-      { type: 'success', msg: '✓ Build complete (1.2s)', t: '09:12:04' },
-      { type: 'error', msg: 'Warning: Missing key prop in list', t: '09:12:06' },
-    ],
-    [],
-  )
+  const logs = useMemo(() => {
+    const r: any = (apiResult as any)?.aiReport
+    if (!r) return [] as { type: string; msg: string; t: string }[]
+    const durations = r.durations ?? {}
+    const pipeline: string[] = Array.isArray(r.pipeline) ? r.pipeline : []
+    const issues: any[] = Array.isArray(r.issues) ? r.issues : []
+    const now = new Date()
+    const fmt = (offset: number) => {
+      const d = new Date(now.getTime() - offset)
+      return d.toTimeString().slice(0, 8)
+    }
+    const entries: { type: string; msg: string; t: string }[] = []
+    let offset = (durations.total_ms ?? 0)
+    const push = (type: string, msg: string) => {
+      entries.push({ type, msg, t: fmt(offset) })
+      offset = Math.max(0, offset - 200)
+    }
+    push('info', `Generation started — id: ${apiResult?.generationId ?? '?'}`)
+    if (durations.extract_ms != null) push('info', `Document extraction: ${durations.extract_ms}ms`)
+    if (durations.prep_ms != null) push('info', `Text prep: ${durations.prep_ms}ms`)
+    if (durations.plan_ms != null) {
+      const planStep = pipeline.find(s => s.startsWith('plan:'))
+      push(planStep?.includes('failed') ? 'warn' : 'info', `Planner: ${durations.plan_ms}ms${planStep ? ` (${planStep})` : ''}`)
+    }
+    if (durations.design_ms != null) {
+      const designStep = pipeline.find(s => s.startsWith('design'))
+      push(designStep?.includes('failed') ? 'warn' : 'info', `Design system: ${durations.design_ms}ms`)
+    }
+    if (durations.codegen_ms != null) {
+      const codeStep = pipeline.find(s => s.startsWith('codegen:'))
+      push(codeStep?.includes('failed') ? 'error' : 'info', `Code generation: ${durations.codegen_ms}ms${codeStep ? ` (${codeStep})` : ''}`)
+    }
+    if (durations.images_ms != null) push('info', `Image injection: ${durations.images_ms}ms`)
+    for (const issue of issues) {
+      push(issue.type === 'llm' ? 'error' : 'warn', `Issue [${issue.type}]: ${issue.message}`)
+    }
+    if (durations.total_ms != null) push('success', `✓ Generation complete in ${(durations.total_ms / 1000).toFixed(1)}s`)
+    return entries
+  }, [apiResult])
 
-  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
-    {
-      role: 'ai',
-      text: 'Project created! Scaffolded a React + Vite app with Navbar and Hero. Running on localhost:3000.',
-    },
-    { role: 'user', text: 'Make the hero background a dark gradient' },
-    {
-      role: 'ai',
-      text: 'Done! Updated Hero.jsx and index.css with a gradient background.',
-      edits: [
-        { file: 'Hero.jsx', added: 2, removed: 1 },
-        { file: 'index.css', added: 4, removed: 2 },
-      ],
-    },
-  ])
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([])
 
   const fileCount = useMemo(() => countFiles(effectiveTree), [effectiveTree])
   const activeFileName = useMemo(() => {
@@ -739,7 +808,7 @@ document.addEventListener('click', function(e) {
 
       if (elapsedS < 10) setBuildMsg('Analyzing your requirements…')
       else if (elapsedS < 25) setBuildMsg('AI planner creating project structure…')
-      else if (elapsedS < 45) setBuildMsg('Gemini generating HTML pages…')
+      else if (elapsedS < 45) setBuildMsg('AI generating HTML pages…')
       else if (elapsedS < 70) setBuildMsg('Generating stylesheets…')
       else if (elapsedS < 100) setBuildMsg('Generating JavaScript & final files…')
       else if (elapsedS < 150) setBuildMsg('Almost done — finalizing…')
@@ -750,9 +819,17 @@ document.addEventListener('click', function(e) {
 
     try {
       const prompt = customPrompt.trim() || `New project: ${projectName}`
-      const result = (await createGeneration(prompt, attachedFiles, accessToken)) as GenerationApiResponse
+      const result = (await createGeneration(prompt, attachedFiles, accessToken, activeDomain)) as GenerationApiResponse
       setAttachedFiles([])
       setApiResult(result)
+      const r: any = (result as any)?.aiReport
+      const fileCount = (result as any)?.codeBundle?.files?.length ?? 1
+      const totalMs = r?.durations?.total_ms
+      const summary = (result as any)?.uiSpec?.meta?.summary
+      setChatMessages([{
+        role: 'ai',
+        text: `Project generated! Created ${fileCount} file${fileCount !== 1 ? 's' : ''}${summary ? ` — ${summary}` : ''}${totalMs ? ` in ${(totalMs / 1000).toFixed(1)}s` : ''}.`,
+      }])
       void loadHistory().then(() => setHomeTab('projects'))
 
       stopped = true
@@ -773,26 +850,56 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  const sendChat = () => {
+  const [isChatLoading, setIsChatLoading] = useState(false)
+
+  const sendChat = async () => {
     const val = chatInput.trim()
-    if (!val) return
+    if (!val || isChatLoading) return
+
+    const generationId = apiResult?.generationId
+    if (!generationId) {
+      setChatMessages((prev) => [...prev, { role: 'ai', text: 'No active project. Generate a UI first.' }])
+      return
+    }
 
     const userText = val + (selectedEl ? ` [element: ${selectedEl}]` : '')
     setChatMessages((prev) => [...prev, { role: 'user', text: userText }])
-
     setChatInput('')
+    setSelectedEl(null)
+    setSelectMode(false)
+    setIsChatLoading(true)
 
-    const aiText = `Got it! I'll ${val.toLowerCase().includes('color') || val.toLowerCase().includes('colour') ? 'update the styles for' : 'modify'} ${selectedEl || 'the component'}.`
+    try {
+      // Pass empty filePath so the backend auto-detects which file to edit
+      const resp = await editFile(generationId, '', val, accessToken)
 
-    window.setTimeout(() => {
-      const edit = { file: activeFileName, added: 3, removed: 1 }
+      // Update the file content in apiResult so the editor reflects the change
+      if (resp.content && apiResult?.codeBundle?.files) {
+        const updatedFiles = apiResult.codeBundle.files.map((f) =>
+          f.path === activeFileId || f.path.endsWith('/' + activeFileName) || f.path === activeFileName
+            ? { ...f, content: resp.content! }
+            : f,
+        )
+        setApiResult((prev) => prev ? { ...prev, codeBundle: { files: updatedFiles } } : prev)
+      }
+
+      // Reload preview if build succeeded
+      if (resp.buildSuccess) {
+        setPreviewReloadCount((c) => c + 1)
+      }
+
+      const edit = { file: activeFileName, added: 0, removed: 0 }
+      const aiText = resp.buildSuccess
+        ? `Done! Updated \`${activeFileName}\`. Build succeeded.`
+        : `Updated \`${activeFileName}\` but build had issues:\n${resp.buildOutput?.slice(-400) ?? ''}`
       setChatMessages((prev) => [...prev, { role: 'ai', text: aiText, edits: [edit] }])
       setDiffEdits([edit])
       setDiffVisible(true)
-    }, 600)
-
-    setSelectedEl(null)
-    setSelectMode(false)
+    } catch (err: any) {
+      setChatMessages((prev) => [...prev, { role: 'ai', text: `Error: ${err?.message ?? 'Unknown error'}` }])
+    } finally {
+      setIsChatLoading(false)
+    }
   }
 
   const logColor: Record<string, string> = {
@@ -1175,7 +1282,7 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 {/* Template chips */}
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 22 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
                   {[
                     { label: 'Dashboard', prompt: 'Build a SaaS analytics dashboard with sidebar, KPI cards, Chart.js revenue charts, and user data table' },
                     { label: 'Landing Page', prompt: 'Build a modern SaaS landing page with hero section, features grid, pricing table, and CTA' },
@@ -1187,6 +1294,44 @@ document.addEventListener('click', function(e) {
                       {t.label}
                     </button>
                   ))}
+                </div>
+
+                {/* Domain selector */}
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.5)' }}>Domain context</label>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,.25)' }}>
+                      — {selectedDomain ? 'manually selected' : autoDetectedDomain ? `auto-detected: ${autoDetectedDomain}` : 'auto (no match)'}
+                    </span>
+                    {selectedDomain && (
+                      <button onClick={() => setSelectedDomain(null)}
+                        style={{ fontSize: 11, color: '#818cf8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>
+                        ↺ reset to auto
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {DOMAINS.map(d => {
+                      const isActive = activeDomain === d.value
+                      const isManual = selectedDomain === d.value
+                      return (
+                        <button
+                          key={d.value}
+                          onClick={() => setSelectedDomain(prev => prev === d.value ? null : d.value)}
+                          style={{
+                            padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s',
+                            background: isActive ? (isManual ? 'rgba(99,102,241,.35)' : 'rgba(99,102,241,.15)') : 'rgba(255,255,255,.04)',
+                            border: `1px solid ${isActive ? (isManual ? 'rgba(99,102,241,.7)' : 'rgba(99,102,241,.35)') : 'rgba(255,255,255,.08)'}`,
+                            color: isActive ? '#c4b5fd' : 'rgba(255,255,255,.4)',
+                          }}>
+                          {d.emoji} {d.label}
+                          {!selectedDomain && autoDetectedDomain === d.value && (
+                            <span style={{ marginLeft: 4, fontSize: 9, color: '#22c55e' }}>●</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
@@ -1987,6 +2132,13 @@ document.addEventListener('click', function(e) {
               ↻
             </button>
 
+            <span
+              className="mono text-[9px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-slate-500"
+              title="Auto-scaled to fit panel (1280px desktop)"
+            >
+              {Math.round(previewScale * 100)}%
+            </span>
+
             <button
               className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer border ${isFullscreen ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'border-white/10 bg-white/5 text-slate-500 hover:text-slate-300 hover:bg-white/10'}`}
               onClick={() => setIsFullscreen(!isFullscreen)}
@@ -2076,12 +2228,12 @@ document.addEventListener('click', function(e) {
                         borderRadius: isMobile ? 32 : 8,
                         boxShadow: isMobile
                           ? '0 0 0 12px #0f172a, 0 0 60px rgba(0,0,0,0.8)'
-                          : !isFullscreen ? '0 0 0 1px rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.45)' : 'none',
+                          : !isFullscreen ? '0 0 0 1px rgba(255,255,255,0.10), 0 16px 48px rgba(0,0,0,0.7)' : 'none',
                         overflow: 'hidden',
-                        border: isMobile ? '2px solid rgba(255,255,255,0.05)' : '1px solid rgba(255,255,255,0.06)',
+                        border: isMobile ? '2px solid rgba(255,255,255,0.05)' : '1px solid rgba(255,255,255,0.10)',
                       }}
                     >
-                      {previewSrcDoc ? (
+                      {(builtProjectUrl || previewSrcDoc) ? (
                         <>
                           {!isMobile && (
                             <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ background: '#141927', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -2100,17 +2252,41 @@ document.addEventListener('click', function(e) {
                                 ↻
                               </button>
                               <div className="flex-1 flex items-center rounded-md px-3 min-w-0" style={{ background: '#070b14', height: 24 }}>
-                                <span className="mono truncate" style={{ fontSize: 10, color: 'rgba(148,163,184,0.6)' }}>localhost:5173/{activeFileId}</span>
+                                <span className="mono truncate" style={{ fontSize: 10, color: 'rgba(148,163,184,0.6)' }}>
+                                  {builtProjectUrl ? builtProjectUrl.replace('http://', '') : `localhost:5173/${activeFileId}`}
+                                </span>
                               </div>
                             </div>
                           )}
-                          <iframe
+                          <div
+                            ref={previewContainerRef}
+                            style={{
+                              flex: 1,
+                              overflow: 'hidden',
+                              position: 'relative',
+                              minHeight: 0,
+                            }}
+                          >
+                            <iframe
                             key={previewKey}
                             title="preview"
-                            sandbox="allow-same-origin allow-scripts"
-                            style={{ width: '100%', flex: 1, border: 'none', background: '#fff', minHeight: 0, display: 'block' }}
-                            srcDoc={previewSrcDoc}
+                            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+                            style={{
+                              width: `${100 / previewScale}%`,
+                              height: `${100 / previewScale}%`,
+                              border: 'none',
+                              background: '#fff',
+                              display: 'block',
+                              transform: `scale(${previewScale})`,
+                              transformOrigin: 'top left',
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                            }}
+                            src={builtProjectUrl ?? undefined}
+                            srcDoc={builtProjectUrl ? undefined : (previewSrcDoc ?? undefined)}
                           />
+                          </div>
                         </>
                       ) : (
                         <div className="h-full flex items-center justify-center text-slate-500 font-medium">
@@ -2135,25 +2311,16 @@ document.addEventListener('click', function(e) {
                           .filter((x) => typeof x === 'string' && x.trim())
                           .map((s) => String(s).trim())
                         : []
-                      const reqPreview = requirements.slice(0, 3).join(' · ')
+                      const _reqPreview = requirements.slice(0, 3).join(' · ')
+                      void _reqPreview
                       return (
                         <div className="flex items-center gap-6 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <span className="mono text-[9px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,.25)' }}>Provider</span>
-                            <span className="mono text-[10px] font-bold" style={{ color: '#818cf8' }}>{String(provider)}</span>
-                          </div>
                           <div className="flex items-center gap-2">
                             <span className="mono text-[9px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,.25)' }}>Active Issues</span>
                             <span className={`mono text-[10px] font-bold ${issuesCount ? 'text-red-400' : ''}`} style={{ color: issuesCount ? '#f87171' : 'rgba(255,255,255,.3)' }}>
                               {issuesCount} detected
                             </span>
                           </div>
-                          {pipeline && (
-                            <div className="flex items-center gap-2">
-                              <span className="mono text-[9px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,.25)' }}>Pipeline Execution</span>
-                              <span className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>{pipeline}</span>
-                            </div>
-                          )}
                         </div>
                       )
                     })()}
@@ -2205,30 +2372,105 @@ document.addEventListener('click', function(e) {
           </div>
         </div>
 
-        <div className="flex flex-col shrink-0 glass" style={{ width: 280, background: 'rgba(2, 6, 23, 0.4)' }}>
-          <div className="flex items-center gap-1 px-4 shrink-0 bg-white/2" style={{ height: 44, borderBottom: '1px solid var(--border)' }}>
+        <div className="flex flex-col shrink-0" style={{ width: 340, background: '#070d1a', borderLeft: '1px solid rgba(255,255,255,.07)', height: '100%', overflow: 'hidden' }}>
+          <div className="flex items-center shrink-0" style={{ height: 44, borderBottom: '1px solid rgba(255,255,255,.07)', background: 'rgba(2,6,23,0.6)' }}>
             {([
+              { id: 'chat', label: '✦ Chat' },
               { id: 'console', label: 'Console' },
-              { id: 'logs', label: 'Dashboard' },
-              { id: 'component', label: 'Component' },
+              { id: 'logs', label: 'History' },
             ] as const).map((t) => {
               const active = rightTab === t.id
               return (
                 <button
                   key={t.id}
-                  className={`relative flex-1 h-full text-[9px] font-black tracking-[0.2em] uppercase transition-all duration-300 cursor-pointer ${active ? 'text-indigo-400 bg-indigo-500/5' : 'text-slate-500 hover:text-slate-300 hover:bg-white/2'}`}
+                  className={`relative flex-1 h-full text-[9px] font-black tracking-[0.15em] uppercase transition-all duration-200 cursor-pointer ${active ? 'text-indigo-400' : 'text-slate-600 hover:text-slate-400'}`}
+                  style={{ background: active ? 'rgba(99,102,241,0.08)' : 'none', borderBottom: active ? '2px solid #6366f1' : '2px solid transparent' }}
                   onClick={() => setRightTab(t.id)}
                   type="button"
                 >
                   {t.label}
-                  {active && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_10px_#6366f1]" />
-                  )}
                 </button>
               )
             })}
           </div>
 
+          {rightTab === 'chat' ? (
+            <div className="flex flex-col flex-1 overflow-hidden">
+              {diffVisible ? (
+                <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ borderBottom: '1px solid rgba(251,191,36,.15)', background: 'rgba(251,191,36,.04)' }}>
+                  <span className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                    {diffEdits.map(e => e.file).join(', ')}
+                  </span>
+                  <div className="flex-1" />
+                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc' }} onClick={() => setDiffVisible(false)} type="button">✓ Accept</button>
+                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.2)', color: '#f87171' }} onClick={() => setDiffVisible(false)} type="button">✗ Reject</button>
+                </div>
+              ) : null}
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3" style={{ scrollBehavior: 'smooth' }}>
+                {chatMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'rgba(255,255,255,.15)' }}>
+                    <div style={{ fontSize: 32 }}>✦</div>
+                    <div className="mono text-xs text-center" style={{ color: 'rgba(255,255,255,.2)', lineHeight: 1.6 }}>
+                      Describe what you want to<br />change in the selected file
+                    </div>
+                  </div>
+                ) : chatMessages.map((m, idx) => {
+                  const isAI = m.role === 'ai'
+                  return (
+                    <div key={idx} className={`flex gap-2 ${isAI ? '' : 'flex-row-reverse'}`}>
+                      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold" style={{ background: isAI ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(255,255,255,.08)', color: isAI ? '#fff' : 'rgba(255,255,255,.5)', fontSize: 10, marginTop: 2 }}>
+                        {isAI ? '✦' : 'U'}
+                      </div>
+                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 mono text-xs leading-relaxed ${isAI ? 'rounded-tl-sm' : 'rounded-tr-sm'}`} style={{ background: isAI ? 'rgba(99,102,241,.12)' : 'rgba(255,255,255,.06)', color: isAI ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.6)', border: isAI ? '1px solid rgba(99,102,241,.2)' : '1px solid rgba(255,255,255,.06)' }}>
+                        {m.text}
+                      </div>
+                    </div>
+                  )
+                })}
+                {isChatLoading ? (
+                  <div className="flex gap-2">
+                    <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6366f1,#a5b4fc)', fontSize: 10 }}>✦</div>
+                    <div className="rounded-2xl rounded-tl-sm px-3 py-2" style={{ background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.2)' }}>
+                      <span className="mono text-xs" style={{ color: '#a5b4fc' }}>Editing {activeFileName}…</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="shrink-0 p-3" style={{ borderTop: '1px solid rgba(255,255,255,.06)' }}>
+                <div className="text-[9px] mono mb-2" style={{ color: 'rgba(255,255,255,.2)' }}>
+                  AI will pick the right file automatically
+                </div>
+                {selectedEl ? (
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="mono text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(99,102,241,.12)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.2)' }}>⊕ {selectedEl}</span>
+                    <button className="text-sm cursor-pointer" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)' }} onClick={() => setSelectedEl(null)} type="button">×</button>
+                  </div>
+                ) : null}
+                <div className="flex gap-2 items-end">
+                  <textarea
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendChat() } }}
+                    disabled={isChatLoading}
+                    placeholder={isChatLoading ? 'AI is editing…' : 'Describe your changes… (Enter to send)'}
+                    rows={3}
+                    className="mono text-xs w-full resize-none custom-scrollbar"
+                    style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 10, padding: '8px 12px', outline: 'none', color: '#f1f5f9', opacity: isChatLoading ? 0.5 : 1, lineHeight: 1.5 }}
+                  />
+                  <button
+                    className="flex items-center justify-center rounded-xl shrink-0 cursor-pointer font-bold"
+                    style={{ width: 36, height: 36, background: chatInput.trim() && !isChatLoading ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(255,255,255,.05)', border: 'none', color: chatInput.trim() && !isChatLoading ? '#fff' : 'rgba(255,255,255,.2)', fontSize: 16, transition: 'all .15s' }}
+                    onClick={() => void sendChat()}
+                    disabled={isChatLoading}
+                    type="button"
+                    aria-label="Send"
+                  >
+                    ↑
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {rightTab === 'component' ? (
               <div className="p-4">
@@ -2537,129 +2779,10 @@ document.addEventListener('click', function(e) {
               </div>
             ) : null}
           </div>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-col shrink-0" style={{ height: 210, background: '#070b14', borderTop: '1px solid rgba(255,255,255,.07)' }}>
-        {diffVisible ? (
-          <div
-            className="flex items-center gap-3 px-3 py-1 shrink-0"
-            style={{ borderBottom: '1px solid rgba(255,255,255,.07)', background: 'rgba(251,191,36,.04)' }}
-          >
-            <div className="flex gap-3 mono text-xs">
-              {diffEdits.map((e) => (
-                <span key={e.file} style={{ color: 'rgba(255,255,255,.35)' }}>
-                  {e.file} <span style={{ color: '#818cf8' }}>+{e.added}</span>{' '}
-                  <span style={{ color: '#f87171' }}>-{e.removed}</span>
-                </span>
-              ))}
-            </div>
-            <div className="flex-1" />
-            <button
-              className="text-xs px-3 py-1 rounded cursor-pointer"
-              style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc' }}
-              onClick={() => setDiffVisible(false)}
-              type="button"
-            >
-              ✓ Accept
-            </button>
-            <button
-              className="text-xs px-3 py-1 rounded cursor-pointer"
-              style={{ background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.25)', color: '#f87171' }}
-              onClick={() => setDiffVisible(false)}
-              type="button"
-            >
-              ✗ Reject
-            </button>
-          </div>
-        ) : null}
-
-        <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-3" style={{ scrollBehavior: 'smooth' }}>
-          {chatMessages.map((m, idx) => {
-            const isAI = m.role === 'ai'
-            return (
-              <div key={idx} className="flex items-start gap-2 fade-up">
-                <div
-                  className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center font-bold mt-0.5"
-                  style={{
-                    background: isAI ? 'linear-gradient(135deg,#a5b4fc,#818cf8)' : 'rgba(255,255,255,.1)',
-                    color: isAI ? '#000' : 'rgba(255,255,255,.6)',
-                    fontSize: 10,
-                  }}
-                >
-                  {isAI ? '✦' : 'U'}
-                </div>
-                <div>
-                  <span className="mono leading-relaxed" style={{ fontSize: 12, color: isAI ? 'rgba(255,255,255,.75)' : 'rgba(255,255,255,.5)' }}>
-                    {m.text}
-                  </span>
-                  {m.edits ? (
-                    <div className="flex gap-1 mt-1">
-                      {m.edits.map((e) => (
-                        <span
-                          key={e.file}
-                          className="mono px-2 py-0.5 rounded"
-                          style={{ fontSize: 10, background: 'rgba(255,255,255,.05)', color: 'rgba(255,255,255,.3)' }}
-                        >
-                          {e.file} <span style={{ color: '#818cf8' }}>+{e.added}</span>{' '}
-                          <span style={{ color: '#f87171' }}>-{e.removed}</span>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        <div className="flex gap-2 items-end px-3 pb-3 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,.06)' }}>
-          <div className="flex-1 rounded-xl p-2" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.09)' }}>
-            {selectedEl ? (
-              <div className="flex items-center gap-2 mb-2">
-                <span className="mono text-xs px-2 py-0.5 rounded font-bold" style={{ background: 'rgba(99,102,241,.12)', color: '#a5b4fc' }}>
-                  ⊕ {selectedEl}
-                </span>
-                <button
-                  className="text-sm leading-none cursor-pointer"
-                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)' }}
-                  onClick={() => setSelectedEl(null)}
-                  type="button"
-                >
-                  ×
-                </button>
-              </div>
-            ) : null}
-
-            <input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') sendChat()
-              }}
-              placeholder={selectedEl ? `What to do with "${selectedEl}"?` : 'Ask AI to modify your app… (Enter to send)'}
-              className="mono text-xs w-full"
-              style={{ background: 'none', border: 'none', outline: 'none', color: '#f1f5f9' }}
-            />
-          </div>
-          <button
-            className="flex items-center justify-center rounded-xl shrink-0 cursor-pointer text-base"
-            style={{
-              width: 38,
-              height: 38,
-              background: chatInput.trim() ? '#a5b4fc' : 'rgba(255,255,255,.05)',
-              border: 'none',
-              color: chatInput.trim() ? '#000' : 'rgba(255,255,255,.2)',
-              transition: 'transform .15s',
-            }}
-            onClick={sendChat}
-            type="button"
-            aria-label="Send"
-          >
-            ↑
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
