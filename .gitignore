@@ -44,6 +44,7 @@ tmp-*
 
 # --- Local analysis / notes (not for repo) ---
 PROJECT_ANALYSIS.md
+RAPPORT_TECHNIQUE.md
 
 # --- Build caches ---
 tsconfig.tsbuildinfo
