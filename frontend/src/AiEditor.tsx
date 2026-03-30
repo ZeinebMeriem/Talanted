@@ -1882,7 +1882,7 @@ document.addEventListener('click', function(e) {
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)' }}>Admin</span>
                     )}
                   </div>
-                  <p style={{ fontSize: 15, color: 'rgba(255,255,255,.5)', margin: '0 0 4px' }}>@{userProfile?.username || username}</p>
+                  {(() => { const uname = userProfile?.username || username; const uemail = userProfile?.email || email; return uname !== uemail ? <p style={{ fontSize: 15, color: 'rgba(255,255,255,.5)', margin: '0 0 4px' }}>@{uname}</p> : null; })()}
                   {(userProfile?.email || email) && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>{userProfile?.email || email}</p>
