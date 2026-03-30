@@ -318,6 +318,27 @@ export type EditFileResponse = {
   buildOutput?: string
 }
 
+export type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  versionCreated: number
+  createdAt: string
+}
+
+export async function getChatHistory(
+  generationId: string,
+  accessToken?: string,
+): Promise<ChatMessage[]> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/chat`,
+    { headers: { ...authHeaders(accessToken) } },
+  )
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return Array.isArray(data) ? (data as ChatMessage[]) : []
+}
+
 export async function editFile(
   generationId: string,
   filePath: string,

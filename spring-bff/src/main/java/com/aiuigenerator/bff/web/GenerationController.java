@@ -16,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.aiuigenerator.bff.domain.AuditEvent;
 import com.aiuigenerator.bff.domain.Generation;
+import com.aiuigenerator.bff.dto.ChatMessageDto;
 import com.aiuigenerator.bff.dto.CodeBundleDto;
 import com.aiuigenerator.bff.dto.EditFileRequest;
 import com.aiuigenerator.bff.dto.EditFileResponse;
@@ -88,5 +89,10 @@ public class GenerationController {
         body.generationId = id;
         EditFileResponse resp = service.editFile(id, body.filePath, body.instruction);
         return ResponseEntity.ok(resp);
+    }
+
+    @GetMapping("/{id}/chat")
+    public List<ChatMessageDto> chatHistory(@PathVariable("id") String id) {
+        return service.getChatHistory(id);
     }
 }

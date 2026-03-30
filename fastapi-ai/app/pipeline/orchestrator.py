@@ -358,6 +358,168 @@ class Orchestrator:
                     result.append(rel)
         return result
 
+    def _detect_new_page_intent(self, instruction: str, src_dir: str) -> tuple[str, str] | None:
+        """Detect if the instruction is asking to add a NEW page that doesn't exist yet.
+
+        Returns (PageComponentName, relative_file_path) e.g. ('StatistiquesPage', 'pages/StatistiquesPage.tsx')
+        or None if it's an edit to an existing file.
+        """
+        instruction_lower = instruction.lower()
+
+        # Must contain an "add/create" keyword
+        add_keywords = ["ajoute", "ajouter", "add", "crée", "créer", "create", "nouvelle", "nouveau", "new", "faire", "make", "génère", "genere", "generate"]
+        if not any(k in instruction_lower for k in add_keywords):
+            return None
+
+        # Must mention page/section/tab/view
+        page_keywords = ["page", "section", "onglet", "tab", "vue", "view", "module", "écran", "ecran"]
+        if not any(k in instruction_lower for k in page_keywords):
+            return None
+
+        # Collect existing page file names (without extension)
+        pages_dir = os.path.join(src_dir, "pages")
+        existing_basenames: list[str] = []
+        if os.path.exists(pages_dir):
+            existing_basenames = [
+                os.path.splitext(f)[0].lower()
+                for f in os.listdir(pages_dir)
+                if f.endswith((".tsx", ".ts"))
+            ]
+
+        # Ask planner LLM for the PascalCase component name
+        system_msg = "You are a React project assistant. Answer with ONLY a PascalCase component name or the word 'none'."
+        user_msg = (
+            f"User instruction: \"{instruction}\"\n"
+            f"Existing page files (lowercase, no extension): {existing_basenames}\n\n"
+            "Is the user asking to CREATE A NEW PAGE that does not already exist?\n"
+            "If YES, reply with just the PascalCase component name ending in 'Page' (e.g. 'StatistiquesPage').\n"
+            "If NO or uncertain, reply with 'none'."
+        )
+        try:
+            answer = self.planner.provider.chat(system_msg, user_msg).strip().strip("`\"' \n")
+            if not answer or answer.lower() == "none" or not answer[0].isupper():
+                return None
+            # Ensure ends with Page
+            if not answer.endswith("Page"):
+                answer += "Page"
+            file_path = f"pages/{answer}.tsx"
+            # Double-check it doesn't already exist
+            if os.path.exists(os.path.join(src_dir, file_path)):
+                logger.info("_detect_new_page_intent: %s already exists, treating as edit", file_path)
+                return None
+            logger.info("_detect_new_page_intent: detected new page request → %s", file_path)
+            return (answer, file_path)
+        except Exception as exc:
+            logger.warning("_detect_new_page_intent: LLM failed (%s), skipping new-page flow", exc)
+            return None
+
+    def _create_new_page(
+        self,
+        req: "EditFileRequest",
+        src_dir: str,
+        project_path: str,
+        page_name: str,
+        page_rel_path: str,
+    ) -> "EditFileResponse":
+        """Generate a new page file and update App.tsx to import + route it."""
+        # Read App.tsx for context
+        app_tsx_path = os.path.join(src_dir, "App.tsx")
+        with open(app_tsx_path, "r", encoding="utf-8") as fh:
+            app_code = fh.read()
+
+        coder_system = (
+            "You are an expert React/TypeScript/Tailwind CSS developer. "
+            "You write clean, complete components. No markdown fences, no explanation — raw TSX code only."
+        )
+
+        # Step 1: Generate the new page component
+        page_prompt = (
+            f"Create a new React page component called `{page_name}`.\n\n"
+            f"USER INSTRUCTION: {req.instruction}\n\n"
+            f"CONTEXT — App.tsx (use same Tailwind color scheme, same UI patterns):\n"
+            f"```\n{app_code[:3000]}\n```\n\n"
+            "RULES:\n"
+            f"- The component must be named `{page_name}` and exported as default.\n"
+            "- Use Tailwind CSS for styling. Match the color scheme of the app shown in App.tsx.\n"
+            "- Include realistic placeholder content (KPIs, charts, tables, forms — whatever fits the page).\n"
+            "- Import from 'recharts' for any charts, 'lucide-react' for icons.\n"
+            "- Return ONLY raw TypeScript/TSX code. No markdown, no explanations."
+        )
+        new_page_code = self.llm_codegen.provider.chat(coder_system, page_prompt)
+
+        # Clean up
+        new_page_code = re.sub(r"^```(?:tsx?|jsx?|typescript|javascript)?\n?", "", new_page_code.strip())
+        new_page_code = re.sub(r"\n?```$", "", new_page_code.strip())
+        new_page_code = self._sanitize_tsx(new_page_code)
+        new_page_code = self._add_missing_imports(new_page_code)
+        new_page_code = self._fix_lucide_imports(new_page_code)
+        new_page_code = self._ensure_default_export(new_page_code, page_rel_path)
+
+        # Write the new page file
+        page_full_path = os.path.join(src_dir, page_rel_path)
+        os.makedirs(os.path.dirname(page_full_path), exist_ok=True)
+        with open(page_full_path, "w", encoding="utf-8") as fh:
+            fh.write(new_page_code)
+        logger.info("_create_new_page: wrote %s", page_full_path)
+
+        # Step 2: Update App.tsx — add import + nav item + route
+        import_path = "./" + page_rel_path.replace(".tsx", "")
+        app_update_prompt = (
+            f"File to edit: `App.tsx`\n\n"
+            f"USER INSTRUCTION: Add `{page_name}` to the sidebar navigation and routing.\n\n"
+            f"CURRENT App.tsx:\n```\n{app_code}\n```\n\n"
+            "RULES:\n"
+            f"- Add: `import {page_name} from '{import_path}';`\n"
+            f"- Add a nav item for {page_name} in the sidebar (use the same pattern as existing nav items).\n"
+            f"- Add a route/conditional render for {page_name} (same pattern as existing pages).\n"
+            "- Do NOT redefine any existing components. Do NOT change any other logic or styles.\n"
+            "- Return the COMPLETE App.tsx with ONLY these additions. No markdown, no explanation."
+        )
+        new_app_code = self.llm_codegen.provider.chat(coder_system, app_update_prompt)
+
+        # Clean up App.tsx
+        new_app_code = re.sub(r"^```(?:tsx?|jsx?|typescript|javascript)?\n?", "", new_app_code.strip())
+        new_app_code = re.sub(r"\n?```$", "", new_app_code.strip())
+        new_app_code = self._sanitize_tsx(new_app_code)
+        new_app_code = self._add_missing_imports(new_app_code)
+        new_app_code = self._fix_lucide_imports(new_app_code)
+
+        with open(app_tsx_path, "w", encoding="utf-8") as fh:
+            fh.write(new_app_code)
+        logger.info("_create_new_page: updated App.tsx with %s route", page_name)
+
+        # Build once
+        template_dir = "/app/vite-template"
+        vite_bin = os.path.join(template_dir, "node_modules", ".bin", "vite")
+        try:
+            result = subprocess.run(
+                [vite_bin, "build"],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            build_success = result.returncode == 0
+            build_output = (result.stdout + result.stderr)[-2000:]
+        except subprocess.TimeoutExpired:
+            build_success = False
+            build_output = "Build timed out after 120 seconds"
+        except Exception as exc:
+            build_success = False
+            build_output = str(exc)
+
+        if not build_success:
+            logger.warning("_create_new_page: build failed:\n%s", build_output)
+        else:
+            logger.info("_create_new_page: build succeeded for new page %s", page_name)
+
+        return EditFileResponse(
+            filePath=page_rel_path,
+            content=new_page_code,
+            buildSuccess=build_success,
+            buildOutput=build_output,
+        )
+
     def _pick_file_to_edit(self, src_dir: str, instruction: str) -> str:
         """Ask the planner LLM which file to edit for the given instruction."""
         files = self._list_src_files(src_dir)
@@ -438,7 +600,13 @@ class Orchestrator:
         provided = (req.filePath or "").strip().lstrip("/")
         if provided.startswith("src/"):
             provided = provided[len("src/"):]
+
+        # Check if the user wants to CREATE a new page (no explicit file given)
         if not provided:
+            new_page = self._detect_new_page_intent(req.instruction, src_dir)
+            if new_page:
+                page_name, page_rel_path = new_page
+                return self._create_new_page(req, src_dir, project_path, page_name, page_rel_path)
             rel_path = self._pick_file_to_edit(src_dir, req.instruction)
             logger.info("edit_file: auto-selected file %s", rel_path)
         else:

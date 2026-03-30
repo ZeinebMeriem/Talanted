@@ -72,3 +72,19 @@ class EditFileResponse(BaseModel):
     content: str
     buildSuccess: bool
     buildOutput: str
+
+
+class ProjectFilesResponse(BaseModel):
+    """All source files of a project read directly from disk."""
+    files: list[CodeFile]
+
+
+class RestoreRequest(BaseModel):
+    """Restore a set of files to disk and rebuild (used by rollback)."""
+    generationId: str
+    files: list[CodeFile]
+
+
+class RestoreResponse(BaseModel):
+    buildSuccess: bool
+    buildOutput: str

@@ -19,9 +19,11 @@ import {
   editFile,
   rollbackGeneration,
   setAdminUserEnabled,
+  getChatHistory,
   type AdminStats,
   type AdminUser,
   type AuditEventListItem,
+  type ChatMessage as ApiChatMessage,
   type DailyChartItem,
   type GenerationListItem,
   type GenerationVersionsResponse,
@@ -253,8 +255,15 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const loadGeneration = useCallback(async (generationId: string) => {
     try {
       setLoadingProjectId(generationId)
-      const bundle = await getGenerationCode(generationId, accessToken)
+      const [bundle, history] = await Promise.all([
+        getGenerationCode(generationId, accessToken),
+        getChatHistory(generationId, accessToken),
+      ])
       setApiResult({ generationId, codeBundle: bundle, uiSpec: undefined, aiReport: undefined })
+      setChatMessages(history.map((m: ApiChatMessage) => ({
+        role: m.role === 'user' ? 'user' : 'ai',
+        text: m.content,
+      })))
       setShowSuccessOverlay(false)
       setIdeVisible(true)
       setCenterTab('preview')

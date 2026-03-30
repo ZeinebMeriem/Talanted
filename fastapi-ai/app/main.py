@@ -17,6 +17,9 @@ from .schemas import (
     GenerateResponse,
     EditFileRequest,
     EditFileResponse,
+    ProjectFilesResponse,
+    RestoreRequest,
+    RestoreResponse,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -52,3 +55,44 @@ def internal_generate(payload: GenerateRequest) -> GenerateResponse:
 @app.post("/internal/edit-file", response_model=EditFileResponse)
 def internal_edit_file(payload: EditFileRequest) -> EditFileResponse:
     return orchestrator.edit_file(payload)
+
+
+@app.get("/internal/projects/{generation_id}/files", response_model=ProjectFilesResponse)
+def internal_get_project_files(generation_id: str) -> ProjectFilesResponse:
+    """Read all source files directly from disk — source of truth for the CODE tab."""
+    import re
+    projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", generation_id)
+    src_dir = os.path.join(projects_dir, safe_id, "src")
+    files: list[CodeFile] = []
+    if os.path.isdir(src_dir):
+        for root, _, filenames in os.walk(src_dir):
+            for fname in sorted(filenames):
+                full = os.path.join(root, fname)
+                rel = os.path.relpath(full, os.path.join(projects_dir, safe_id)).replace("\\", "/")
+                try:
+                    with open(full, "r", encoding="utf-8") as fh:
+                        files.append(CodeFile(path=rel, content=fh.read()))
+                except Exception:
+                    pass
+    return ProjectFilesResponse(files=files)
+
+
+@app.post("/internal/projects/{generation_id}/restore", response_model=RestoreResponse)
+def internal_restore_project(generation_id: str, payload: RestoreRequest) -> RestoreResponse:
+    """Write files to disk and rebuild — used by rollback."""
+    import re, subprocess
+    projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", generation_id)
+    project_path = os.path.join(projects_dir, safe_id)
+    for cf in payload.files:
+        full = os.path.join(project_path, cf.path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as fh:
+            fh.write(cf.content)
+    vite_bin = "/app/vite-template/node_modules/.bin/vite"
+    result = subprocess.run(
+        [vite_bin, "build"], cwd=project_path, capture_output=True, text=True, timeout=120
+    )
+    success = result.returncode == 0
+    return RestoreResponse(buildSuccess=success, buildOutput=(result.stdout + result.stderr)[-2000:])

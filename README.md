@@ -2,7 +2,7 @@
 
 > Describe your idea. Get a working interface.
 
-A full-stack application that generates functional UI code from natural language prompts using a multi-agent AI pipeline. Built as a PFE (Projet de Fin d'Études) at **Talan**.
+A full-stack application that generates functional React UI code from natural language prompts or uploaded documents, using a multi-agent AI pipeline. Built as a PFE (Projet de Fin d'Études) at **Talan**.
 
 ---
 
@@ -22,18 +22,33 @@ Frontend (React)  →  Spring BFF (Java)  →  FastAPI AI (Python)
 
 ## Features
 
-- **AI Code Generation** — Natural language prompt → working React or HTML/CSS app
-- **Multi-LLM Support** — Gemini, Groq, OpenAI, or local Ollama (air-gapped)
-- **Live Preview** — Rendered app in real-time inside the browser
-- **Code Editor** — Browse and view all generated files
-- **Version History** — Every generation is versioned, rollback anytime
+### Generation
+- **AI Code Generation** — Natural language prompt → working React + Tailwind app
+- **Document-to-UI** — Upload a PDF or image (wireframe, mockup, spec) → UI generated from its content via OCR
+- **Multi-LLM Support** — Gemini, Groq, OpenAI, Anthropic, OpenRouter, or local Ollama (air-gapped)
+- **Live Preview** — Rendered app in real-time inside the browser (iframe, Vite build)
+- **AI Report** — Each generation includes a structured design report (colors, typography, components used)
+
+### Editing
+- **Chat-Based Editing** — Describe a change in natural language → the right file is updated automatically
+- **Auto File Detection** — The system picks which file to edit based on the instruction (no manual file selection)
+- **New Page Creation** — Asking to "add a statistics page" creates a separate `pages/StatistiquesPage.tsx` and updates routing automatically
+- **Code Viewer** — Browse all generated source files; always in sync with the live preview (reads from disk)
+
+### Versioning
+- **Version History** — A new version is created after every successful chat edit
+- **Rollback** — Restore any previous version; preview and code viewer both update instantly
+- **Persistent Chat History** — Conversation is saved per project and reloaded on next open (like Lovable)
+
+### User & Admin
+- **My Projects** — Card grid of all past generations with preview thumbnails
+- **User Profile** — Stats dashboard (total projects, tokens used, success rate)
+- **Admin Dashboard** — Per-user statistics, Keycloak user list, document management
 - **ZIP Download** — Export the full project as a ZIP
-- **My Projects** — Card grid of all past generations
-- **User Profile** — Stats dashboard (total projects, success rate)
-- **Custom Login UI** — Animated dark Keycloak theme matching the app
-- **User Registration** — Self sign-up enabled
 - **Audit Logs** — Full action trail per generation
-- **Enterprise Auth** — Keycloak OAuth2/OIDC with JWT validation
+- **Custom Login UI** — Animated dark Keycloak theme matching the app design
+- **User Registration** — Self sign-up with email verification (Gmail SMTP)
+- **Enterprise Auth** — Keycloak 25 OAuth2/OIDC with JWT validation, RBAC roles
 
 ---
 
@@ -72,7 +87,7 @@ cp .env.example .env
 # 3. Start all services
 docker compose up -d --build
 
-# 4. Open the app (wait ~60s for Keycloak to be ready)
+# 4. Open the app (wait ~60s for Keycloak to initialize)
 http://localhost:5173
 ```
 
@@ -107,18 +122,24 @@ http://localhost:5173
 Configure in `.env`:
 
 ```bash
-# Choose provider: gemini | groq | openai | ollama
+# Choose provider: gemini | groq | openai | anthropic | openrouter | ollama
 PLANNER_PROVIDER=gemini
 CODER_PROVIDER=gemini
 
-# API Keys
+# API Keys (set only the ones you use)
 GEMINI_API_KEY=your_key_here
 GROQ_API_KEY=
 OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+OPENROUTER_API_KEY=
 
 # Local Ollama (no internet required)
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 OLLAMA_MODEL=qwen2.5:3b
+
+# Optional: separate planner and coder models
+ANTHROPIC_PLANNER_MODEL=claude-haiku-4-5-20251001
+ANTHROPIC_CODER_MODEL=claude-sonnet-4-6
 ```
 
 ---
@@ -126,51 +147,120 @@ OLLAMA_MODEL=qwen2.5:3b
 ## Project Structure
 
 ```
-├── frontend/               React + Vite (TypeScript)
+├── frontend/                   React + Vite (TypeScript)
 │   └── src/
-│       ├── App.tsx         Auth wrapper (OIDC)
-│       ├── AiEditor.tsx    Main application UI
-│       └── api.ts          API client
-├── spring-bff/             Spring Boot 3 (Java)
+│       ├── App.tsx             Auth wrapper (OIDC)
+│       ├── AiEditor.tsx        Main application UI (editor, preview, chat, versioning)
+│       └── api.ts              API client
+├── spring-bff/                 Spring Boot 3 (Java)
 │   └── src/main/java/
-│       ├── config/         Security, CORS, S3
-│       ├── domain/         MongoDB documents
-│       ├── repo/           Spring Data repositories
-│       ├── service/        Business logic
-│       └── web/            REST controllers
-├── fastapi-ai/             FastAPI (Python)
+│       ├── config/             Security, CORS, S3, MongoDB
+│       ├── domain/             MongoDB documents (Generation, CodeVersion, ChatMessage, AuditLog)
+│       ├── repo/               Spring Data repositories
+│       ├── service/            Business logic (GenerationService, FastApiClient, KeycloakAdminService)
+│       └── web/                REST controllers (GenerationController, AdminController, UserController)
+├── fastapi-ai/                 FastAPI (Python)
 │   └── app/
-│       ├── main.py         API entry point
-│       ├── schemas.py      Pydantic models
-│       └── pipeline/       8 AI agents + orchestrator
+│       ├── main.py             API entry point + internal endpoints
+│       ├── schemas.py          Pydantic models
+│       └── pipeline/           Multi-agent orchestrator + 7 specialized agents
+│           ├── orchestrator.py     Main pipeline + edit_file logic
+│           ├── agents/
+│           │   ├── ocr_agent.py        Image/PDF text extraction
+│           │   ├── doc_extract_agent.py  Document structure analysis
+│           │   ├── text_prep_agent.py    Text normalization
+│           │   ├── planner_agent.py      UI spec planning
+│           │   ├── design_agent.py       Design system generation
+│           │   ├── codegen_agent.py      React code generation
+│           │   └── image_agent.py        Image asset handling
+│           └── llm_provider.py     Multi-provider LLM abstraction
 ├── keycloak/
-│   ├── realm-ai-ui.json    Realm configuration
-│   └── themes/             Custom dark login UI
+│   ├── realm-ai-ui.json        Realm configuration (users, clients, roles)
+│   └── themes/                 Custom dark login/register/email UI
 ├── docs/
-│   └── PROJECT_REPORT.md  Full technical report
-└── docker-compose.yml      Full stack deployment
+│   └── PROJECT_REPORT.md       Full technical report
+└── docker-compose.yml          Full stack deployment
 ```
 
 ---
 
 ## AI Pipeline
 
-The generation goes through 8 specialized agents:
+The generation goes through 7 specialized agents:
 
 ```
-Prompt → OCR → DocExtract → TextPrep → Planner → DesignSystem → Codegen → ImageAgent → Validator
+Input (prompt or document)
+    │
+    ▼
+OCR Agent          — Extracts text from images/PDFs (pytesseract + PIL)
+    │
+    ▼
+DocExtract Agent   — Identifies UI sections from document content
+    │
+    ▼
+TextPrep Agent     — Normalizes and structures the input text
+    │
+    ▼
+Planner Agent      — Produces a structured UI specification (JSON)
+    │
+    ▼
+DesignSystem Agent — Generates color palette, typography, component list
+    │
+    ▼
+Codegen Agent      — Generates full React + Tailwind TSX code
+    │
+    ▼
+ImageAgent         — Handles image assets if any
+    │
+    ▼
+Output: uiSpec + codeBundle + aiReport
 ```
 
-Each agent has a single responsibility. Output: `uiSpec + codeBundle + aiReport`.
+Each agent has a single responsibility and uses its own LLM call. The orchestrator handles inter-agent communication and error recovery.
+
+---
+
+## Chat Editing Pipeline
+
+When the user sends a message in the editor:
+
+```
+User instruction
+    │
+    ▼
+_detect_new_page_intent()   — Is this asking to CREATE a new page?
+    │ yes                        │ no
+    ▼                            ▼
+_create_new_page()          _pick_file_to_edit()   — Which file to modify?
+  1. LLM generates               │
+     pages/XxxPage.tsx            ▼
+  2. LLM updates App.tsx     LLM edits the file
+     (import + route)             │
+    │                            │
+    └──────────────┬─────────────┘
+                   ▼
+             Vite build
+                   │
+                   ▼
+          New CodeVersion saved
+          Chat message saved to MongoDB
+```
+
+---
+
+## Versioning
+
+Every successful chat edit creates a new `CodeVersion` in MongoDB containing a snapshot of all source files. Rollback writes those files back to disk and rebuilds — both the preview and the code viewer reflect the restored state instantly.
 
 ---
 
 ## Security
 
 - All `/api/**` endpoints require a valid JWT (`Authorization: Bearer <token>`)
-- JWT validated against Keycloak JWKS endpoint
-- Stateless — no server-side sessions
+- JWT validated against Keycloak JWKS endpoint (stateless)
+- Role-based access: `app-user` for regular users, `app-admin` for admin dashboard
 - CORS restricted to frontend origin
+- MinIO pre-signed URLs for secure file access
 
 ---
 
@@ -180,13 +270,15 @@ Each agent has a single responsibility. Output: `uiSpec + codeBundle + aiReport`
 |--|--|--|
 | Hosting | Self-hosted (on-premise) | Cloud SaaS only |
 | LLM | Multi-provider + local Ollama | Single provider |
+| Input | Prompt or document (PDF/image) | Prompt only |
 | Auth | Enterprise Keycloak (SSO/RBAC) | Basic OAuth |
 | Offline | Works air-gapped (Ollama) | No |
 | Audit | Full audit trail | No |
-| Versioning | Built-in rollback | Paid plans only |
+| Versioning | Built-in rollback (all plans) | Paid plans only |
+| Chat history | Persistent per project | Yes (paid) |
 
 ---
 
 ## License
 
-PFE Project — Talan © 2025
+PFE Project — Talan © 2026

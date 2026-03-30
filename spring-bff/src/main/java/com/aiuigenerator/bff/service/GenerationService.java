@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.aiuigenerator.bff.domain.AiReport;
+import com.aiuigenerator.bff.domain.ChatMessage;
 import com.aiuigenerator.bff.domain.CodeVersion;
 import com.aiuigenerator.bff.domain.FileEntry;
 import com.aiuigenerator.bff.domain.Generation;
@@ -20,8 +21,8 @@ import com.aiuigenerator.bff.domain.GenerationFile;
 import com.aiuigenerator.bff.domain.GenerationStatus;
 import com.aiuigenerator.bff.domain.UiSpecVersion;
 import com.aiuigenerator.bff.dto.AiReportDto;
+import com.aiuigenerator.bff.dto.ChatMessageDto;
 import com.aiuigenerator.bff.dto.CodeBundleDto;
-import com.aiuigenerator.bff.dto.CodeFileDto;
 import com.aiuigenerator.bff.dto.EditFileRequest;
 import com.aiuigenerator.bff.dto.EditFileResponse;
 import com.aiuigenerator.bff.dto.FileRefDto;
@@ -30,7 +31,10 @@ import com.aiuigenerator.bff.dto.FastApiGenerateResponse;
 import com.aiuigenerator.bff.dto.GenerationCreateResponse;
 import com.aiuigenerator.bff.dto.GenerationRollbackResponse;
 import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
+import com.aiuigenerator.bff.dto.RestoreRequest;
+import com.aiuigenerator.bff.dto.CodeFileDto;
 import com.aiuigenerator.bff.repo.AiReportRepository;
+import com.aiuigenerator.bff.repo.ChatMessageRepository;
 import com.aiuigenerator.bff.repo.CodeVersionRepository;
 import com.aiuigenerator.bff.repo.GenerationFileRepository;
 import com.aiuigenerator.bff.repo.GenerationRepository;
@@ -53,6 +57,7 @@ public class GenerationService {
     private final UiSpecVersionRepository uiSpecRepo;
     private final CodeVersionRepository codeRepo;
     private final AiReportRepository reportRepo;
+    private final ChatMessageRepository chatRepo;
 
     public GenerationService(
             UploadValidator validator,
@@ -63,7 +68,8 @@ public class GenerationService {
             GenerationFileRepository fileRepo,
             UiSpecVersionRepository uiSpecRepo,
             CodeVersionRepository codeRepo,
-            AiReportRepository reportRepo) {
+            AiReportRepository reportRepo,
+            ChatMessageRepository chatRepo) {
         this.validator = validator;
         this.fileStorage = fileStorage;
         this.fastApi = fastApi;
@@ -73,6 +79,7 @@ public class GenerationService {
         this.uiSpecRepo = uiSpecRepo;
         this.codeRepo = codeRepo;
         this.reportRepo = reportRepo;
+        this.chatRepo = chatRepo;
     }
 
     public GenerationCreateResponse createGeneration(String userId, String prompt, List<MultipartFile> files, String domain) {
@@ -265,19 +272,10 @@ public class GenerationService {
     }
 
     public CodeBundleDto getCode(String generationId) {
-        Generation g = generationRepo.findById(generationId)
-                .orElseThrow(() -> new IllegalArgumentException("generation not found"));
-
-        CodeVersion cv = codeRepo.findByGenerationIdAndVersion(generationId, g.getActiveVersion())
-                .orElseThrow(() -> new IllegalArgumentException("code version not found"));
-
+        // Read directly from disk — source of truth, always in sync with the preview.
+        var projectFiles = fastApi.getProjectFiles(generationId);
         CodeBundleDto bundle = new CodeBundleDto();
-        bundle.files = cv.getFiles() == null ? List.of() : cv.getFiles().stream().map(fe -> {
-            CodeFileDto dto = new CodeFileDto();
-            dto.path = fe.path();
-            dto.content = fe.content();
-            return dto;
-        }).collect(Collectors.toList());
+        bundle.files = projectFiles.files == null ? List.of() : projectFiles.files;
         return bundle;
     }
 
@@ -286,17 +284,29 @@ public class GenerationService {
         req.generationId = generationId;
         req.filePath = filePath;
         req.instruction = instruction;
+
+        // Save the user message before calling FastAPI
+        ChatMessage userMsg = new ChatMessage();
+        userMsg.setId(ulid.nextULID());
+        userMsg.setGenerationId(generationId);
+        userMsg.setRole("user");
+        userMsg.setContent(instruction);
+        userMsg.setVersionCreated(0);
+        userMsg.setCreatedAt(Instant.now());
+        chatRepo.save(userMsg);
+
         EditFileResponse resp = fastApi.editFile(req);
 
         // On successful edit, create a new CodeVersion (activeVersion + 1) so that
         // every chat edit becomes a rollback checkpoint.
+        int newVersion = 0;
         if (resp.buildSuccess) {
             Generation g = generationRepo.findById(generationId).orElse(null);
             if (g != null) {
                 int currentVersion = g.getActiveVersion();
+                final int[] versionHolder = {currentVersion};
                 codeRepo.findByGenerationIdAndVersion(generationId, currentVersion)
                         .ifPresent(currentCv -> {
-                            // Build new file list: copy all files, replace the edited one
                             String editedPath = resp.filePath.startsWith("src/")
                                     ? resp.filePath : "src/" + resp.filePath;
                             List<FileEntry> newFiles = new ArrayList<>(
@@ -305,7 +315,6 @@ public class GenerationService {
                                     || fe.path().equals(resp.filePath));
                             newFiles.add(new FileEntry(editedPath, resp.content));
 
-                            // Save new version
                             CodeVersion newCv = new CodeVersion();
                             newCv.setCodeVersionId(ulid.nextULID());
                             newCv.setGenerationId(generationId);
@@ -314,15 +323,42 @@ public class GenerationService {
                             newCv.setCreatedAt(Instant.now());
                             codeRepo.save(newCv);
 
-                            // Advance activeVersion on the generation
+                            versionHolder[0] = currentVersion + 1;
                             g.setActiveVersion(currentVersion + 1);
                             g.setUpdatedAt(Instant.now());
                             generationRepo.save(g);
                         });
+                newVersion = versionHolder[0];
             }
         }
 
+        // Save the assistant reply with the version it created
+        String replyText = resp.buildSuccess
+                ? "Done! Updated `" + resp.filePath + "`. Build succeeded."
+                : "Edit failed: " + resp.buildOutput;
+        ChatMessage assistantMsg = new ChatMessage();
+        assistantMsg.setId(ulid.nextULID());
+        assistantMsg.setGenerationId(generationId);
+        assistantMsg.setRole("assistant");
+        assistantMsg.setContent(replyText);
+        assistantMsg.setVersionCreated(newVersion);
+        assistantMsg.setCreatedAt(Instant.now());
+        chatRepo.save(assistantMsg);
+
         return resp;
+    }
+
+    public List<ChatMessageDto> getChatHistory(String generationId) {
+        Sort byDate = Sort.by(Sort.Direction.ASC, "createdAt");
+        return chatRepo.findByGenerationId(generationId, byDate).stream().map(m -> {
+            ChatMessageDto dto = new ChatMessageDto();
+            dto.id = m.getId();
+            dto.role = m.getRole();
+            dto.content = m.getContent();
+            dto.versionCreated = m.getVersionCreated();
+            dto.createdAt = m.getCreatedAt();
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     public GenerationRollbackResponse rollback(String generationId, int targetVersion) {
@@ -333,11 +369,19 @@ public class GenerationService {
         Generation g = generationRepo.findById(generationId)
                 .orElseThrow(() -> new IllegalArgumentException("generation not found"));
 
-        // Ensure the requested version exists before switching the pointer.
-        uiSpecRepo.findByGenerationIdAndVersion(generationId, targetVersion)
-                .orElseThrow(() -> new IllegalArgumentException("uiSpec version not found"));
-        codeRepo.findByGenerationIdAndVersion(generationId, targetVersion)
+        CodeVersion cv = codeRepo.findByGenerationIdAndVersion(generationId, targetVersion)
                 .orElseThrow(() -> new IllegalArgumentException("code version not found"));
+
+        // Restore files to disk and rebuild so preview + CODE tab reflect the target version
+        RestoreRequest restoreReq = new RestoreRequest();
+        restoreReq.generationId = generationId;
+        restoreReq.files = cv.getFiles() == null ? List.of() : cv.getFiles().stream().map(fe -> {
+            CodeFileDto dto = new CodeFileDto();
+            dto.path = fe.path();
+            dto.content = fe.content();
+            return dto;
+        }).collect(Collectors.toList());
+        fastApi.restoreProject(restoreReq);
 
         int previous = g.getActiveVersion();
         g.setActiveVersion(targetVersion);
