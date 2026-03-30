@@ -1108,8 +1108,8 @@ document.addEventListener('click', function(e) {
           {/* Logo */}
           <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #161c2c' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: '#fff', flexShrink: 0 }}>✦</div>
-              <span style={{ fontWeight: 800, fontSize: 16, color: '#e2e8f0', fontFamily: "'Syne',sans-serif", letterSpacing: '-0.3px' }}>AI UI Generator</span>
+              <img src="/talan-logo.svg" alt="Talan" style={{ height: 28, flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.4)', fontFamily: "'Inter',sans-serif", letterSpacing: '0.3px' }}>UI Generator</span>
             </div>
           </div>
 

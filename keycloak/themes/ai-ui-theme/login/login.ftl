@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Sign In — AI UI Generator</title>
+  <title>Sign In — Talan UI Generator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
@@ -16,9 +16,15 @@
   <!-- ── Left panel: branding ── -->
   <div class="brand-panel">
     <div class="brand-inner">
-      <div class="brand-icon">✦</div>
-      <h1 class="brand-name">AI UI Generator</h1>
-      <p class="brand-tagline">Describe your idea. Get a working interface.</p>
+      <div class="brand-logo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" style="height:42px">
+          <text y="38" font-family="Arvo,Georgia,serif" font-weight="700" font-size="42" letter-spacing="-1">
+            <tspan fill="#4F7DC0">T</tspan><tspan fill="#72B648">A</tspan><tspan fill="#E5472D">L</tspan><tspan fill="#4F7DC0">A</tspan><tspan fill="#72B648">N</tspan>
+          </text>
+        </svg>
+      </div>
+      <h1 class="brand-name">UI Generator</h1>
+      <p class="brand-tagline">Positive innovation — describe your idea, get a working interface.</p>
 
       <ul class="feature-list">
         <li><span class="feature-dot"></span>Natural language to UI in seconds</li>
@@ -36,7 +42,13 @@
     <div class="form-card">
 
       <div class="form-header">
-        <div class="form-logo">✦</div>
+        <div class="form-logo">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" style="height:28px">
+            <text y="38" font-family="Arvo,Georgia,serif" font-weight="700" font-size="42" letter-spacing="-1">
+              <tspan fill="#4F7DC0">T</tspan><tspan fill="#72B648">A</tspan><tspan fill="#E5472D">L</tspan><tspan fill="#4F7DC0">A</tspan><tspan fill="#72B648">N</tspan>
+            </text>
+          </svg>
+        </div>
         <h2 class="form-title">Welcome back</h2>
         <p class="form-subtitle">Sign in to your account to continue</p>
       </div>
