@@ -17,11 +17,7 @@
   <div class="brand-panel">
     <div class="brand-inner">
       <div class="brand-logo">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" style="height:42px">
-          <text y="38" font-family="Arvo,Georgia,serif" font-weight="700" font-size="42" letter-spacing="-1">
-            <tspan fill="#4F7DC0">T</tspan><tspan fill="#72B648">A</tspan><tspan fill="#E5472D">L</tspan><tspan fill="#4F7DC0">A</tspan><tspan fill="#72B648">N</tspan>
-          </text>
-        </svg>
+        <img src="${url.resourcesPath}/img/talan-logo.svg" alt="Talan" style="height:48px;" />
       </div>
       <h1 class="brand-name">UI Generator</h1>
       <p class="brand-tagline">Positive innovation — describe your idea, get a working interface.</p>
@@ -43,11 +39,7 @@
 
       <div class="form-header">
         <div class="form-logo">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" style="height:28px">
-            <text y="38" font-family="Arvo,Georgia,serif" font-weight="700" font-size="42" letter-spacing="-1">
-              <tspan fill="#4F7DC0">T</tspan><tspan fill="#72B648">A</tspan><tspan fill="#E5472D">L</tspan><tspan fill="#4F7DC0">A</tspan><tspan fill="#72B648">N</tspan>
-            </text>
-          </svg>
+          <img src="${url.resourcesPath}/img/talan-logo.svg" alt="Talan" style="height:32px;" />
         </div>
         <h2 class="form-title">Welcome back</h2>
         <p class="form-subtitle">Sign in to your account to continue</p>
