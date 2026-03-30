@@ -3,358 +3,306 @@ import { useAuth } from 'react-oidc-context'
 import { AiEditor } from './AiEditor'
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Arvo:wght@400;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  @keyframes float {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    33% { transform: translateY(-20px) rotate(1deg); }
-    66% { transform: translateY(-10px) rotate(-1deg); }
-  }
-  @keyframes pulse-glow {
-    0%, 100% { opacity: 0.4; transform: scale(1); }
-    50% { opacity: 0.8; transform: scale(1.05); }
-  }
-  @keyframes shimmer {
-    0% { background-position: -200% center; }
-    100% { background-position: 200% center; }
-  }
   @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(24px); }
+    from { opacity: 0; transform: translateY(28px); }
     to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
   @keyframes rotate-slow {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
-  @keyframes border-glow {
-    0%, 100% { border-color: rgba(99,102,241,0.3); box-shadow: 0 0 20px rgba(99,102,241,0.1); }
-    50% { border-color: rgba(168,85,247,0.5); box-shadow: 0 0 40px rgba(168,85,247,0.2); }
+  @keyframes float1 {
+    0%,100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-30px) scale(1.04); }
   }
-  @keyframes particle {
-    0% { transform: translateY(100vh) translateX(0px); opacity: 0; }
-    10% { opacity: 1; }
-    90% { opacity: 1; }
-    100% { transform: translateY(-100px) translateX(30px); opacity: 0; }
+  @keyframes float2 {
+    0%,100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(20px) scale(0.97); }
   }
-  @keyframes typewriter {
-    from { width: 0; }
-    to { width: 100%; }
+  @keyframes float3 {
+    0%,100% { transform: translate(0,0); }
+    33% { transform: translate(15px,-20px); }
+    66% { transform: translate(-10px,10px); }
   }
-  @keyframes grid-fade {
-    0%, 100% { opacity: 0.03; }
-    50% { opacity: 0.07; }
+  @keyframes colorBar {
+    0%,100% { transform: scaleX(1); }
+    50% { transform: scaleX(1.02); }
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
   }
 
   .landing-root {
     min-height: 100vh;
-    background: #020208;
+    background: #fff;
     font-family: 'Inter', -apple-system, sans-serif;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
     overflow: hidden;
   }
 
-  .grid-bg {
-    position: absolute;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(99,102,241,0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(99,102,241,0.05) 1px, transparent 1px);
-    background-size: 60px 60px;
-    animation: grid-fade 4s ease-in-out infinite;
+  /* ── Color bar top ── */
+  .color-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 5px;
+    display: flex;
+    z-index: 100;
+    animation: colorBar 4s ease-in-out infinite;
+  }
+  .color-bar span { flex: 1; }
+
+  /* ── Left ── */
+  .landing-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 70px;
+    position: relative;
+    overflow: hidden;
+    background: #fff;
   }
 
-  .orb {
+  /* Decorative blobs */
+  .blob {
     position: absolute;
     border-radius: 50%;
-    filter: blur(80px);
-    animation: pulse-glow 6s ease-in-out infinite;
+    filter: blur(60px);
+    pointer-events: none;
+    opacity: 0.18;
+  }
+  .blob-1 {
+    width: 380px; height: 380px;
+    background: #5480ba;
+    top: -100px; right: -60px;
+    animation: float1 8s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 280px; height: 280px;
+    background: #e04580;
+    bottom: -80px; left: -60px;
+    animation: float2 10s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 200px; height: 200px;
+    background: #8f9424;
+    top: 50%; left: 55%;
+    animation: float3 12s ease-in-out infinite;
+  }
+
+  /* Decorative circles outline */
+  .deco-circle {
+    position: absolute;
+    border-radius: 50%;
+    border: 2px solid;
     pointer-events: none;
   }
-  .orb-1 {
+  .deco-1 {
     width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(99,102,241,0.25), transparent 70%);
-    top: -100px; left: -100px;
-    animation-delay: 0s;
+    border-color: rgba(84,128,186,0.08);
+    top: -150px; right: -150px;
   }
-  .orb-2 {
-    width: 400px; height: 400px;
-    background: radial-gradient(circle, rgba(168,85,247,0.2), transparent 70%);
-    bottom: -80px; right: -80px;
-    animation-delay: 2s;
-  }
-  .orb-3 {
+  .deco-2 {
     width: 300px; height: 300px;
-    background: radial-gradient(circle, rgba(6,182,212,0.15), transparent 70%);
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    animation-delay: 4s;
+    border-color: rgba(224,69,128,0.07);
+    bottom: -100px; left: 100px;
+  }
+
+  .left-top {
+    margin-bottom: 52px;
+    animation: fadeUp 0.7s ease both;
+  }
+
+  .left-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: #8f9424;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: slideIn 0.7s ease 0.1s both;
+  }
+  .left-eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 24px; height: 2px;
+    background: #8f9424;
+  }
+
+  .left-headline {
+    font-family: 'Arvo', Georgia, serif;
+    font-size: clamp(38px, 4vw, 60px);
+    font-weight: 700;
+    color: #111;
+    line-height: 1.1;
+    margin-bottom: 24px;
+    animation: fadeUp 0.7s ease 0.15s both;
+  }
+  .left-headline .accent-blue { color: #5480ba; }
+  .left-headline .accent-rose { color: #e04580; }
+
+  .left-sub {
+    font-size: 17px;
+    color: #555;
+    line-height: 1.7;
+    max-width: 440px;
+    animation: fadeUp 0.7s ease 0.25s both;
+  }
+
+  .feature-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: fadeUp 0.7s ease 0.35s both;
+  }
+  .feature-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: #333;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .feature-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .tagline {
+    margin-top: 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: fadeUp 0.7s ease 0.45s both;
+  }
+  .tagline-line {
+    height: 2px;
+    width: 32px;
+    background: linear-gradient(90deg, #5480ba, #e04580);
+  }
+  .tagline-text {
+    font-size: 13px;
+    font-style: italic;
+    color: #999;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Right ── */
+  .landing-right {
+    width: 460px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 48px;
+    background: #f7f7f7;
+    border-left: 1px solid #ebebeb;
+    position: relative;
   }
 
   .card {
-    position: relative;
-    z-index: 10;
     width: 100%;
-    max-width: 480px;
-    animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    padding: 20px;
+    animation: fadeUp 0.8s ease 0.2s both;
   }
 
-  .logo-area {
-    text-align: center;
-    margin-bottom: 40px;
-    animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+  .card-logo { margin-bottom: 36px; }
+
+  .card-title {
+    font-family: 'Arvo', Georgia, serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: #111;
+    margin-bottom: 8px;
   }
 
-  .logo-icon {
-    width: 56px; height: 56px;
-    background: linear-gradient(135deg, #6366f1, #a855f7);
-    border-radius: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 26px;
-    margin-bottom: 16px;
-    box-shadow: 0 0 40px rgba(99,102,241,0.4), 0 0 80px rgba(99,102,241,0.1);
-    animation: float 6s ease-in-out infinite;
-  }
-
-  .logo-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: rgba(255,255,255,0.5);
-    letter-spacing: 3px;
-    text-transform: uppercase;
-  }
-
-  .headline {
-    font-size: clamp(36px, 5vw, 52px);
-    font-weight: 900;
-    line-height: 1.1;
-    text-align: center;
-    margin-bottom: 16px;
-    color: #fff;
-    letter-spacing: -1.5px;
-    animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
-  }
-
-  .headline-gradient {
-    background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #06b6d4 100%);
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: shimmer 4s linear infinite;
-  }
-
-  .subtitle {
-    text-align: center;
-    color: rgba(255,255,255,0.35);
-    font-size: 15px;
+  .card-subtitle {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 36px;
     line-height: 1.6;
-    margin-bottom: 40px;
-    animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
-  }
-
-  .auth-box {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 20px;
-    padding: 32px;
-    backdrop-filter: blur(20px);
-    animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both, border-glow 4s ease-in-out infinite;
   }
 
   .tab-switcher {
     display: flex;
-    background: rgba(0,0,0,0.3);
-    border-radius: 10px;
+    background: #ebebeb;
+    border-radius: 12px;
     padding: 4px;
     margin-bottom: 28px;
-    border: 1px solid rgba(255,255,255,0.06);
   }
 
   .tab-btn {
     flex: 1;
-    padding: 10px 0;
-    border-radius: 7px;
+    padding: 11px 0;
+    border-radius: 9px;
     border: none;
     cursor: pointer;
     font-size: 14px;
     font-weight: 600;
     font-family: inherit;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.25s ease;
     letter-spacing: 0.3px;
   }
   .tab-btn.active {
-    background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.3));
-    color: #c4b5fd;
-    box-shadow: 0 0 20px rgba(99,102,241,0.15);
+    background: #fff;
+    color: #5480ba;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   }
   .tab-btn.inactive {
     background: transparent;
-    color: rgba(255,255,255,0.3);
+    color: #aaa;
   }
-  .tab-btn.inactive:hover {
-    color: rgba(255,255,255,0.6);
-  }
-
-  .auth-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 6px;
-    letter-spacing: -0.3px;
-  }
-
-  .auth-subtitle {
-    font-size: 13px;
-    color: rgba(255,255,255,0.35);
-    margin-bottom: 24px;
-  }
-
-  .github-btn {
-    width: 100%;
-    padding: 14px 20px;
-    background: linear-gradient(135deg, #24292f, #2d333b);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    color: #fff;
-    font-family: inherit;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    margin-bottom: 14px;
-    position: relative;
-    overflow: hidden;
-    letter-spacing: 0.2px;
-  }
-  .github-btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.05), transparent);
-    opacity: 0;
-    transition: opacity 0.25s;
-  }
-  .github-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.15);
-    border-color: rgba(255,255,255,0.2);
-  }
-  .github-btn:hover::before { opacity: 1; }
-  .github-btn:active { transform: translateY(0); }
-  .github-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-  .divider {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-  .divider-line {
-    flex: 1;
-    height: 1px;
-    background: rgba(255,255,255,0.06);
-  }
-  .divider-text {
-    color: rgba(255,255,255,0.2);
-    font-size: 12px;
-  }
+  .tab-btn.inactive:hover { color: #666; }
 
   .email-btn {
     width: 100%;
-    padding: 14px 20px;
-    background: transparent;
-    border: 1px solid rgba(99,102,241,0.3);
-    border-radius: 12px;
+    padding: 15px 20px;
+    background: #5480ba;
+    border: none;
+    border-radius: 100px;
     cursor: pointer;
     font-size: 15px;
-    font-weight: 600;
-    color: #818cf8;
+    font-weight: 700;
+    color: #fff;
     font-family: inherit;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    letter-spacing: 0.2px;
+    transition: all 0.25s ease;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 13px;
   }
   .email-btn:hover {
-    background: rgba(99,102,241,0.08);
-    border-color: rgba(99,102,241,0.6);
-    color: #a5b4fc;
-    transform: translateY(-1px);
-    box-shadow: 0 8px 30px rgba(99,102,241,0.1);
+    background: #4470aa;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(84,128,186,0.4);
   }
-  .email-btn:active { transform: translateY(0); }
+  .email-btn:active { transform: translateY(0); box-shadow: none; }
 
   .footer-text {
-    color: rgba(255,255,255,0.15);
+    color: #ccc;
     font-size: 11px;
     text-align: center;
-    margin-top: 20px;
+    margin-top: 24px;
     line-height: 1.6;
   }
 
-  .particles {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-  .particle {
-    position: absolute;
-    width: 2px;
-    height: 2px;
-    background: rgba(99,102,241,0.6);
-    border-radius: 50%;
-    animation: particle linear infinite;
-  }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(99,102,241,0.1);
-    border: 1px solid rgba(99,102,241,0.2);
-    border-radius: 20px;
-    padding: 5px 12px;
-    font-size: 12px;
-    color: #818cf8;
-    margin-bottom: 20px;
-    animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
-  }
-  .badge-dot {
-    width: 6px; height: 6px;
-    background: #22c55e;
-    border-radius: 50%;
-    box-shadow: 0 0 6px #22c55e;
-    animation: pulse-glow 2s ease-in-out infinite;
+  @media (max-width: 900px) {
+    .landing-left { display: none; }
+    .landing-right { width: 100%; border-left: none; }
   }
 `
 
 function LandingPage() {
   const auth = useAuth()
   const [tab, setTab] = useState<'signin' | 'signup'>('signin')
-  const [particles] = useState(() =>
-    Array.from({ length: 12 }, (_, i) => ({
-      id: i,
-      left: `${Math.random() * 100}%`,
-      duration: `${8 + Math.random() * 12}s`,
-      delay: `${Math.random() * 10}s`,
-      size: Math.random() > 0.5 ? 2 : 3,
-    }))
-  )
 
   const signInWithEmail = () => {
     void auth.signinRedirect()
@@ -368,73 +316,87 @@ function LandingPage() {
     <>
       <style>{css}</style>
       <div className="landing-root">
-        <div className="grid-bg" />
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
 
-        <div className="particles">
-          {particles.map(p => (
-            <div key={p.id} className="particle" style={{
-              left: p.left,
-              bottom: '-10px',
-              width: p.size,
-              height: p.size,
-              animationDuration: p.duration,
-              animationDelay: p.delay,
-            }} />
-          ))}
+        {/* Color bar */}
+        <div className="color-bar">
+          <span style={{ background: '#5480ba' }} />
+          <span style={{ background: '#8f9424' }} />
+          <span style={{ background: '#e04580' }} />
+          <span style={{ background: '#6b367d' }} />
+          <span style={{ background: '#1d662e' }} />
         </div>
 
-        <div className="card">
-          <div className="logo-area">
-            <img src="/talan-logo.svg" alt="Talan" style={{ height: 48, marginBottom: 12 }} />
-            <div className="logo-title">UI Generator</div>
-          </div>
+        {/* Left panel */}
+        <div className="landing-left">
+          <div className="blob blob-1" />
+          <div className="blob blob-2" />
+          <div className="blob blob-3" />
+          <div className="deco-circle deco-1" />
+          <div className="deco-circle deco-2" />
 
-          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div className="badge">
-              <div className="badge-dot" />
-              Powered by AI
-            </div>
+          <div className="left-top">
+            <img src="/talan-logo.svg" alt="Talan" style={{ height: 42, marginBottom: 48, display: 'block' }} />
 
-            <h1 className="headline">
+            <div className="left-eyebrow">Internal Tool</div>
+
+            <h1 className="left-headline">
               Build UIs from<br />
-              <span className="headline-gradient">a single prompt</span>
+              <span className="accent-blue">a single</span>{' '}
+              <span className="accent-rose">prompt</span>
             </h1>
 
-            <p className="subtitle">
-              Describe your interface or upload a document —<br />
-              our AI pipeline generates production-ready code.
+            <p className="left-sub">
+              Describe your interface or upload a document —
+              our AI pipeline generates production-ready React code instantly.
             </p>
           </div>
 
-          <div className="auth-box">
+          <ul className="feature-list">
+            {[
+              { label: 'Natural language to UI in seconds', color: '#5480ba' },
+              { label: 'React + Tailwind production-ready code', color: '#8f9424' },
+              { label: 'Live preview & version history', color: '#e04580' },
+              { label: 'Document upload — PDF, image, wireframe', color: '#6b367d' },
+              { label: 'Multi-LLM: Gemini, Claude, GPT, Ollama', color: '#1d662e' },
+            ].map(f => (
+              <li key={f.label} className="feature-item">
+                <span className="feature-dot" style={{ background: f.color }} />
+                {f.label}
+              </li>
+            ))}
+          </ul>
+
+          <div className="tagline">
+            <div className="tagline-line" />
+            <span className="tagline-text">Positive innovation — Talan © 2026</span>
+          </div>
+        </div>
+
+        {/* Right panel — auth form */}
+        <div className="landing-right">
+          <div className="card">
+            <div className="card-logo">
+              <img src="/talan-logo.svg" alt="Talan" style={{ height: 34 }} />
+            </div>
+
+            <h2 className="card-title">
+              {tab === 'signin' ? 'Welcome back' : 'Create your account'}
+            </h2>
+            <p className="card-subtitle">
+              {tab === 'signin'
+                ? 'Sign in to your Talan UI Generator account.'
+                : 'Start generating interfaces from text or documents.'}
+            </p>
+
             <div className="tab-switcher">
               {(['signin', 'signup'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`tab-btn ${tab === t ? 'active' : 'inactive'}`}
-                >
+                <button key={t} onClick={() => setTab(t)} className={`tab-btn ${tab === t ? 'active' : 'inactive'}`}>
                   {t === 'signin' ? 'Sign In' : 'Sign Up'}
                 </button>
               ))}
             </div>
 
-            <div className="auth-title">
-              {tab === 'signin' ? 'Welcome back' : 'Create your account'}
-            </div>
-            <div className="auth-subtitle">
-              {tab === 'signin'
-                ? 'Sign in to continue building amazing UIs.'
-                : 'Start generating interfaces from text or documents.'}
-            </div>
-
-            <button
-              className="email-btn"
-              onClick={tab === 'signin' ? signInWithEmail : signUpWithEmail}
-            >
+            <button className="email-btn" onClick={tab === 'signin' ? signInWithEmail : signUpWithEmail}>
               {tab === 'signin' ? 'Sign in with Email' : 'Sign up with Email'}
             </button>
 
@@ -443,6 +405,7 @@ function LandingPage() {
             </p>
           </div>
         </div>
+
       </div>
     </>
   )
@@ -456,13 +419,13 @@ export default function App() {
       <>
         <style>{css}</style>
         <div style={{
-          minHeight: '100vh', background: '#020208',
+          minHeight: '100vh', background: '#f7f7f7',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <div style={{
             width: 40, height: 40, borderRadius: '50%',
-            border: '2px solid rgba(99,102,241,0.2)',
-            borderTopColor: '#6366f1',
+            border: '2px solid rgba(84,128,186,0.2)',
+            borderTopColor: '#5480ba',
             animation: 'rotate-slow 0.8s linear infinite',
           }} />
         </div>
@@ -475,9 +438,9 @@ export default function App() {
       <>
         <style>{css}</style>
         <div style={{
-          minHeight: '100vh', background: '#020208',
+          minHeight: '100vh', background: '#f7f7f7',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16,
-          color: '#f87171', fontFamily: 'Inter, sans-serif',
+          color: '#e04580', fontFamily: 'Inter, sans-serif',
         }}>
           <div>Auth error: {String(auth.error)}</div>
           <button onClick={() => void auth.signinRedirect()} style={{

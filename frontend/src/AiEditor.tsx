@@ -732,10 +732,10 @@ document.addEventListener('click', function(e) {
       case 'css': return { symbol: 'C', color: '#38bdf8' }
       case 'js': return { symbol: 'J', color: '#facc15' }
       case 'ts': case 'tsx': return { symbol: 'T', color: '#60a5fa' }
-      case 'jsx': return { symbol: 'R', color: '#818cf8' }
+      case 'jsx': return { symbol: 'R', color: '#5480ba' }
       case 'json': return { symbol: '{', color: '#a78bfa' }
       case 'svg': return { symbol: 'S', color: '#fb7185' }
-      default: return { symbol: '·', color: 'rgba(255,255,255,.3)' }
+      default: return { symbol: '·', color: 'rgba(0,0,0,.35)' }
     }
   }
 
@@ -751,7 +751,7 @@ document.addEventListener('click', function(e) {
             style={{
               padding: `4px 6px 4px ${padLeft}px`,
               color: isActive ? '#e2e8f0' : 'rgba(255,255,255,.5)',
-              background: isActive ? 'rgba(255,255,255,.06)' : 'transparent',
+              background: isActive ? 'rgba(0,0,0,.05)' : 'transparent',
               borderLeft: isActive ? '2px solid #a5b4fc' : '2px solid transparent',
               transition: 'background .1s',
               fontSize: 12,
@@ -764,8 +764,8 @@ document.addEventListener('click', function(e) {
           >
             {node.type === 'folder' ? (
               <>
-                <span style={{ fontSize: 9, color: 'rgba(255,255,255,.25)', minWidth: 8 }}>{node.open ? '▾' : '▸'}</span>
-                <span style={{ fontSize: 10, color: node.open ? '#facc15' : 'rgba(255,255,255,.3)', minWidth: 14, opacity: 0.7 }}>
+                <span style={{ fontSize: 9, color: 'rgba(0,0,0,.2)', minWidth: 8 }}>{node.open ? '▾' : '▸'}</span>
+                <span style={{ fontSize: 10, color: node.open ? '#facc15' : 'rgba(0,0,0,.35)', minWidth: 14, opacity: 0.7 }}>
                   {node.open ? '▽' : '▷'}
                 </span>
               </>
@@ -915,7 +915,7 @@ document.addEventListener('click', function(e) {
     error: '#f87171',
     warn: '#fbbf24',
     success: '#818cf8',
-    info: 'rgba(255,255,255,.45)',
+    info: 'rgba(0,0,0,.45)',
   }
 
   if (!ideVisible) {
@@ -1100,13 +1100,13 @@ document.addEventListener('click', function(e) {
     const validProjects = history.filter(g => g.generationId)
 
     return (
-      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: '#080d18' }}>
+      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: '#f4f5f7' }}>
 
         {/* ── SIDEBAR ── */}
-        <aside style={{ width: 260, background: '#070b14', borderRight: '1px solid #161c2c', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 40, overflowY: 'auto' }}>
+        <aside style={{ width: 260, background: '#ffffff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 40, overflowY: 'auto' }}>
 
           {/* Logo */}
-          <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #161c2c' }}>
+          <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #e5e7eb' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <img src="/talan-logo.svg" alt="Talan" style={{ height: 28, flexShrink: 0 }} />
               <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.4)', fontFamily: "'Inter',sans-serif", letterSpacing: '0.3px' }}>UI Generator</span>
@@ -1114,14 +1114,14 @@ document.addEventListener('click', function(e) {
           </div>
 
           {/* Workspace */}
-          <div style={{ padding: '12px 12px', borderBottom: '1px solid #161c2c' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, background: 'rgba(255,255,255,.04)' }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+          <div style={{ padding: '12px 12px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, background: 'rgba(0,0,0,.03)' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                 {displayName.charAt(0)}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <p style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}'s Space</p>
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', margin: 0 }}>Personal workspace</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}'s Space</p>
+                <p style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', margin: 0 }}>Personal workspace</p>
               </div>
             </div>
           </div>
@@ -1135,8 +1135,8 @@ document.addEventListener('click', function(e) {
               ...(isAdmin ? [{ icon: '⚙', label: 'Admin Dashboard', action: () => setHomeTab('admin'), active: homeTab === 'admin' }] : []),
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: item.active ? 'rgba(99,102,241,.16)' : 'transparent', color: item.active ? '#a5b4fc' : 'rgba(255,255,255,.55)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
-                onMouseEnter={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.05)' }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: item.active ? 'rgba(84,128,186,.12)' : 'transparent', color: item.active ? '#a5b4fc' : 'rgba(0,0,0,.55)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
+                onMouseEnter={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.04)' }}
                 onMouseLeave={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
                 {item.label}
@@ -1144,8 +1144,8 @@ document.addEventListener('click', function(e) {
             ))}
             {apiResult && (
               <button onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: 'transparent', color: '#818cf8', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: 'transparent', color: '#5480ba', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(84,128,186,.08)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>✦</span>
                 Open Editor
@@ -1156,13 +1156,13 @@ document.addEventListener('click', function(e) {
           {/* Recents */}
           {validProjects.length > 0 && (
             <div style={{ padding: '16px 10px 8px', flex: 1 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.22)', textTransform: 'uppercase', letterSpacing: '0.12em', padding: '0 13px', marginBottom: 6 }}>Recents</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,.35)', textTransform: 'uppercase', letterSpacing: '0.12em', padding: '0 13px', marginBottom: 6 }}>Recents</p>
               {validProjects.slice(0, 8).map(g => (
                 <button key={g.generationId}
                   onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', borderRadius: 9, marginBottom: 1, background: 'transparent', color: 'rgba(255,255,255,.45)', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', transition: 'all .15s' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,.05)'; el.style.color = '#e2e8f0' }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = 'rgba(255,255,255,.45)' }}>
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', borderRadius: 9, marginBottom: 1, background: 'transparent', color: 'rgba(0,0,0,.45)', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', transition: 'all .15s' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(0,0,0,.04)'; el.style.color = '#e2e8f0' }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = 'rgba(0,0,0,.45)' }}>
                   <span style={{ fontSize: 13, opacity: 0.4, flexShrink: 0 }}>□</span>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{projectName2(g.prompt)}</span>
                 </button>
@@ -1173,19 +1173,19 @@ document.addEventListener('click', function(e) {
           <div style={{ flex: 1 }} />
 
           {/* Bottom: user + sign out */}
-          <div style={{ padding: '12px 14px', borderTop: '1px solid #161c2c', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
+          <div style={{ padding: '12px 14px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
               {displayName.charAt(0)}
             </div>
             <div onClick={() => setHomeTab('profile')} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
-              {email && <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</p>}
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
+              {email && <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</p>}
             </div>
             {onLogout && (
               <button onClick={onLogout}
-                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 9px', borderRadius: 7, transition: 'all .15s' }}
+                style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.35)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 9px', borderRadius: 7, transition: 'all .15s' }}
                 onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = '#f87171'; el.style.background = 'rgba(248,113,113,.08)' }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = 'rgba(255,255,255,.3)'; el.style.background = 'none' }}>
+                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = 'rgba(0,0,0,.35)'; el.style.background = 'none' }}>
                 Sign out
               </button>
             )}
@@ -1201,35 +1201,35 @@ document.addEventListener('click', function(e) {
 
               {/* Heading */}
               <div style={{ textAlign: 'center', marginBottom: 48 }}>
-                <h1 style={{ fontSize: 44, fontWeight: 900, color: '#f1f5f9', fontFamily: "'Syne',sans-serif", lineHeight: 1.1, margin: '0 0 14px' }}>
+                <h1 style={{ fontSize: 44, fontWeight: 900, color: '#111827', fontFamily: "'Syne',sans-serif", lineHeight: 1.1, margin: '0 0 14px' }}>
                   What should we build,{' '}
-                  <span style={{ background: 'linear-gradient(135deg,#818cf8,#a78bfa,#e879f9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                  <span style={{ color: '#5480ba' }}>
                     {displayName}?
                   </span>
                 </h1>
-                <p style={{ fontSize: 16, color: 'rgba(255,255,255,.4)', margin: 0, lineHeight: 1.6 }}>
+                <p style={{ fontSize: 16, color: 'rgba(0,0,0,.4)', margin: 0, lineHeight: 1.6 }}>
                   Describe your app and our AI agents will architect, design, and build it for you.
                 </p>
               </div>
 
               {/* Form */}
-              <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 20, padding: '28px 28px 24px', marginBottom: 16 }}>
+              <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '28px 28px 24px', marginBottom: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,.6)', marginBottom: 8 }}>Project Name</label>
+                    <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'rgba(0,0,0,.6)', marginBottom: 8 }}>Project Name</label>
                     <input
-                      style={{ width: '100%', height: 46, padding: '0 16px', borderRadius: 12, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', color: '#f1f5f9', fontSize: 15, outline: 'none', boxSizing: 'border-box' }}
+                      style={{ width: '100%', height: 46, padding: '0 16px', borderRadius: 12, background: 'rgba(0,0,0,.05)', border: '1px solid rgba(0,0,0,.1)', color: '#111827', fontSize: 15, outline: 'none', boxSizing: 'border-box' }}
                       placeholder="my-awesome-app"
                       value={projectName}
                       onChange={e => setProjectName(e.target.value)}
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,.6)', marginBottom: 8 }}>Stack</label>
+                    <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'rgba(0,0,0,.6)', marginBottom: 8 }}>Stack</label>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {[{ id: 'HTML/CSS', icon: '🎨', label: 'Vanilla' }, { id: 'React', icon: '⚛️', label: 'React' }].map(fw => (
                         <button key={fw.id} onClick={() => setSelectedFw(fw.id as any)}
-                          style={{ flex: 1, height: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', background: selectedFw === fw.id ? 'rgba(99,102,241,.18)' : 'rgba(255,255,255,.04)', border: `1px solid ${selectedFw === fw.id ? 'rgba(99,102,241,.45)' : 'rgba(255,255,255,.08)'}`, color: selectedFw === fw.id ? '#a5b4fc' : 'rgba(255,255,255,.45)' }}>
+                          style={{ flex: 1, height: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', background: selectedFw === fw.id ? 'rgba(99,102,241,.18)' : 'rgba(0,0,0,.03)', border: `1px solid ${selectedFw === fw.id ? 'rgba(99,102,241,.45)' : 'rgba(0,0,0,.08)'}`, color: selectedFw === fw.id ? '#a5b4fc' : 'rgba(0,0,0,.45)' }}>
                           {fw.icon} {fw.label}
                         </button>
                       ))}
@@ -1239,14 +1239,14 @@ document.addEventListener('click', function(e) {
 
                 <div style={{ marginBottom: 18 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <label style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,.6)' }}>What do you want to build?</label>
-                    <button style={{ fontSize: 13, fontWeight: 600, color: '#818cf8', background: 'none', border: 'none', cursor: 'pointer' }}
+                    <label style={{ fontSize: 14, fontWeight: 600, color: 'rgba(0,0,0,.6)' }}>What do you want to build?</label>
+                    <button style={{ fontSize: 13, fontWeight: 600, color: '#5480ba', background: 'none', border: 'none', cursor: 'pointer' }}
                       onClick={() => setCustomPrompt('Build a SaaS analytics dashboard with a fixed left sidebar, 4-column KPI card grid, revenue line chart, plan distribution donut chart, and a user data table with status badges.')}>
                       Try example →
                     </button>
                   </div>
                   <textarea
-                    style={{ width: '100%', height: 150, padding: '14px 16px', borderRadius: 12, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', color: '#f1f5f9', fontSize: 15, lineHeight: 1.65, resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: '100%', height: 150, padding: '14px 16px', borderRadius: 12, background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: '#111827', fontSize: 15, lineHeight: 1.65, resize: 'none', outline: 'none', boxSizing: 'border-box' }}
                     placeholder="E.g. Build a SaaS analytics dashboard with sidebar navigation, KPI metric cards, revenue charts, and a data table…"
                     value={customPrompt}
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomPrompt(e.target.value)}
@@ -1256,8 +1256,8 @@ document.addEventListener('click', function(e) {
 
                 {/* Document upload */}
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.5)', display: 'block', marginBottom: 8 }}>
-                    Attach documents <span style={{ fontWeight: 400, color: 'rgba(255,255,255,.3)' }}>(PDF, DOCX, TXT, PNG, JPG — optional)</span>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,.5)', display: 'block', marginBottom: 8 }}>
+                    Attach documents <span style={{ fontWeight: 400, color: 'rgba(0,0,0,.35)' }}>(PDF, DOCX, TXT, PNG, JPG — optional)</span>
                   </label>
                   <div
                     onDragOver={e => { e.preventDefault(); setDragOver(true) }}
@@ -1268,23 +1268,23 @@ document.addEventListener('click', function(e) {
                       setAttachedFiles(prev => [...prev, ...dropped])
                     }}
                     onClick={() => { const el = document.getElementById('doc-file-input'); el && el.click() }}
-                    style={{ border: `2px dashed ${dragOver ? '#6366f1' : 'rgba(255,255,255,.1)'}`, borderRadius: 12, padding: '18px 20px', cursor: 'pointer', background: dragOver ? 'rgba(99,102,241,.08)' : 'rgba(255,255,255,.02)', transition: 'all .2s', textAlign: 'center' }}>
+                    style={{ border: `2px dashed ${dragOver ? '#5480ba' : 'rgba(0,0,0,.1)'}`, borderRadius: 12, padding: '18px 20px', cursor: 'pointer', background: dragOver ? 'rgba(84,128,186,.08)' : 'rgba(0,0,0,.02)', transition: 'all .2s', textAlign: 'center' }}>
                     <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg" style={{ display: 'none' }}
                       onChange={e => { if (e.target.files) setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
                     {attachedFiles.length === 0 ? (
-                      <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,.3)' }}>
-                        📎 &nbsp;Drag & drop or <span style={{ color: '#818cf8', fontWeight: 600 }}>browse</span> — specification, wireframes, design docs…
+                      <p style={{ margin: 0, fontSize: 13, color: 'rgba(0,0,0,.35)' }}>
+                        📎 &nbsp;Drag & drop or <span style={{ color: '#5480ba', fontWeight: 600 }}>browse</span> — specification, wireframes, design docs…
                       </p>
                     ) : (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                         {attachedFiles.map((f, i) => (
-                          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,.15)', border: '1px solid rgba(99,102,241,.3)', borderRadius: 8, padding: '4px 10px', fontSize: 12, color: '#a5b4fc' }}>
+                          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(84,128,186,.12)', border: '1px solid rgba(84,128,186,.3)', borderRadius: 8, padding: '4px 10px', fontSize: 12, color: '#5480ba' }}>
                             📄 {f.name}
                             <button onClick={e => { e.stopPropagation(); setAttachedFiles(prev => prev.filter((_, j) => j !== i)) }}
-                              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
+                              style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.4)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
                           </span>
                         ))}
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', alignSelf: 'center' }}>+ click to add more</span>
+                        <span style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', alignSelf: 'center' }}>+ click to add more</span>
                       </div>
                     )}
                   </div>
@@ -1299,7 +1299,7 @@ document.addEventListener('click', function(e) {
                     { label: 'Portfolio', prompt: 'Build a minimal dark portfolio with hero, skills section, projects showcase, and contact form' },
                   ].map(t => (
                     <button key={t.label} onClick={() => setCustomPrompt(t.prompt)}
-                      style={{ padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.65)', cursor: 'pointer' }}>
+                      style={{ padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600, background: 'rgba(0,0,0,.05)', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(255,255,255,.65)', cursor: 'pointer' }}>
                       {t.label}
                     </button>
                   ))}
@@ -1308,13 +1308,13 @@ document.addEventListener('click', function(e) {
                 {/* Domain selector */}
                 <div style={{ marginBottom: 22 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.5)' }}>Domain context</label>
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,.25)' }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,.5)' }}>Domain context</label>
+                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,.2)' }}>
                       — {selectedDomain ? 'manually selected' : autoDetectedDomain ? `auto-detected: ${autoDetectedDomain}` : 'auto (no match)'}
                     </span>
                     {selectedDomain && (
                       <button onClick={() => setSelectedDomain(null)}
-                        style={{ fontSize: 11, color: '#818cf8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>
+                        style={{ fontSize: 11, color: '#5480ba', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>
                         ↺ reset to auto
                       </button>
                     )}
@@ -1329,8 +1329,8 @@ document.addEventListener('click', function(e) {
                           onClick={() => setSelectedDomain(prev => prev === d.value ? null : d.value)}
                           style={{
                             padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s',
-                            background: isActive ? (isManual ? 'rgba(99,102,241,.35)' : 'rgba(99,102,241,.15)') : 'rgba(255,255,255,.04)',
-                            border: `1px solid ${isActive ? (isManual ? 'rgba(99,102,241,.7)' : 'rgba(99,102,241,.35)') : 'rgba(255,255,255,.08)'}`,
+                            background: isActive ? (isManual ? 'rgba(99,102,241,.35)' : 'rgba(84,128,186,.12)') : 'rgba(0,0,0,.03)',
+                            border: `1px solid ${isActive ? (isManual ? 'rgba(99,102,241,.7)' : 'rgba(99,102,241,.35)') : 'rgba(0,0,0,.08)'}`,
                             color: isActive ? '#c4b5fd' : 'rgba(255,255,255,.4)',
                           }}>
                           {d.emoji} {d.label}
@@ -1344,10 +1344,10 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
-                  style={{ width: '100%', padding: '15px', borderRadius: 12, fontSize: 16, fontWeight: 700, border: 'none', cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? 'rgba(255,255,255,.05)' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: isBuilding || !projectName || !customPrompt ? 'rgba(255,255,255,.2)' : '#fff', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 0 40px rgba(99,102,241,.35)' }}>
+                  style={{ width: '100%', padding: '15px', borderRadius: 12, fontSize: 16, fontWeight: 700, border: 'none', cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? 'rgba(0,0,0,.04)' : '#5480ba', color: isBuilding || !projectName || !customPrompt ? 'rgba(0,0,0,.15)' : '#fff', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 0 40px rgba(99,102,241,.35)' }}>
                   {isBuilding ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                      <div style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,.25)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      <div style={{ width: 18, height: 18, border: '2px solid rgba(0,0,0,.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                       {buildMsg}
                     </div>
                   ) : 'Generate App →'}
@@ -1355,10 +1355,10 @@ document.addEventListener('click', function(e) {
 
                 {isBuilding && (
                   <div style={{ marginTop: 16 }}>
-                    <div style={{ height: 4, borderRadius: 4, background: 'rgba(255,255,255,.06)', overflow: 'hidden', marginBottom: 8 }}>
+                    <div style={{ height: 4, borderRadius: 4, background: 'rgba(0,0,0,.05)', overflow: 'hidden', marginBottom: 8 }}>
                       <div className="progress-bar" style={{ height: '100%', borderRadius: 4, width: `${buildPct}%`, background: 'linear-gradient(90deg,#6366f1,#a855f7,#e879f9)' }} />
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(255,255,255,.35)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(0,0,0,.4)' }}>
                       <span>{buildMsg}</span><span>{Math.floor(buildPct)}%</span>
                     </div>
                   </div>
@@ -1372,8 +1372,8 @@ document.addEventListener('click', function(e) {
               </div>
 
               {/* Agent Pipeline */}
-              <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 16, padding: '22px 28px' }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,.35)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 18 }}>Agent Pipeline</p>
+              <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '22px 28px' }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 18 }}>Agent Pipeline</p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   {[
                     { icon: '◎', agent: 'Planner', desc: 'Architecture & file plan', pct: 10 },
@@ -1384,17 +1384,17 @@ document.addEventListener('click', function(e) {
                     const active = buildPct >= a.pct
                     return (
                       <div key={a.agent} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, background: active ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,.03)', border: `1px solid ${active ? 'rgba(99,102,241,.35)' : 'rgba(255,255,255,.06)'}`, color: active ? '#a5b4fc' : 'rgba(255,255,255,.2)' }}>
+                        <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, background: active ? 'rgba(84,128,186,.12)' : 'rgba(255,255,255,.03)', border: `1px solid ${active ? 'rgba(99,102,241,.35)' : 'rgba(0,0,0,.05)'}`, color: active ? '#a5b4fc' : 'rgba(0,0,0,.15)' }}>
                           {a.icon}
                         </div>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: active ? '#e2e8f0' : 'rgba(255,255,255,.3)' }}>{a.agent}</span>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: active ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,.04)', color: active ? '#818cf8' : 'rgba(255,255,255,.2)' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: active ? '#e2e8f0' : 'rgba(0,0,0,.35)' }}>{a.agent}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: active ? 'rgba(84,128,186,.12)' : 'rgba(0,0,0,.03)', color: active ? '#818cf8' : 'rgba(0,0,0,.15)' }}>
                               {active && buildPct < (a.pct + 25) && isBuilding ? 'Running' : active ? 'Done' : 'Idle'}
                             </span>
                           </div>
-                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', margin: 0 }}>{a.desc}</p>
+                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', margin: 0 }}>{a.desc}</p>
                         </div>
                       </div>
                     )
@@ -1409,11 +1409,11 @@ document.addEventListener('click', function(e) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {(['My projects'] as const).map(label => (
-                        <span key={label} style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9', padding: '5px 14px', borderRadius: 20, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.1)' }}>{label}</span>
+                        <span key={label} style={{ fontSize: 14, fontWeight: 700, color: '#111827', padding: '5px 14px', borderRadius: 20, background: 'rgba(0,0,0,.05)', border: '1px solid rgba(0,0,0,.1)' }}>{label}</span>
                       ))}
                     </div>
                     <button onClick={() => setHomeTab('projects')}
-                      style={{ background: 'none', border: 'none', color: '#a5b4fc', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      style={{ background: 'none', border: 'none', color: '#5480ba', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                       Browse all →
                     </button>
                   </div>
@@ -1424,29 +1424,29 @@ document.addEventListener('click', function(e) {
                       <div key={g.generationId}
                         className="group"
                         style={{ borderRadius: 14, overflow: 'hidden', background: '#111827', border: '1px solid #1f2937', cursor: 'pointer', transition: 'all .2s' }}
-                        onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.5)'; el.style.boxShadow = '0 6px 30px rgba(99,102,241,.15)'; el.style.transform = 'translateY(-2px)' }}
+                        onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.5)'; el.style.boxShadow = '0 6px 30px rgba(84,128,186,.12)'; el.style.transform = 'translateY(-2px)' }}
                         onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#1f2937'; el.style.boxShadow = 'none'; el.style.transform = 'none' }}
                         onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
                         <div style={{ position: 'relative', height: 150, background: '#0d1117', overflow: 'hidden' }}>
                           <CardThumbnail prompt={g.prompt} />
                           {loadingProjectId === g.generationId && (
                             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <div style={{ width: 22, height: 22, border: '2px solid rgba(255,255,255,.2)', borderTopColor: '#a5b4fc', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                              <div style={{ width: 22, height: 22, border: '2px solid rgba(0,0,0,.15)', borderTopColor: '#a5b4fc', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                             </div>
                           )}
                           <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'opacity .2s' }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 9, background: '#6366f1', color: '#fff' }}>Open →</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 9, background: 'rgba(255,255,255,.12)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,.15)', cursor: 'pointer' }}
+                            <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 9, background: '#5480ba', color: '#fff' }}>Open →</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 9, background: 'rgba(0,0,0,.1)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
                               onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇</span>
                           </div>
                         </div>
                         <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                             {displayName.charAt(0).toUpperCase()}
                           </div>
                           <div style={{ minWidth: 0 }}>
-                            <p style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
-                            <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+                            <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
+                            <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
                           </div>
                         </div>
                       </div>
@@ -1462,18 +1462,18 @@ document.addEventListener('click', function(e) {
             <div style={{ padding: '48px 40px 80px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
                 <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{isAdmin ? 'All Projects' : 'My Projects'}</h1>
-                  <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>{isAdmin ? adminActivity.length : validProjects.length} project{(isAdmin ? adminActivity.length : validProjects.length) !== 1 ? 's' : ''} generated</p>
+                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{isAdmin ? 'All Projects' : 'My Projects'}</h1>
+                  <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>{isAdmin ? adminActivity.length : validProjects.length} project{(isAdmin ? adminActivity.length : validProjects.length) !== 1 ? 's' : ''} generated</p>
                 </div>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <button onClick={() => void loadHistory()} style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.45)', borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>↻ Refresh</button>
+                  <button onClick={() => void loadHistory()} style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.45)', borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>↻ Refresh</button>
                   {!showAllProjects && validProjects.length > 6 && (
-                    <button onClick={() => setShowAllProjects(true)} style={{ background: 'none', border: 'none', color: '#a5b4fc', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    <button onClick={() => setShowAllProjects(true)} style={{ background: 'none', border: 'none', color: '#5480ba', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                       Browse all ({validProjects.length}) →
                     </button>
                   )}
                   {showAllProjects && (
-                    <button onClick={() => setShowAllProjects(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Show less</button>
+                    <button onClick={() => setShowAllProjects(false)} style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.4)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Show less</button>
                   )}
                 </div>
               </div>
@@ -1481,22 +1481,22 @@ document.addEventListener('click', function(e) {
               {isAdmin ? (
                 /* Admin: show all projects as a list */
                 adminActivity.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(255,255,255,.08)', borderRadius: 20 }}>
+                  <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(0,0,0,.08)', borderRadius: 20 }}>
                     <div style={{ fontSize: 48, marginBottom: 16 }}>✦</div>
-                    <p style={{ fontSize: 20, fontWeight: 700, color: '#e2e8f0', marginBottom: 8 }}>No projects yet</p>
-                    <p style={{ fontSize: 15, color: 'rgba(255,255,255,.4)' }}>No generations have been created on this platform.</p>
+                    <p style={{ fontSize: 20, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>No projects yet</p>
+                    <p style={{ fontSize: 15, color: 'rgba(0,0,0,.4)' }}>No generations have been created on this platform.</p>
                   </div>
                 ) : (
-                  <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
                     {adminActivity.map((g, i) => (
-                      <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none' }}>
+                      <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
                           background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
                           color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
                           {g.status}
                         </span>
-                        <p style={{ flex: 1, fontSize: 13, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', flexShrink: 0 }}>
+                        <p style={{ flex: 1, fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
+                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', flexShrink: 0 }}>
                           {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                         </span>
                       </div>
@@ -1506,21 +1506,21 @@ document.addEventListener('click', function(e) {
               ) : historyLoading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
                   {[1,2,3,4,5,6].map(i => (
-                    <div key={i} style={{ borderRadius: 16, overflow: 'hidden', background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
-                      <div style={{ height: 180, background: 'rgba(255,255,255,.04)' }} />
+                    <div key={i} style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.05)' }}>
+                      <div style={{ height: 180, background: 'rgba(0,0,0,.03)' }} />
                       <div style={{ padding: 16 }}>
-                        <div style={{ height: 16, borderRadius: 8, background: 'rgba(255,255,255,.05)', marginBottom: 8, width: '70%' }} />
-                        <div style={{ height: 12, borderRadius: 8, background: 'rgba(255,255,255,.03)', width: '45%' }} />
+                        <div style={{ height: 16, borderRadius: 8, background: 'rgba(0,0,0,.04)', marginBottom: 8, width: '70%' }} />
+                        <div style={{ height: 12, borderRadius: 8, background: '#ffffff', width: '45%' }} />
                       </div>
                     </div>
                   ))}
                 </div>
               ) : validProjects.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(255,255,255,.08)', borderRadius: 20 }}>
+                <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(0,0,0,.08)', borderRadius: 20 }}>
                   <div style={{ fontSize: 48, marginBottom: 16 }}>✦</div>
-                  <p style={{ fontSize: 20, fontWeight: 700, color: '#e2e8f0', marginBottom: 8 }}>No projects yet</p>
-                  <p style={{ fontSize: 15, color: 'rgba(255,255,255,.4)', marginBottom: 28 }}>Generate your first app to get started</p>
-                  <button onClick={() => setHomeTab('create')} style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                  <p style={{ fontSize: 20, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>No projects yet</p>
+                  <p style={{ fontSize: 15, color: 'rgba(0,0,0,.4)', marginBottom: 28 }}>Generate your first app to get started</p>
+                  <button onClick={() => setHomeTab('create')} style={{ background: '#5480ba', color: '#fff', border: 'none', borderRadius: 12, padding: '13px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
                     + New Project
                   </button>
                 </div>
@@ -1530,7 +1530,7 @@ document.addEventListener('click', function(e) {
                     <div key={g.generationId}
                       className="group"
                       style={{ borderRadius: 16, overflow: 'hidden', background: '#111827', border: '1px solid #1f2937', cursor: 'pointer', transition: 'all .2s' }}
-                      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.5)'; el.style.boxShadow = '0 8px 40px rgba(99,102,241,.15)'; el.style.transform = 'translateY(-2px)' }}
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.5)'; el.style.boxShadow = '0 8px 40px rgba(84,128,186,.12)'; el.style.transform = 'translateY(-2px)' }}
                       onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#1f2937'; el.style.boxShadow = 'none'; el.style.transform = 'none' }}
                       onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
                       {/* Thumbnail */}
@@ -1538,23 +1538,23 @@ document.addEventListener('click', function(e) {
                         <CardThumbnail prompt={g.prompt} />
                         {loadingProjectId === g.generationId && (
                           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <div style={{ width: 26, height: 26, border: '2px solid rgba(255,255,255,.2)', borderTopColor: '#a5b4fc', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <div style={{ width: 26, height: 26, border: '2px solid rgba(0,0,0,.15)', borderTopColor: '#a5b4fc', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                           </div>
                         )}
                         <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'opacity .2s' }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: '#6366f1', color: '#fff', boxShadow: '0 4px 20px rgba(99,102,241,.4)' }}>Open →</span>
-                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'rgba(255,255,255,.12)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,.15)', cursor: 'pointer' }}
+                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: '#5480ba', color: '#fff', boxShadow: '0 4px 20px rgba(99,102,241,.4)' }}>Open →</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'rgba(0,0,0,.1)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
                             onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇ ZIP</span>
                         </div>
                       </div>
                       {/* Card footer */}
                       <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                           {displayName.charAt(0).toUpperCase()}
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
-                          <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+                          <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
+                          <p style={{ fontSize: 13, color: 'rgba(0,0,0,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
                         </div>
                         {g.status !== 'COMPLETED' && (
                           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#fbbf24', flexShrink: 0 }}>⟳</span>
@@ -1568,7 +1568,7 @@ document.addEventListener('click', function(e) {
               {!isAdmin && !showAllProjects && validProjects.length > 6 && (
                 <div style={{ textAlign: 'center', marginTop: 36 }}>
                   <button onClick={() => setShowAllProjects(true)}
-                    style={{ background: 'rgba(99,102,241,.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.2)', borderRadius: 12, padding: '13px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                    style={{ background: 'rgba(99,102,241,.1)', color: '#5480ba', border: '1px solid rgba(99,102,241,.2)', borderRadius: 12, padding: '13px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
                     Browse all {validProjects.length} projects →
                   </button>
                 </div>
@@ -1582,8 +1582,8 @@ document.addEventListener('click', function(e) {
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
                 <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 6px', fontFamily: "'Syne',sans-serif" }}>Admin Dashboard</h1>
-                  <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>Platform overview and user management</p>
+                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 6px', fontFamily: "'Syne',sans-serif" }}>Admin Dashboard</h1>
+                  <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>Platform overview and user management</p>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => {
@@ -1602,11 +1602,11 @@ document.addEventListener('click', function(e) {
                     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
                     a.download = 'users.csv'
                     a.click()
-                  }} style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.2)', color: '#a5b4fc', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  }} style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.2)', color: '#5480ba', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                     ↓ Export CSV
                   </button>
                   <button onClick={() => void loadAdminDashboard()}
-                    style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                     {adminLoading ? '…' : '↻ Refresh'}
                   </button>
                 </div>
@@ -1615,21 +1615,21 @@ document.addEventListener('click', function(e) {
               {/* Stats cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
                 {[
-                  { label: 'Total Users', value: adminStats?.totalUsers ?? '—', icon: '👥', color: '#6366f1' },
+                  { label: 'Total Users', value: adminStats?.totalUsers ?? '—', icon: '👥', color: '#5480ba' },
                   { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', icon: '⊞', color: '#8b5cf6' },
                   { label: 'Completed', value: adminStats?.completedProjects ?? '—', icon: '✓', color: '#34d399' },
                   { label: 'Success Rate', value: adminStats?.successRate != null ? `${adminStats.successRate}%` : '—', icon: '◎', color: '#a78bfa' },
                 ].map(stat => (
-                  <div key={stat.label} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 16, padding: '22px 20px' }}>
+                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '22px 20px' }}>
                     <div style={{ fontSize: 20, marginBottom: 10 }}>{stat.icon}</div>
-                    <p style={{ fontSize: 28, fontWeight: 900, color: '#f1f5f9', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{String(stat.value)}</p>
-                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', margin: 0 }}>{stat.label}</p>
+                    <p style={{ fontSize: 28, fontWeight: 900, color: '#111827', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{String(stat.value)}</p>
+                    <p style={{ fontSize: 13, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
                   </div>
                 ))}
               </div>
 
               {/* Inner tabs */}
-              <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'rgba(255,255,255,.03)', borderRadius: 12, padding: 4, width: 'fit-content' }}>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#ffffff', borderRadius: 12, padding: 4, width: 'fit-content' }}>
                 {([
                   { key: 'overview', label: '⊞ Overview' },
                   { key: 'users', label: '👥 Users' },
@@ -1644,23 +1644,23 @@ document.addEventListener('click', function(e) {
                 ))}
               </div>
 
-              {adminError && <div style={{ padding: '16px 20px', color: '#f87171', fontSize: 14, background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.15)', borderRadius: 12, marginBottom: 20 }}>⚠ {adminError}</div>}
+              {adminError && <div style={{ padding: '16px 20px', color: '#e04580', fontSize: 14, background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.15)', borderRadius: 12, marginBottom: 20 }}>⚠ {adminError}</div>}
 
               {/* ── OVERVIEW TAB: chart ── */}
               {adminActiveTab === 'overview' && (
-                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, padding: '28px 28px 20px' }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: '0 0 24px' }}>Generations — last 7 days</h3>
+                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, padding: '28px 28px 20px' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: '0 0 24px' }}>Generations — last 7 days</h3>
                   {adminDailyChart.length === 0
-                    ? <p style={{ color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No data yet</p>
+                    ? <p style={{ color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No data yet</p>
                     : (() => {
                         const max = Math.max(...adminDailyChart.map(d => d.count), 1)
                         return (
                           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 140 }}>
                             {adminDailyChart.map(d => (
                               <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: '#a5b4fc' }}>{d.count || ''}</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#5480ba' }}>{d.count || ''}</span>
                                 <div style={{ width: '100%', background: 'linear-gradient(to top,#6366f1,#a78bfa)', borderRadius: '6px 6px 0 0', height: `${Math.max((d.count / max) * 100, d.count ? 4 : 0)}px`, minHeight: d.count ? 4 : 0, transition: 'height .3s' }} />
-                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
+                                <span style={{ fontSize: 10, color: 'rgba(0,0,0,.35)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
                               </div>
                             ))}
                           </div>
@@ -1672,34 +1672,34 @@ document.addEventListener('click', function(e) {
 
               {/* ── USERS TAB ── */}
               {adminActiveTab === 'users' && (
-                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Registered Developers</h3>
-                    <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', background: 'rgba(255,255,255,.05)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
+                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>Registered Developers</h3>
+                    <span style={{ fontSize: 13, color: 'rgba(0,0,0,.35)', background: 'rgba(0,0,0,.04)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
                   </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminUsers.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No users found</div>}
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminUsers.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No users found</div>}
                   {!adminLoading && adminUsers.map((u, i) => {
                     const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
                     const initials = name.charAt(0).toUpperCase()
                     const joinedDate = u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
                     return (
-                      <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminUsers.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none', transition: 'background .15s', cursor: 'pointer' }}
+                      <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminUsers.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none', transition: 'background .15s', cursor: 'pointer' }}
                         onClick={() => void openUserProjects(u)}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.04)'}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.03)'}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-                        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
+                        <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
-                          <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', margin: '0 0 1px' }}>Joined</p>
-                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', margin: 0 }}>{joinedDate}</p>
+                          <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: '0 0 1px' }}>Joined</p>
+                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.6)', margin: 0 }}>{joinedDate}</p>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 60 }}>
-                          <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', margin: '0 0 1px' }}>Projects</p>
-                          <p style={{ fontSize: 17, fontWeight: 800, color: '#a5b4fc', margin: 0 }}>{u.projectCount ?? 0}</p>
+                          <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: '0 0 1px' }}>Projects</p>
+                          <p style={{ fontSize: 17, fontWeight: 800, color: '#5480ba', margin: 0 }}>{u.projectCount ?? 0}</p>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
                           {u.emailVerified
@@ -1726,11 +1726,11 @@ document.addEventListener('click', function(e) {
                           void deleteAdminUser(u.userId, accessToken).then(() => {
                             setAdminUsers(prev => prev.filter(x => x.userId !== u.userId))
                           })
-                        }} style={{ background: 'rgba(248,113,113,.06)', border: '1px solid rgba(248,113,113,.12)', color: '#f87171', borderRadius: 8, padding: '4px 8px', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
+                        }} style={{ background: 'rgba(248,113,113,.06)', border: '1px solid rgba(248,113,113,.12)', color: '#e04580', borderRadius: 8, padding: '4px 8px', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
                           title="Delete user">
                           🗑
                         </button>
-                        <div style={{ color: 'rgba(255,255,255,.2)', fontSize: 16, flexShrink: 0 }}>›</div>
+                        <div style={{ color: 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0 }}>›</div>
                       </div>
                     )
                   })}
@@ -1739,21 +1739,21 @@ document.addEventListener('click', function(e) {
 
               {/* ── ACTIVITY TAB ── */}
               {adminActiveTab === 'activity' && (
-                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Recent Activity</h3>
+                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>Recent Activity</h3>
                   </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No activity yet</div>}
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No activity yet</div>}
                   {!adminLoading && adminActivity.map((g, i) => (
-                    <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none' }}>
+                    <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
                         background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
                         color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
                         {g.status}
                       </span>
-                      <p style={{ flex: 1, fontSize: 13, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', flexShrink: 0 }}>
+                      <p style={{ flex: 1, fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
+                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', flexShrink: 0 }}>
                         {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </span>
                     </div>
@@ -1763,18 +1763,18 @@ document.addEventListener('click', function(e) {
 
               {/* ── FAILED TAB ── */}
               {adminActiveTab === 'failed' && (
-                <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Failed Generations</h3>
-                    <span style={{ fontSize: 13, background: 'rgba(248,113,113,.1)', color: '#f87171', padding: '4px 10px', borderRadius: 20 }}>{adminFailed.length} failed</span>
+                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>Failed Generations</h3>
+                    <span style={{ fontSize: 13, background: 'rgba(248,113,113,.1)', color: '#e04580', padding: '4px 10px', borderRadius: 20 }}>{adminFailed.length} failed</span>
                   </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminFailed.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>No failed generations</div>}
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminFailed.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No failed generations</div>}
                   {!adminLoading && adminFailed.map((g, i) => (
-                    <div key={g.generationId || i} style={{ padding: '16px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none' }}>
+                    <div key={g.generationId || i} style={{ padding: '16px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 16)}…</span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
+                        <span style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 16)}…</span>
+                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)' }}>
                           {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                         </span>
                       </div>
@@ -1789,15 +1789,15 @@ document.addEventListener('click', function(e) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                   {adminHealth
                     ? Object.entries(adminHealth).map(([svc, status]) => (
-                        <div key={svc} style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div key={svc} style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
                           <div style={{ width: 12, height: 12, borderRadius: '50%', background: status === 'UP' ? '#34d399' : '#f87171', boxShadow: status === 'UP' ? '0 0 8px #34d399' : '0 0 8px #f87171', flexShrink: 0 }} />
                           <div>
-                            <p style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
+                            <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
                             <p style={{ fontSize: 13, color: status === 'UP' ? '#34d399' : '#f87171', margin: 0, fontWeight: 600 }}>{status}</p>
                           </div>
                         </div>
                       ))
-                    : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14 }}>Loading health status…</div>
+                    : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading health status…</div>
                   }
                 </div>
               )}
@@ -1808,50 +1808,50 @@ document.addEventListener('click', function(e) {
           {selectedAdminUser && (
             <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }} onClick={() => setSelectedAdminUser(null)}>
               <div style={{ flex: 1, background: 'rgba(0,0,0,.5)' }} />
-              <div style={{ width: 480, height: '100%', background: '#0f1117', borderLeft: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}
+              <div style={{ width: 480, height: '100%', background: '#0f1117', borderLeft: '1px solid rgba(0,0,0,.08)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}
                 onClick={e => e.stopPropagation()}>
                 {/* Header */}
-                <div style={{ padding: '28px 28px 20px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                <div style={{ padding: '28px 28px 20px', borderBottom: '1px solid rgba(0,0,0,.05)', display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                     {([selectedAdminUser.firstName, selectedAdminUser.lastName].filter(Boolean).join(' ') || selectedAdminUser.username || '?').charAt(0).toUpperCase()}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', margin: '0 0 2px' }}>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 2px' }}>
                       {[selectedAdminUser.firstName, selectedAdminUser.lastName].filter(Boolean).join(' ') || selectedAdminUser.username}
                     </p>
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', margin: 0 }}>{selectedAdminUser.email}</p>
+                    <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>{selectedAdminUser.email}</p>
                   </div>
                   <button onClick={() => setSelectedAdminUser(null)}
-                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+                    style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.35)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
                 </div>
 
                 {/* Projects list */}
                 <div style={{ padding: '20px 28px' }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.4)', margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,.4)', margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: 1 }}>
                     Projects ({selectedUserProjects.length})
                   </p>
 
                   {userProjectsLoading && (
-                    <div style={{ textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14, padding: '40px 0' }}>Loading…</div>
+                    <div style={{ textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14, padding: '40px 0' }}>Loading…</div>
                   )}
 
                   {!userProjectsLoading && selectedUserProjects.length === 0 && (
-                    <div style={{ textAlign: 'center', color: 'rgba(255,255,255,.3)', fontSize: 14, padding: '40px 0' }}>No projects yet</div>
+                    <div style={{ textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14, padding: '40px 0' }}>No projects yet</div>
                   )}
 
                   {!userProjectsLoading && selectedUserProjects.map((p, i) => (
-                    <div key={p.generationId || i} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
+                    <div key={p.generationId || i} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                           background: p.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : p.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
                           color: p.status === 'COMPLETED' ? '#34d399' : p.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
                           {p.status}
                         </span>
-                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
+                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)' }}>
                           {p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                         </span>
                       </div>
-                      <p style={{ fontSize: 13, color: '#e2e8f0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <p style={{ fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {p.prompt || 'No prompt'}
                       </p>
                     </div>
@@ -1866,34 +1866,34 @@ document.addEventListener('click', function(e) {
             <div style={{ maxWidth: 720, margin: '0 auto', padding: '56px 40px 80px' }}>
 
               {/* Header */}
-              <h1 style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', margin: '0 0 32px', fontFamily: "'Syne',sans-serif" }}>My Profile</h1>
+              <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 32px', fontFamily: "'Syne',sans-serif" }}>My Profile</h1>
 
               {/* Identity card */}
-              <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 20, padding: '32px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 28 }}>
-                <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 900, color: '#fff', flexShrink: 0, boxShadow: '0 0 40px rgba(99,102,241,.35)' }}>
+              <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '32px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 28 }}>
+                <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 900, color: '#fff', flexShrink: 0, boxShadow: '0 0 40px rgba(99,102,241,.35)' }}>
                   {displayName.charAt(0).toUpperCase()}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <h2 style={{ fontSize: 22, fontWeight: 800, color: '#f1f5f9', margin: 0 }}>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: 0 }}>
                       {(firstName && lastName) ? `${firstName} ${lastName}` : displayName}
                     </h2>
                     {userProfile?.roles?.includes('admin') && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.3)' }}>Admin</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.2)', color: '#5480ba', border: '1px solid rgba(84,128,186,.3)' }}>Admin</span>
                     )}
                   </div>
                   {(userProfile?.email || email) && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <p style={{ fontSize: 14, color: 'rgba(255,255,255,.4)', margin: 0 }}>{userProfile?.email || email}</p>
+                      <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>{userProfile?.email || email}</p>
                       {(userProfile?.emailVerified) && (
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>✓ Verified</span>
                       )}
                     </div>
                   )}
-                  {userSub && <p style={{ fontSize: 12, color: 'rgba(255,255,255,.2)', margin: '6px 0 0', fontFamily: 'monospace' }}>ID: {userSub}</p>}
+                  {userSub && <p style={{ fontSize: 12, color: 'rgba(0,0,0,.15)', margin: '6px 0 0', fontFamily: 'monospace' }}>ID: {userSub}</p>}
                 </div>
                 <button onClick={() => void loadProfile()}
-                  style={{ background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                  style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
                   {profileLoading ? '…' : '↻ Refresh'}
                 </button>
               </div>
@@ -1901,36 +1901,36 @@ document.addEventListener('click', function(e) {
               {/* Stats */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
                 {[
-                  { label: 'Total Projects', value: userStats?.totalGenerations ?? validProjects.length, icon: '⊞', color: '#6366f1' },
+                  { label: 'Total Projects', value: userStats?.totalGenerations ?? validProjects.length, icon: '⊞', color: '#5480ba' },
                   { label: 'Completed', value: userStats?.completedGenerations ?? validProjects.filter(g => g.status === 'COMPLETED').length, icon: '✓', color: '#34d399' },
                   { label: 'Success Rate', value: `${userStats?.successRate ?? (validProjects.length > 0 ? Math.round(validProjects.filter(g => g.status === 'COMPLETED').length * 100 / validProjects.length) : 0)}%`, icon: '◎', color: '#a78bfa' },
                 ].map(stat => (
-                  <div key={stat.label} style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 16, padding: '24px 20px' }}>
+                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '24px 20px' }}>
                     <div style={{ fontSize: 22, marginBottom: 10, color: stat.color }}>{stat.icon}</div>
-                    <p style={{ fontSize: 30, fontWeight: 900, color: '#f1f5f9', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{stat.value}</p>
-                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', margin: 0 }}>{stat.label}</p>
+                    <p style={{ fontSize: 30, fontWeight: 900, color: '#111827', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{stat.value}</p>
+                    <p style={{ fontSize: 13, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
                   </div>
                 ))}
               </div>
 
               {/* Recent Activity */}
               {validProjects.length > 0 && (
-                <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 20, padding: '24px 28px', marginBottom: 20 }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: '0 0 18px' }}>Recent Activity</h3>
+                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, padding: '24px 28px', marginBottom: 20 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1f2937', margin: '0 0 18px' }}>Recent Activity</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {validProjects.slice(0, 5).map(g => (
-                      <div key={g.generationId} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,.03)', cursor: 'pointer', transition: 'background .15s' }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}
+                      <div key={g.generationId} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px', borderRadius: 12, background: '#ffffff', cursor: 'pointer', transition: 'background .15s' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(84,128,186,.08)'}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'}
                         onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
                         <div style={{ width: 36, height: 36, borderRadius: 10, background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : 'rgba(251,191,36,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
                           {g.status === 'COMPLETED' ? '✓' : '⟳'}
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
-                          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
+                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
                         </div>
-                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', flexShrink: 0 }}>→</span>
+                        <span style={{ fontSize: 13, color: 'rgba(0,0,0,.35)', flexShrink: 0 }}>→</span>
                       </div>
                     ))}
                   </div>
@@ -1938,24 +1938,24 @@ document.addEventListener('click', function(e) {
               )}
 
               {/* Account Actions */}
-              <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 20, padding: '24px 28px' }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: '0 0 16px' }}>Account</h3>
+              <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, padding: '24px 28px' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1f2937', margin: '0 0 16px' }}>Account</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid rgba(0,0,0,.04)' }}>
                     <div>
-                      <p style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: '0 0 2px' }}>Authentication</p>
-                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: 0 }}>Managed by Keycloak SSO</p>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: '0 0 2px' }}>Authentication</p>
+                      <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>Managed by Keycloak SSO</p>
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>Active</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
                     <div>
-                      <p style={{ fontSize: 14, fontWeight: 600, color: '#f87171', margin: '0 0 2px' }}>Sign out</p>
-                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)', margin: 0 }}>End your current session</p>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: '#e04580', margin: '0 0 2px' }}>Sign out</p>
+                      <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>End your current session</p>
                     </div>
                     {onLogout && (
                       <button onClick={onLogout}
-                        style={{ fontSize: 13, fontWeight: 700, padding: '9px 20px', borderRadius: 10, background: 'rgba(248,113,113,.1)', color: '#f87171', border: '1px solid rgba(248,113,113,.2)', cursor: 'pointer' }}>
+                        style={{ fontSize: 13, fontWeight: 700, padding: '9px 20px', borderRadius: 10, background: 'rgba(248,113,113,.1)', color: '#e04580', border: '1px solid rgba(248,113,113,.2)', cursor: 'pointer' }}>
                         Sign out
                       </button>
                     )}
@@ -1971,13 +1971,13 @@ document.addEventListener('click', function(e) {
         {showSuccessOverlay && !ideVisible && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,11,20,.85)', backdropFilter: 'blur(16px)' }}
             onClick={() => setShowSuccessOverlay(false)}>
-            <div style={{ borderRadius: 28, padding: '48px 40px', maxWidth: 420, width: '100%', textAlign: 'center', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)', boxShadow: '0 40px 80px rgba(0,0,0,.4)' }}
+            <div style={{ borderRadius: 28, padding: '48px 40px', maxWidth: 420, width: '100%', textAlign: 'center', background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.1)', boxShadow: '0 40px 80px rgba(0,0,0,.4)' }}
               onClick={e => e.stopPropagation()}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, background: 'rgba(99,102,241,.15)', border: '1px solid rgba(99,102,241,.3)' }}>✓</div>
-              <h2 style={{ fontSize: 26, fontWeight: 900, color: '#f1f5f9', margin: '0 0 10px' }}>App Generated!</h2>
-              <p style={{ fontSize: 15, color: 'rgba(255,255,255,.45)', margin: '0 0 28px' }}>Your project is ready to explore in the editor.</p>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, background: 'rgba(84,128,186,.12)', border: '1px solid rgba(84,128,186,.3)' }}>✓</div>
+              <h2 style={{ fontSize: 26, fontWeight: 900, color: '#111827', margin: '0 0 10px' }}>App Generated!</h2>
+              <p style={{ fontSize: 15, color: 'rgba(0,0,0,.45)', margin: '0 0 28px' }}>Your project is ready to explore in the editor.</p>
               <button onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
-                style={{ width: '100%', padding: '15px', borderRadius: 12, fontSize: 16, fontWeight: 700, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', border: 'none', boxShadow: '0 0 30px rgba(99,102,241,.4)', cursor: 'pointer', marginBottom: 12 }}>
+                style={{ width: '100%', padding: '15px', borderRadius: 12, fontSize: 16, fontWeight: 700, background: '#5480ba', color: '#fff', border: 'none', boxShadow: '0 0 30px rgba(99,102,241,.4)', cursor: 'pointer', marginBottom: 12 }}>
                 Open Editor →
               </button>
               {apiResult?.generationId && (
@@ -1987,7 +1987,7 @@ document.addEventListener('click', function(e) {
                 </button>
               )}
               <button onClick={() => setShowSuccessOverlay(false)}
-                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', fontSize: 13, cursor: 'pointer', marginTop: 4 }}>
+                style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.35)', fontSize: 13, cursor: 'pointer', marginTop: 4 }}>
                 Back to workspace
               </button>
             </div>
@@ -2002,33 +2002,33 @@ document.addEventListener('click', function(e) {
     <div id="ide" className="flex flex-col" style={{ height: '100vh' }}>
       <div
         className="flex items-center gap-3 px-3 shrink-0"
-        style={{ height: 40, background: '#070b14', borderBottom: '1px solid rgba(255,255,255,.07)' }}
+        style={{ height: 40, background: '#ffffff', borderBottom: '1px solid rgba(0,0,0,.05)' }}
       >
         {/* Home button */}
         <button
           onClick={() => setIdeVisible(false)}
           className="flex items-center gap-1.5 px-2 py-1 rounded-md transition-all cursor-pointer"
-          style={{ background: 'none', border: '1px solid rgba(255,255,255,.07)', color: 'rgba(255,255,255,.35)', fontSize: 11 }}
+          style={{ background: 'none', border: '1px solid rgba(0,0,0,.05)', color: 'rgba(0,0,0,.4)', fontSize: 11 }}
           onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,.7)')}
-          onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,.35)')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'rgba(0,0,0,.4)')}
           type="button"
           title="Back to Home"
         >
           ‹ Home
         </button>
-        <div className="w-px h-4" style={{ background: 'rgba(255,255,255,.07)' }} />
+        <div className="w-px h-4" style={{ background: 'rgba(0,0,0,.05)' }} />
         <span className="font-extrabold text-sm tracking-tight heading" style={{ color: 'var(--accent)' }}>
           ✦ AIEditor
         </span>
-        <span className="mono text-[10px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,.3)' }}>
+        <span className="mono text-[10px] uppercase tracking-wider" style={{ color: 'rgba(0,0,0,.35)' }}>
           {projectName}
         </span>
         <div className="flex-1" />
-        <span className="mono text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.15)', color: 'var(--accent)' }}>
+        <span className="mono text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(84,128,186,.08)', border: '1px solid rgba(84,128,186,.12)', color: 'var(--accent)' }}>
           {previewSrcDoc ? 'HTML/CSS' : `${selectedFw ?? 'React'} + Vite`}
         </span>
         <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
-        <span className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.3)' }}>
+        <span className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.35)' }}>
           localhost:5173
         </span>
       </div>
@@ -2041,15 +2041,15 @@ document.addEventListener('click', function(e) {
           <div className="flex justify-between items-center px-3 pt-3 pb-2">
             <span
               className="mono uppercase tracking-[0.2em]"
-              style={{ fontSize: 9, color: 'rgba(255,255,255,.25)', fontWeight: 700 }}
+              style={{ fontSize: 9, color: 'rgba(0,0,0,.2)', fontWeight: 700 }}
             >
               Explorer
             </span>
             <button
               className="transition-colors cursor-pointer flex items-center justify-center rounded"
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.2)', width: 20, height: 20, fontSize: 16, lineHeight: 1 }}
+              style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.15)', width: 20, height: 20, fontSize: 16, lineHeight: 1 }}
               onMouseEnter={e => (e.currentTarget.style.color = 'rgba(99,102,241,.7)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,.2)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(0,0,0,.15)')}
               onClick={() => window.alert('Add file (demo)')}
               type="button"
               title="New file"
@@ -2259,7 +2259,7 @@ document.addEventListener('click', function(e) {
                               >
                                 ↻
                               </button>
-                              <div className="flex-1 flex items-center rounded-md px-3 min-w-0" style={{ background: '#070b14', height: 24 }}>
+                              <div className="flex-1 flex items-center rounded-md px-3 min-w-0" style={{ background: '#ffffff', height: 24 }}>
                                 <span className="mono truncate" style={{ fontSize: 10, color: 'rgba(148,163,184,0.6)' }}>
                                   {builtProjectUrl ? builtProjectUrl.replace('http://', '') : `localhost:5173/${activeFileId}`}
                                 </span>
@@ -2306,7 +2306,7 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 {apiResult ? (
-                  <div className="px-4 py-2.5 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,.06)', background: '#070b14' }}>
+                  <div className="px-4 py-2.5 shrink-0" style={{ borderTop: '1px solid rgba(0,0,0,.05)', background: '#ffffff' }}>
                     {(() => {
                       const r: any = (apiResult as any)?.aiReport
                       const ui: any = (apiResult as any)?.uiSpec
@@ -2324,8 +2324,8 @@ document.addEventListener('click', function(e) {
                       return (
                         <div className="flex items-center gap-6 flex-wrap">
                           <div className="flex items-center gap-2">
-                            <span className="mono text-[9px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,.25)' }}>Active Issues</span>
-                            <span className={`mono text-[10px] font-bold ${issuesCount ? 'text-red-400' : ''}`} style={{ color: issuesCount ? '#f87171' : 'rgba(255,255,255,.3)' }}>
+                            <span className="mono text-[9px] uppercase tracking-wider" style={{ color: 'rgba(0,0,0,.2)' }}>Active Issues</span>
+                            <span className={`mono text-[10px] font-bold ${issuesCount ? 'text-red-400' : ''}`} style={{ color: issuesCount ? '#f87171' : 'rgba(0,0,0,.35)' }}>
                               {issuesCount} detected
                             </span>
                           </div>
@@ -2380,8 +2380,8 @@ document.addEventListener('click', function(e) {
           </div>
         </div>
 
-        <div className="flex flex-col shrink-0" style={{ width: 340, background: '#070d1a', borderLeft: '1px solid rgba(255,255,255,.07)', height: '100%', overflow: 'hidden' }}>
-          <div className="flex items-center shrink-0" style={{ height: 44, borderBottom: '1px solid rgba(255,255,255,.07)', background: 'rgba(2,6,23,0.6)' }}>
+        <div className="flex flex-col shrink-0" style={{ width: 340, background: '#070d1a', borderLeft: '1px solid rgba(0,0,0,.05)', height: '100%', overflow: 'hidden' }}>
+          <div className="flex items-center shrink-0" style={{ height: 44, borderBottom: '1px solid rgba(0,0,0,.05)', background: 'rgba(2,6,23,0.6)' }}>
             {([
               { id: 'chat', label: '✦ Chat' },
               { id: 'console', label: 'Console' },
@@ -2406,19 +2406,19 @@ document.addEventListener('click', function(e) {
             <div className="flex flex-col flex-1 overflow-hidden">
               {diffVisible ? (
                 <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ borderBottom: '1px solid rgba(251,191,36,.15)', background: 'rgba(251,191,36,.04)' }}>
-                  <span className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                  <span className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
                     {diffEdits.map(e => e.file).join(', ')}
                   </span>
                   <div className="flex-1" />
-                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc' }} onClick={() => setDiffVisible(false)} type="button">✓ Accept</button>
-                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.2)', color: '#f87171' }} onClick={() => setDiffVisible(false)} type="button">✗ Reject</button>
+                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.25)', color: '#5480ba' }} onClick={() => setDiffVisible(false)} type="button">✓ Accept</button>
+                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.2)', color: '#e04580' }} onClick={() => setDiffVisible(false)} type="button">✗ Reject</button>
                 </div>
               ) : null}
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3" style={{ scrollBehavior: 'smooth' }}>
                 {chatMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'rgba(255,255,255,.15)' }}>
+                  <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'rgba(0,0,0,.12)' }}>
                     <div style={{ fontSize: 32 }}>✦</div>
-                    <div className="mono text-xs text-center" style={{ color: 'rgba(255,255,255,.2)', lineHeight: 1.6 }}>
+                    <div className="mono text-xs text-center" style={{ color: 'rgba(0,0,0,.15)', lineHeight: 1.6 }}>
                       Describe what you want to<br />change in the selected file
                     </div>
                   </div>
@@ -2426,10 +2426,10 @@ document.addEventListener('click', function(e) {
                   const isAI = m.role === 'ai'
                   return (
                     <div key={idx} className={`flex gap-2 ${isAI ? '' : 'flex-row-reverse'}`}>
-                      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold" style={{ background: isAI ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(255,255,255,.08)', color: isAI ? '#fff' : 'rgba(255,255,255,.5)', fontSize: 10, marginTop: 2 }}>
+                      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold" style={{ background: isAI ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(0,0,0,.08)', color: isAI ? '#fff' : 'rgba(255,255,255,.5)', fontSize: 10, marginTop: 2 }}>
                         {isAI ? '✦' : 'U'}
                       </div>
-                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 mono text-xs leading-relaxed ${isAI ? 'rounded-tl-sm' : 'rounded-tr-sm'}`} style={{ background: isAI ? 'rgba(99,102,241,.12)' : 'rgba(255,255,255,.06)', color: isAI ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.6)', border: isAI ? '1px solid rgba(99,102,241,.2)' : '1px solid rgba(255,255,255,.06)' }}>
+                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 mono text-xs leading-relaxed ${isAI ? 'rounded-tl-sm' : 'rounded-tr-sm'}`} style={{ background: isAI ? 'rgba(99,102,241,.12)' : 'rgba(0,0,0,.05)', color: isAI ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.6)', border: isAI ? '1px solid rgba(99,102,241,.2)' : '1px solid rgba(0,0,0,.05)' }}>
                         {m.text}
                       </div>
                     </div>
@@ -2439,19 +2439,19 @@ document.addEventListener('click', function(e) {
                   <div className="flex gap-2">
                     <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6366f1,#a5b4fc)', fontSize: 10 }}>✦</div>
                     <div className="rounded-2xl rounded-tl-sm px-3 py-2" style={{ background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.2)' }}>
-                      <span className="mono text-xs" style={{ color: '#a5b4fc' }}>Editing {activeFileName}…</span>
+                      <span className="mono text-xs" style={{ color: '#5480ba' }}>Editing {activeFileName}…</span>
                     </div>
                   </div>
                 ) : null}
               </div>
-              <div className="shrink-0 p-3" style={{ borderTop: '1px solid rgba(255,255,255,.06)' }}>
-                <div className="text-[9px] mono mb-2" style={{ color: 'rgba(255,255,255,.2)' }}>
+              <div className="shrink-0 p-3" style={{ borderTop: '1px solid rgba(0,0,0,.05)' }}>
+                <div className="text-[9px] mono mb-2" style={{ color: 'rgba(0,0,0,.15)' }}>
                   AI will pick the right file automatically
                 </div>
                 {selectedEl ? (
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="mono text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(99,102,241,.12)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,.2)' }}>⊕ {selectedEl}</span>
-                    <button className="text-sm cursor-pointer" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)' }} onClick={() => setSelectedEl(null)} type="button">×</button>
+                    <span className="mono text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(99,102,241,.12)', color: '#5480ba', border: '1px solid rgba(99,102,241,.2)' }}>⊕ {selectedEl}</span>
+                    <button className="text-sm cursor-pointer" style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.2)' }} onClick={() => setSelectedEl(null)} type="button">×</button>
                   </div>
                 ) : null}
                 <div className="flex gap-2 items-end">
@@ -2463,11 +2463,11 @@ document.addEventListener('click', function(e) {
                     placeholder={isChatLoading ? 'AI is editing…' : 'Describe your changes… (Enter to send)'}
                     rows={3}
                     className="mono text-xs w-full resize-none custom-scrollbar"
-                    style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 10, padding: '8px 12px', outline: 'none', color: '#f1f5f9', opacity: isChatLoading ? 0.5 : 1, lineHeight: 1.5 }}
+                    style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.1)', borderRadius: 10, padding: '8px 12px', outline: 'none', color: '#111827', opacity: isChatLoading ? 0.5 : 1, lineHeight: 1.5 }}
                   />
                   <button
                     className="flex items-center justify-center rounded-xl shrink-0 cursor-pointer font-bold"
-                    style={{ width: 36, height: 36, background: chatInput.trim() && !isChatLoading ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(255,255,255,.05)', border: 'none', color: chatInput.trim() && !isChatLoading ? '#fff' : 'rgba(255,255,255,.2)', fontSize: 16, transition: 'all .15s' }}
+                    style={{ width: 36, height: 36, background: chatInput.trim() && !isChatLoading ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(0,0,0,.04)', border: 'none', color: chatInput.trim() && !isChatLoading ? '#fff' : 'rgba(0,0,0,.15)', fontSize: 16, transition: 'all .15s' }}
                     onClick={() => void sendChat()}
                     disabled={isChatLoading}
                     type="button"
@@ -2509,7 +2509,7 @@ document.addEventListener('click', function(e) {
               <div className="py-1">
                 {logs.map((l, idx) => (
                   <div key={idx} className="flex gap-2 items-start px-3 py-1" style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}>
-                    <span className="mono shrink-0 mt-0.5" style={{ fontSize: 10, color: 'rgba(255,255,255,.2)' }}>
+                    <span className="mono shrink-0 mt-0.5" style={{ fontSize: 10, color: 'rgba(0,0,0,.15)' }}>
                       {l.t}
                     </span>
                     <span className="mono leading-relaxed" style={{ fontSize: 11, color: logColor[l.type] ?? logColor.info }}>
@@ -2523,13 +2523,13 @@ document.addEventListener('click', function(e) {
             {rightTab === 'logs' ? (
               <div className="p-3">
                 <div className="mb-3">
-                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
+                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
                     Dashboard
                   </div>
-                  <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                  <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
                     total generations: {history.length}
                   </div>
-                  <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                  <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
                     last activity:{' '}
                     {(() => {
                       const latest = history
@@ -2544,13 +2544,13 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
+                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
                     Recent generations
                   </div>
                   <div className="flex-1" />
                   <button
                     className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                    style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', color: 'rgba(255,255,255,.55)' }}
+                    style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: 'rgba(0,0,0,.55)' }}
                     onClick={() => void loadHistory()}
                     type="button"
                   >
@@ -2559,19 +2559,19 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 {historyLoading ? (
-                  <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.35)' }}>
+                  <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
                     Loading…
                   </div>
                 ) : null}
 
                 {historyError ? (
-                  <div className="mono text-xs" style={{ color: '#f87171' }}>
+                  <div className="mono text-xs" style={{ color: '#e04580' }}>
                     {historyError}
                   </div>
                 ) : null}
 
                 {!historyLoading && !historyError && history.length === 0 ? (
-                  <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.35)' }}>
+                  <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
                     No generations yet.
                   </div>
                 ) : null}
@@ -2584,12 +2584,12 @@ document.addEventListener('click', function(e) {
                       style={{
                         background:
                           selectedGenerationId && g.generationId && selectedGenerationId === g.generationId
-                            ? 'rgba(99,102,241,.08)'
+                            ? 'rgba(84,128,186,.08)'
                             : 'rgba(255,255,255,.03)',
                         border:
                           selectedGenerationId && g.generationId && selectedGenerationId === g.generationId
                             ? '1px solid rgba(99,102,241,.35)'
-                            : '1px solid rgba(255,255,255,.06)',
+                            : '1px solid rgba(0,0,0,.05)',
                         cursor: g.generationId ? 'pointer' : 'default',
                       }}
                       title={g.prompt ?? ''}
@@ -2600,14 +2600,14 @@ document.addEventListener('click', function(e) {
                         void loadVersions(g.generationId)
                       }}
                     >
-                      <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                      <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
                         {g.createdAt ? new Date(g.createdAt).toLocaleString() : ''}
                       </div>
-                      <div className="mono text-[10px] mb-1 line-clamp-2" style={{ color: 'rgba(255,255,255,.55)' }}>
+                      <div className="mono text-[10px] mb-1 line-clamp-2" style={{ color: 'rgba(0,0,0,.55)' }}>
                         {g.prompt ?? ''}
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                        <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
                           {g.status ?? 'unknown'}
                         </div>
                         <div className="flex-1" />
@@ -2615,9 +2615,9 @@ document.addEventListener('click', function(e) {
                           <button
                             className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer"
                             style={{
-                              background: loadingProjectId === g.generationId ? 'rgba(99,102,241,.15)' : 'rgba(99,102,241,.08)',
-                              border: '1px solid rgba(99,102,241,.3)',
-                              color: '#a5b4fc',
+                              background: loadingProjectId === g.generationId ? 'rgba(84,128,186,.12)' : 'rgba(84,128,186,.08)',
+                              border: '1px solid rgba(84,128,186,.3)',
+                              color: '#5480ba',
                             }}
                             onClick={(e) => {
                               e.stopPropagation()
@@ -2637,16 +2637,16 @@ document.addEventListener('click', function(e) {
                 {selectedGenerationId ? (
                   <div className="mt-3">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
+                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
                         Audit events
                       </div>
-                      <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)', wordBreak: 'break-all' }}>
+                      <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)', wordBreak: 'break-all' }}>
                         {selectedGenerationId}
                       </div>
                       <div className="flex-1" />
                       <button
                         className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                        style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', color: 'rgba(255,255,255,.55)' }}
+                        style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: 'rgba(0,0,0,.55)' }}
                         onClick={() => void loadAudit(selectedGenerationId)}
                         type="button"
                       >
@@ -2655,19 +2655,19 @@ document.addEventListener('click', function(e) {
                     </div>
 
                     {auditLoading ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.35)' }}>
+                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
                         Loading…
                       </div>
                     ) : null}
 
                     {auditError ? (
-                      <div className="mono text-xs" style={{ color: '#f87171' }}>
+                      <div className="mono text-xs" style={{ color: '#e04580' }}>
                         {auditError}
                       </div>
                     ) : null}
 
                     {!auditLoading && !auditError && auditEvents.length === 0 ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.35)' }}>
+                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
                         No audit events.
                       </div>
                     ) : null}
@@ -2686,19 +2686,19 @@ document.addEventListener('click', function(e) {
                           <div
                             key={(e.eventId ?? '') + ':' + (e.timestamp ?? '')}
                             className="rounded-md p-2"
-                            style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)' }}
+                            style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.04)' }}
                           >
-                            <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                            <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
                               {e.timestamp ? new Date(e.timestamp).toLocaleString() : ''}
                             </div>
                             <div className="mono text-xs" style={{ color: '#a78bfa' }}>
                               {e.type ?? 'EVENT'}
                               {typeof e.durationMs === 'number' ? (
-                                <span style={{ color: 'rgba(255,255,255,.4)' }}> · {e.durationMs}ms</span>
+                                <span style={{ color: 'rgba(0,0,0,.4)' }}> · {e.durationMs}ms</span>
                               ) : null}
                             </div>
                             {detailsText ? (
-                              <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.45)', wordBreak: 'break-word' }}>
+                              <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.45)', wordBreak: 'break-word' }}>
                                 {detailsText}
                               </div>
                             ) : null}
@@ -2712,13 +2712,13 @@ document.addEventListener('click', function(e) {
                 {selectedGenerationId ? (
                   <div className="mt-3">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
+                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
                         Versions
                       </div>
                       <div className="flex-1" />
                       <button
                         className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                        style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', color: 'rgba(255,255,255,.55)' }}
+                        style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: 'rgba(0,0,0,.55)' }}
                         onClick={() => void loadVersions(selectedGenerationId)}
                         type="button"
                       >
@@ -2727,25 +2727,25 @@ document.addEventListener('click', function(e) {
                     </div>
 
                     {versionsLoading ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.35)' }}>
+                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
                         Loading…
                       </div>
                     ) : null}
 
                     {versionsError ? (
-                      <div className="mono text-xs" style={{ color: '#f87171' }}>
+                      <div className="mono text-xs" style={{ color: '#e04580' }}>
                         {versionsError}
                       </div>
                     ) : null}
 
                     {!versionsLoading && !versionsError && versions ? (
-                      <div className="mono text-[10px] mb-2" style={{ color: 'rgba(255,255,255,.45)' }}>
+                      <div className="mono text-[10px] mb-2" style={{ color: 'rgba(0,0,0,.45)' }}>
                         activeVersion: {typeof versions.activeVersion === 'number' ? versions.activeVersion : 'unknown'}
                       </div>
                     ) : null}
 
                     {!versionsLoading && !versionsError && (!versions || !versions.codeVersions || versions.codeVersions.length === 0) ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.35)' }}>
+                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
                         No versions.
                       </div>
                     ) : null}
@@ -2758,20 +2758,20 @@ document.addEventListener('click', function(e) {
                           <div
                             key={`code-v-${String(v.version)}-${String(v.createdAt ?? '')}`}
                             className="rounded-md p-2 flex items-start gap-2"
-                            style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)' }}
+                            style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.04)' }}
                           >
                             <div className="flex-1">
-                              <div className="mono text-xs" style={{ color: '#a5b4fc' }}>
+                              <div className="mono text-xs" style={{ color: '#5480ba' }}>
                                 code v{ver ?? '?'}{isActive ? ' (active)' : ''}
                               </div>
-                              <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
+                              <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
                                 {v.createdAt ? new Date(v.createdAt).toLocaleString() : ''}
                               </div>
                             </div>
                             {!isActive && ver !== null ? (
                               <button
                                 className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                                style={{ background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.25)', color: '#a5b4fc' }}
+                                style={{ background: 'rgba(84,128,186,.08)', border: '1px solid rgba(99,102,241,.25)', color: '#5480ba' }}
                                 onClick={() => void doRollback(selectedGenerationId, ver)}
                                 type="button"
                               >
