@@ -388,8 +388,8 @@ function LandingPage() {
 
         <div className="card">
           <div className="logo-area">
-            <div className="logo-icon">✦</div>
-            <div className="logo-title">AI UI Generator</div>
+            <img src="/talan-logo.svg" alt="Talan" style={{ height: 48, marginBottom: 12 }} />
+            <div className="logo-title">UI Generator</div>
           </div>
 
           <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
