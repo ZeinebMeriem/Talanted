@@ -1206,18 +1206,29 @@ document.addEventListener('click', function(e) {
 
           {/* ── NEW PROJECT ── */}
           {homeTab === 'create' && (
-            <div style={{ minHeight: '100vh', background: '#ffffff' }}>
+            <div style={{ minHeight: '100vh', background: '#ffffff', position: 'relative', overflow: 'hidden' }}>
 
-              <div style={{ maxWidth: 780, margin: '0 auto', padding: '0 32px 60px' }}>
+              {/* Animated background orbs */}
+              <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+                <div className="bg-orb bg-orb-1" />
+                <div className="bg-orb bg-orb-2" />
+                <div className="bg-orb bg-orb-3" />
+              </div>
+
+              <div style={{ maxWidth: 780, margin: '0 auto', padding: '0 32px 60px', position: 'relative', zIndex: 1 }}>
 
               {/* Hero heading */}
               <div className="home-hero">
+                <div className="home-badge">
+                  <span style={{ fontSize: 14 }}>✦</span>
+                  Powered by AI Agents
+                </div>
                 <h1 className="home-title">
                   What should we build,{' '}
                   <span className="gradient-text">{displayName}?</span>
                 </h1>
                 <p className="home-subtitle">
-                  Describe your app and our AI agents will architect, design, and build it — instantly.
+                  Describe your vision and our AI agents will architect, design, and build your application — in seconds.
                 </p>
               </div>
 
@@ -1356,24 +1367,27 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
-                  onMouseEnter={e => { if (!isBuilding && projectName && customPrompt) { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 32px rgba(84,128,186,.55)' } }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = isBuilding || !projectName || !customPrompt ? 'none' : '0 4px 20px rgba(84,128,186,.4)' }}
-                  style={{ width: '100%', padding: '16px', borderRadius: 100, fontSize: 15, fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', border: 'none', cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? '#e5e7eb' : '#5480ba', color: isBuilding || !projectName || !customPrompt ? '#9ca3af' : '#fff', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 4px 20px rgba(84,128,186,.4)', transition: 'all .25s', animation: isBuilding || !projectName || !customPrompt ? 'none' : 'pulseBlue 2.5s ease-in-out infinite', marginTop: 8 }}>
+                  className={`btn-generate ${isBuilding || !projectName || !customPrompt ? 'disabled' : 'enabled'}`}>
                   {isBuilding ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                      <div style={{ width: 18, height: 18, border: '2px solid rgba(0,0,0,.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      <div style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                       {buildMsg}
                     </div>
-                  ) : 'Generate App →'}
+                  ) : (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                      Generate App
+                      <span style={{ fontSize: 18, transition: 'transform .3s' }}>→</span>
+                    </span>
+                  )}
                 </button>
 
                 {isBuilding && (
-                  <div style={{ marginTop: 16 }}>
-                    <div style={{ height: 4, borderRadius: 4, background: 'rgba(0,0,0,.05)', overflow: 'hidden', marginBottom: 8 }}>
-                      <div className="progress-bar" style={{ height: '100%', borderRadius: 4, width: `${buildPct}%`, background: 'linear-gradient(90deg,#5480ba,#8f9424,#e04580)', backgroundSize: '200% 100%', animation: 'gradientMove 2s ease infinite' }} />
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ height: 6, borderRadius: 6, background: 'rgba(0,0,0,.04)', overflow: 'hidden', marginBottom: 10, boxShadow: 'inset 0 1px 2px rgba(0,0,0,.06)' }}>
+                      <div className="progress-bar" style={{ height: '100%', borderRadius: 6, width: `${buildPct}%`, background: 'linear-gradient(90deg,#5480ba,#6366f1,#a855f7,#e04580)', backgroundSize: '300% 100%', animation: 'gradientMove 2s ease infinite', boxShadow: '0 0 12px rgba(99,102,241,.4)' }} />
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(0,0,0,.4)' }}>
-                      <span>{buildMsg}</span><span>{Math.floor(buildPct)}%</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(0,0,0,.45)', fontWeight: 500 }}>
+                      <span>{buildMsg}</span><span style={{ fontWeight: 700, color: '#5480ba' }}>{Math.floor(buildPct)}%</span>
                     </div>
                   </div>
                 )}
@@ -1437,29 +1451,26 @@ document.addEventListener('click', function(e) {
                   </div>
 
                   {/* Cards row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 18 }}>
                     {validProjects.slice(0, 3).map(g => (
                       <div key={g.generationId}
-                        className="group"
-                        style={{ borderRadius: 14, overflow: 'hidden', background: '#111827', border: '1px solid #1f2937', cursor: 'pointer', transition: 'all .2s' }}
-                        onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.5)'; el.style.boxShadow = '0 6px 30px rgba(84,128,186,.12)'; el.style.transform = 'translateY(-2px)' }}
-                        onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#1f2937'; el.style.boxShadow = 'none'; el.style.transform = 'none' }}
+                        className="group project-card"
                         onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
-                        <div style={{ position: 'relative', height: 150, background: '#0d1117', overflow: 'hidden' }}>
+                        <div className="project-card-thumb" style={{ position: 'relative', height: 140 }}>
                           <CardThumbnail prompt={g.prompt} />
                           {loadingProjectId === g.generationId && (
-                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <div style={{ width: 22, height: 22, border: '2px solid rgba(0,0,0,.15)', borderTopColor: '#5480ba', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ width: 24, height: 24, border: '3px solid rgba(84,128,186,.2)', borderTopColor: '#5480ba', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                             </div>
                           )}
-                          <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'opacity .2s' }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 9, background: '#5480ba', color: '#fff' }}>Open →</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 18px', borderRadius: 9, background: 'rgba(0,0,0,.1)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
+                          <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(84,128,186,.9),rgba(99,102,241,.9))', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'opacity .25s' }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, padding: '10px 20px', borderRadius: 10, background: '#fff', color: '#5480ba' }}>Open →</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,.2)', color: '#fff', cursor: 'pointer', backdropFilter: 'blur(8px)' }}
                               onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇</span>
                           </div>
                         </div>
-                        <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                        <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: '#fff' }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg,#5480ba,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                             {displayName.charAt(0).toUpperCase()}
                           </div>
                           <div style={{ minWidth: 0 }}>
