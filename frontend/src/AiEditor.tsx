@@ -1206,10 +1206,11 @@ document.addEventListener('click', function(e) {
 
           {/* ── NEW PROJECT ── */}
           {homeTab === 'create' && (
-            <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f5f7ff 0%, #ffffff 50%)', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden' }}>
 
               {/* Animated background with grid */}
               <div className="home-bg">
+                <div className="bg-glow" />
                 <div className="bg-orb bg-orb-1" />
                 <div className="bg-orb bg-orb-2" />
                 <div className="bg-orb bg-orb-3" />
@@ -1220,15 +1221,15 @@ document.addEventListener('click', function(e) {
               {/* Hero heading */}
               <div className="home-hero">
                 <div className="home-badge">
-                  <span style={{ fontSize: 16 }}>✦</span>
-                  Powered by AI Agents
+                  <span style={{ fontSize: 16, filter: 'drop-shadow(0 0 6px rgba(139,92,246,.6))' }}>✦</span>
+                  Talan AI Platform
                 </div>
                 <h1 className="home-title">
                   What do you want to<br />
                   <span className="gradient-text">build today?</span>
                 </h1>
                 <p className="home-subtitle">
-                  Describe your vision and our AI agents will architect, design, and build your application — in seconds.
+                  Describe your vision and watch our AI agents architect, design, and build your application — in seconds.
                 </p>
               </div>
 
