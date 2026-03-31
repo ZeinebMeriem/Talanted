@@ -1206,26 +1206,26 @@ document.addEventListener('click', function(e) {
 
           {/* ── NEW PROJECT ── */}
           {homeTab === 'create' && (
-            <div style={{ minHeight: '100vh', background: '#ffffff', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f5f7ff 0%, #ffffff 50%)', position: 'relative', overflow: 'hidden' }}>
 
-              {/* Animated background orbs */}
-              <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+              {/* Animated background with grid */}
+              <div className="home-bg">
                 <div className="bg-orb bg-orb-1" />
                 <div className="bg-orb bg-orb-2" />
                 <div className="bg-orb bg-orb-3" />
               </div>
 
-              <div style={{ maxWidth: 780, margin: '0 auto', padding: '0 32px 60px', position: 'relative', zIndex: 1 }}>
+              <div style={{ maxWidth: 820, margin: '0 auto', padding: '0 32px 60px', position: 'relative', zIndex: 1 }}>
 
               {/* Hero heading */}
               <div className="home-hero">
                 <div className="home-badge">
-                  <span style={{ fontSize: 14 }}>✦</span>
+                  <span style={{ fontSize: 16 }}>✦</span>
                   Powered by AI Agents
                 </div>
                 <h1 className="home-title">
-                  What should we build,{' '}
-                  <span className="gradient-text">{displayName}?</span>
+                  What do you want to<br />
+                  <span className="gradient-text">build today?</span>
                 </h1>
                 <p className="home-subtitle">
                   Describe your vision and our AI agents will architect, design, and build your application — in seconds.
