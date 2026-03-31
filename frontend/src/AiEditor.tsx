@@ -1215,7 +1215,7 @@ document.addEventListener('click', function(e) {
                 <div className="bg-orb bg-orb-3" />
               </div>
 
-              <div style={{ maxWidth: 820, margin: '0 auto', padding: '64px 40px 80px', position: 'relative', zIndex: 1 }}>
+              <div style={{ maxWidth: 760, margin: '0 auto', padding: '48px 40px 60px', position: 'relative', zIndex: 1 }}>
 
               {/* Badge */}
               <div style={{ textAlign: 'center' }}>
