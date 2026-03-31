@@ -3,31 +3,229 @@
 @tailwind utilities;
 
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Syne','Inter',sans-serif;background:#070b14;color:#f1f5f9;min-height:100vh;overflow-x:hidden}
-#onboarding{background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(99,102,241,.18) 0%,transparent 70%),radial-gradient(ellipse 60% 40% at 80% 90%,rgba(168,85,247,.1) 0%,transparent 60%),#070b14}
-:root{--accent:#a5b4fc;--accent-dark:#6366f1;--border:rgba(255,255,255,.08);--text-muted:rgba(255,255,255,.35)}
+body{font-family:'Inter',sans-serif;background:#f0f2f8;color:#1f2937;min-height:100vh;overflow-x:hidden}
+
+/* ── IDE stays dark ── */
 #ide{--accent:#a5b4fc;--accent-dark:#6366f1;--border:rgba(255,255,255,.08);--text-muted:rgba(255,255,255,.35)}
+:root{--accent:#5480ba;--accent-dark:#3a5f9a}
+
+/* ── Scrollbars ── */
 ::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+::-webkit-scrollbar-thumb{background:rgba(84,128,186,.3);border-radius:4px}
+#ide ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+
+/* ── Typography ── */
 .mono{font-family:'JetBrains Mono',monospace}
-.heading{font-family:'Syne','Inter',sans-serif}
-.glass{background:rgba(7,11,20,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+
+/* ── Keyframes ── */
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes blink{50%{opacity:0}}
-@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(30px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes fadeUpFast{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes scaleIn{
+  from{opacity:0;transform:scale(.96) translateY(16px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+@keyframes gradientMove{
+  0%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+  100%{background-position:0% 50%}
+}
+@keyframes orbFloat1{
+  0%,100%{transform:translate(0,0) scale(1)}
+  33%{transform:translate(60px,-50px) scale(1.08)}
+  66%{transform:translate(-40px,35px) scale(0.95)}
+}
+@keyframes orbFloat2{
+  0%,100%{transform:translate(0,0) scale(1)}
+  33%{transform:translate(-50px,40px) scale(1.06)}
+  66%{transform:translate(35px,-45px) scale(0.93)}
+}
+@keyframes orbFloat3{
+  0%,100%{transform:translate(0,0)}
+  50%{transform:translate(30px,-30px)}
+}
+@keyframes pulseBlue{
+  0%,100%{box-shadow:0 4px 20px rgba(84,128,186,.4)}
+  50%{box-shadow:0 8px 40px rgba(84,128,186,.7),0 0 0 4px rgba(84,128,186,.15)}
+}
+@keyframes colorBar{
+  0%,100%{transform:scaleX(1)}
+  50%{transform:scaleX(1.01)}
+}
+@keyframes shimmer{
+  0%{background-position:-200% center}
+  100%{background-position:200% center}
+}
+@keyframes badgePulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(84,128,186,.3)}
+  50%{box-shadow:0 0 0 6px rgba(84,128,186,0)}
+}
 @keyframes progress{from{background-position:0 0}to{background-position:40px 0}}
-.spin{animation:spin 2s linear infinite}
-.blink{animation:blink 1s step-end infinite}
-.fade-up{animation:fadeUp .22s ease}
+
+/* ── Background orbs (home) ── */
+.bg-orb{
+  position:absolute;border-radius:50%;
+  filter:blur(90px);pointer-events:none;
+}
+.bg-orb-1{
+  width:700px;height:700px;opacity:.18;
+  background:#5480ba;
+  top:-250px;right:-100px;
+  animation:orbFloat1 12s ease-in-out infinite;
+}
+.bg-orb-2{
+  width:500px;height:500px;opacity:.14;
+  background:#e04580;
+  bottom:-150px;left:-150px;
+  animation:orbFloat2 15s ease-in-out infinite;
+}
+.bg-orb-3{
+  width:350px;height:350px;opacity:.12;
+  background:#8f9424;
+  top:45%;left:55%;
+  animation:orbFloat3 18s ease-in-out infinite;
+}
+
+/* ── Home page components ── */
+.home-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 18px;border-radius:100px;
+  background:rgba(84,128,186,.1);
+  border:1px solid rgba(84,128,186,.25);
+  font-size:12px;font-weight:700;color:#5480ba;
+  letter-spacing:.08em;text-transform:uppercase;
+  margin-bottom:24px;
+  animation:fadeUp .5s ease both, badgePulse 3s ease-in-out infinite;
+  cursor:default;
+}
+
+.home-title{
+  font-family:'Syne','Inter',sans-serif;
+  font-size:clamp(48px,6vw,76px);
+  font-weight:900;
+  color:#0d1117;
+  line-height:1.05;
+  letter-spacing:-2px;
+  margin:0 0 20px;
+  animation:fadeUp .6s ease .05s both;
+}
+
+.home-title .gradient-text{
+  background:linear-gradient(135deg,#5480ba 0%,#e04580 50%,#8f9424 100%);
+  background-size:200% 200%;
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+  animation:gradientMove 5s ease infinite;
+}
+
+.home-subtitle{
+  font-size:17px;color:rgba(0,0,0,.45);
+  max-width:520px;margin:0 auto 28px;
+  line-height:1.7;
+  animation:fadeUp .6s ease .12s both;
+}
+
+.home-stats{
+  display:flex;align-items:center;justify-content:center;
+  gap:28px;margin-bottom:48px;
+  animation:fadeUp .6s ease .2s both;
+}
+.home-stats span{
+  display:flex;align-items:center;gap:7px;
+  font-size:13px;font-weight:600;color:rgba(0,0,0,.4);
+}
+.home-stats span::before{
+  content:'';display:inline-block;
+  width:6px;height:6px;border-radius:50%;
+  background:currentColor;opacity:.6;
+}
+
+.home-form-card{
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  background:rgba(255,255,255,.88);
+  border:1px solid rgba(255,255,255,.95);
+  border-radius:24px;
+  padding:32px 32px 28px;
+  margin-bottom:20px;
+  box-shadow:0 8px 48px rgba(84,128,186,.14),0 2px 12px rgba(0,0,0,.06),inset 0 1px 0 rgba(255,255,255,.9);
+  animation:scaleIn .6s ease .15s both;
+  opacity:0;
+  animation-fill-mode:forwards;
+}
+
+.home-agent-card{
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  background:rgba(255,255,255,.7);
+  border:1px solid rgba(84,128,186,.12);
+  border-radius:20px;
+  padding:24px 28px;
+  box-shadow:0 4px 24px rgba(84,128,186,.08);
+  animation:scaleIn .6s ease .3s both;
+  opacity:0;
+  animation-fill-mode:forwards;
+}
+
+/* ── Field inputs ── */
+.home-input{
+  width:100%;height:48px;padding:0 16px;
+  border-radius:12px;
+  background:rgba(0,0,0,.04);
+  border:1.5px solid rgba(0,0,0,.09);
+  color:#111827;font-size:15px;
+  outline:none;box-sizing:border-box;
+  transition:all .2s;font-family:inherit;
+}
+.home-input:focus{
+  border-color:#5480ba;
+  background:rgba(84,128,186,.04);
+  box-shadow:0 0 0 3px rgba(84,128,186,.12);
+}
+.home-textarea{
+  width:100%;height:150px;padding:14px 16px;
+  border-radius:12px;
+  background:rgba(0,0,0,.03);
+  border:1.5px solid rgba(0,0,0,.08);
+  color:#111827;font-size:15px;line-height:1.65;
+  resize:none;outline:none;box-sizing:border-box;
+  transition:all .2s;font-family:inherit;
+}
+.home-textarea:focus{
+  border-color:#5480ba;
+  background:rgba(84,128,186,.03);
+  box-shadow:0 0 0 3px rgba(84,128,186,.1);
+}
+
+/* ── Talan color bar ── */
+.talan-color-bar{
+  position:fixed;top:0;left:0;right:0;height:4px;
+  display:flex;z-index:200;
+  animation:colorBar 4s ease-in-out infinite;
+}
+.talan-color-bar span{flex:1}
+
+/* ── IDE-specific ── */
 .file-row:hover{background:rgba(255,255,255,.05)}
 .file-row:hover .del-btn{opacity:1!important}
 .tab-inactive{color:rgba(255,255,255,.35);border-bottom:2px solid transparent}
 .tab-inactive:hover{color:rgba(255,255,255,.65)}
-.fw-btn.selected{background:rgba(99,102,241,.12);border-color:#6366f1;color:#a5b4fc}
+.fw-btn.selected{background:rgba(84,128,186,.15);border-color:#5480ba;color:#5480ba}
 .fw-btn:hover{background:rgba(255,255,255,.07)}
-.select-zone:hover{border:2px solid rgba(99,102,241,.5);background:rgba(99,102,241,.06)}
-.select-zone.picked{border:2px solid #6366f1;background:rgba(99,102,241,.12)}
+.select-zone:hover{border:2px solid rgba(84,128,186,.5);background:rgba(84,128,186,.06)}
+.select-zone.picked{border:2px solid #5480ba;background:rgba(84,128,186,.12)}
 .custom-scrollbar::-webkit-scrollbar{width:3px}
-.custom-scrollbar::-webkit-scrollbar-thumb{background:rgba(99,102,241,.25);border-radius:3px}
+.custom-scrollbar::-webkit-scrollbar-thumb{background:rgba(84,128,186,.25);border-radius:3px}
 input:focus{outline:none}
 .progress-bar{transition:width .4s cubic-bezier(.4,0,.2,1)}
+.spin{animation:spin 2s linear infinite}
+.blink{animation:blink 1s step-end infinite}
+.fade-up{animation:fadeUp .5s ease both}

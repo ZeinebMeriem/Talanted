@@ -1100,16 +1100,25 @@ document.addEventListener('click', function(e) {
     const validProjects = history.filter(g => g.generationId)
 
     return (
-      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: '#f4f5f7' }}>
+      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh' }}>
+
+        {/* Talan color bar */}
+        <div className="talan-color-bar">
+          <span style={{ background: '#5480ba' }} />
+          <span style={{ background: '#8f9424' }} />
+          <span style={{ background: '#e04580' }} />
+          <span style={{ background: '#6b367d' }} />
+          <span style={{ background: '#1d662e' }} />
+        </div>
 
         {/* ── SIDEBAR ── */}
-        <aside style={{ width: 260, background: '#ffffff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 40, overflowY: 'auto' }}>
+        <aside style={{ width: 260, background: '#ffffff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto' }}>
 
           {/* Logo */}
           <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #e5e7eb' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <img src="/talan-logo.svg" alt="Talan" style={{ height: 28, flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.4)', fontFamily: "'Inter',sans-serif", letterSpacing: '0.3px' }}>UI Generator</span>
+              <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.4)', fontFamily: "'Inter',sans-serif", letterSpacing: '0.3px' }}>UI Generator</span>
             </div>
           </div>
 
@@ -1135,7 +1144,7 @@ document.addEventListener('click', function(e) {
               ...(isAdmin ? [{ icon: '⚙', label: 'Admin Dashboard', action: () => setHomeTab('admin'), active: homeTab === 'admin' }] : []),
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: item.active ? 'rgba(84,128,186,.12)' : 'transparent', color: item.active ? '#a5b4fc' : 'rgba(0,0,0,.55)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: item.active ? 'rgba(84,128,186,.1)' : 'transparent', color: item.active ? '#5480ba' : 'rgba(0,0,0,.55)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
                 onMouseEnter={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.04)' }}
                 onMouseLeave={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
@@ -1161,7 +1170,7 @@ document.addEventListener('click', function(e) {
                 <button key={g.generationId}
                   onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', borderRadius: 9, marginBottom: 1, background: 'transparent', color: 'rgba(0,0,0,.45)', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', transition: 'all .15s' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(0,0,0,.04)'; el.style.color = '#e2e8f0' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(84,128,186,.07)'; el.style.color = '#1f2937' }}
                   onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = 'rgba(0,0,0,.45)' }}>
                   <span style={{ fontSize: 13, opacity: 0.4, flexShrink: 0 }}>□</span>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{projectName2(g.prompt)}</span>
@@ -1193,32 +1202,52 @@ document.addEventListener('click', function(e) {
         </aside>
 
         {/* ── MAIN CONTENT ── */}
-        <main style={{ marginLeft: 260, flex: 1, minHeight: '100vh', overflowY: 'auto' }}>
+        <main style={{ marginLeft: 260, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4 }}>
 
           {/* ── NEW PROJECT ── */}
           {homeTab === 'create' && (
-            <div style={{ maxWidth: 820, margin: '0 auto', padding: '64px 40px 80px' }}>
+            <div style={{ position: 'relative', overflow: 'hidden', minHeight: '100vh' }}>
+
+              {/* Animated background orbs */}
+              <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
+                <div className="bg-orb bg-orb-1" />
+                <div className="bg-orb bg-orb-2" />
+                <div className="bg-orb bg-orb-3" />
+              </div>
+
+              <div style={{ maxWidth: 820, margin: '0 auto', padding: '64px 40px 80px', position: 'relative', zIndex: 1 }}>
+
+              {/* Badge */}
+              <div style={{ textAlign: 'center' }}>
+                <div className="home-badge">✦ Talan AI Platform</div>
+              </div>
 
               {/* Heading */}
-              <div style={{ textAlign: 'center', marginBottom: 48 }}>
-                <h1 style={{ fontSize: 44, fontWeight: 900, color: '#111827', fontFamily: "'Syne',sans-serif", lineHeight: 1.1, margin: '0 0 14px' }}>
+              <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                <h1 className="home-title">
                   What should we build,{' '}
-                  <span style={{ color: '#5480ba' }}>
-                    {displayName}?
-                  </span>
+                  <span className="gradient-text">{displayName}?</span>
                 </h1>
-                <p style={{ fontSize: 16, color: 'rgba(0,0,0,.4)', margin: 0, lineHeight: 1.6 }}>
+                <p className="home-subtitle">
                   Describe your app and our AI agents will architect, design, and build it for you.
                 </p>
               </div>
 
+              {/* Stats row */}
+              <div className="home-stats">
+                <span>React & HTML/CSS</span>
+                <span>Multi-LLM AI</span>
+                <span>Production-ready code</span>
+                <span>Live preview</span>
+              </div>
+
               {/* Form */}
-              <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '28px 28px 24px', marginBottom: 16 }}>
+              <div className="home-form-card">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'rgba(0,0,0,.6)', marginBottom: 8 }}>Project Name</label>
                     <input
-                      style={{ width: '100%', height: 46, padding: '0 16px', borderRadius: 12, background: 'rgba(0,0,0,.05)', border: '1px solid rgba(0,0,0,.1)', color: '#111827', fontSize: 15, outline: 'none', boxSizing: 'border-box' }}
+                      className="home-input"
                       placeholder="my-awesome-app"
                       value={projectName}
                       onChange={e => setProjectName(e.target.value)}
@@ -1229,7 +1258,7 @@ document.addEventListener('click', function(e) {
                     <div style={{ display: 'flex', gap: 8 }}>
                       {[{ id: 'HTML/CSS', icon: '🎨', label: 'Vanilla' }, { id: 'React', icon: '⚛️', label: 'React' }].map(fw => (
                         <button key={fw.id} onClick={() => setSelectedFw(fw.id as any)}
-                          style={{ flex: 1, height: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', background: selectedFw === fw.id ? 'rgba(99,102,241,.18)' : 'rgba(0,0,0,.03)', border: `1px solid ${selectedFw === fw.id ? 'rgba(99,102,241,.45)' : 'rgba(0,0,0,.08)'}`, color: selectedFw === fw.id ? '#a5b4fc' : 'rgba(0,0,0,.45)' }}>
+                          style={{ flex: 1, height: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all .2s', background: selectedFw === fw.id ? 'rgba(84,128,186,.12)' : 'rgba(0,0,0,.03)', border: `1px solid ${selectedFw === fw.id ? '#5480ba' : 'rgba(0,0,0,.08)'}`, color: selectedFw === fw.id ? '#5480ba' : 'rgba(0,0,0,.5)' }}>
                           {fw.icon} {fw.label}
                         </button>
                       ))}
@@ -1246,7 +1275,7 @@ document.addEventListener('click', function(e) {
                     </button>
                   </div>
                   <textarea
-                    style={{ width: '100%', height: 150, padding: '14px 16px', borderRadius: 12, background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: '#111827', fontSize: 15, lineHeight: 1.65, resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+                    className="home-textarea"
                     placeholder="E.g. Build a SaaS analytics dashboard with sidebar navigation, KPI metric cards, revenue charts, and a data table…"
                     value={customPrompt}
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomPrompt(e.target.value)}
@@ -1291,15 +1320,17 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 {/* Template chips */}
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
                   {[
-                    { label: 'Dashboard', prompt: 'Build a SaaS analytics dashboard with sidebar, KPI cards, Chart.js revenue charts, and user data table' },
-                    { label: 'Landing Page', prompt: 'Build a modern SaaS landing page with hero section, features grid, pricing table, and CTA' },
-                    { label: 'E-commerce', prompt: 'Build an e-commerce store with product grid, filters sidebar, product detail modal, and cart' },
-                    { label: 'Portfolio', prompt: 'Build a minimal dark portfolio with hero, skills section, projects showcase, and contact form' },
+                    { label: '📊 Dashboard', color: '#5480ba', bg: 'rgba(84,128,186,.1)', border: 'rgba(84,128,186,.3)', prompt: 'Build a SaaS analytics dashboard with sidebar, KPI cards, Chart.js revenue charts, and user data table' },
+                    { label: '🚀 Landing Page', color: '#8f9424', bg: 'rgba(143,148,36,.1)', border: 'rgba(143,148,36,.3)', prompt: 'Build a modern SaaS landing page with hero section, features grid, pricing table, and CTA' },
+                    { label: '🛒 E-commerce', color: '#e04580', bg: 'rgba(224,69,128,.08)', border: 'rgba(224,69,128,.3)', prompt: 'Build an e-commerce store with product grid, filters sidebar, product detail modal, and cart' },
+                    { label: '🎨 Portfolio', color: '#6b367d', bg: 'rgba(107,54,125,.08)', border: 'rgba(107,54,125,.3)', prompt: 'Build a minimal dark portfolio with hero, skills section, projects showcase, and contact form' },
                   ].map(t => (
                     <button key={t.label} onClick={() => setCustomPrompt(t.prompt)}
-                      style={{ padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600, background: 'rgba(0,0,0,.05)', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(255,255,255,.65)', cursor: 'pointer' }}>
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = `0 4px 16px ${t.border}` }}
+                      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                      style={{ padding: '8px 18px', borderRadius: 100, fontSize: 13, fontWeight: 700, background: t.bg, border: `1.5px solid ${t.border}`, color: t.color, cursor: 'pointer', transition: 'all .2s' }}>
                       {t.label}
                     </button>
                   ))}
@@ -1307,15 +1338,15 @@ document.addEventListener('click', function(e) {
 
                 {/* Domain selector */}
                 <div style={{ marginBottom: 22 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,.5)' }}>Domain context</label>
-                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,.2)' }}>
-                      — {selectedDomain ? 'manually selected' : autoDetectedDomain ? `auto-detected: ${autoDetectedDomain}` : 'auto (no match)'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Domain context</label>
+                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,.35)' }}>
+                      — {selectedDomain ? 'manually selected' : autoDetectedDomain ? `auto-detected: ${autoDetectedDomain}` : 'auto'}
                     </span>
                     {selectedDomain && (
                       <button onClick={() => setSelectedDomain(null)}
                         style={{ fontSize: 11, color: '#5480ba', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}>
-                        ↺ reset to auto
+                        ↺ reset
                       </button>
                     )}
                   </div>
@@ -1328,10 +1359,11 @@ document.addEventListener('click', function(e) {
                           key={d.value}
                           onClick={() => setSelectedDomain(prev => prev === d.value ? null : d.value)}
                           style={{
-                            padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s',
-                            background: isActive ? (isManual ? 'rgba(99,102,241,.35)' : 'rgba(84,128,186,.12)') : 'rgba(0,0,0,.03)',
-                            border: `1px solid ${isActive ? (isManual ? 'rgba(99,102,241,.7)' : 'rgba(99,102,241,.35)') : 'rgba(0,0,0,.08)'}`,
-                            color: isActive ? '#c4b5fd' : 'rgba(255,255,255,.4)',
+                            padding: '6px 14px', borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s',
+                            background: isActive ? (isManual ? 'rgba(84,128,186,.18)' : 'rgba(84,128,186,.1)') : '#ffffff',
+                            border: `1.5px solid ${isActive ? '#5480ba' : '#e5e7eb'}`,
+                            color: isActive ? '#5480ba' : '#4b5563',
+                            boxShadow: isActive ? '0 2px 8px rgba(84,128,186,.2)' : '0 1px 3px rgba(0,0,0,.06)',
                           }}>
                           {d.emoji} {d.label}
                           {!selectedDomain && autoDetectedDomain === d.value && (
@@ -1344,7 +1376,9 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
-                  style={{ width: '100%', padding: '15px', borderRadius: 12, fontSize: 16, fontWeight: 700, border: 'none', cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? 'rgba(0,0,0,.04)' : '#5480ba', color: isBuilding || !projectName || !customPrompt ? 'rgba(0,0,0,.15)' : '#fff', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 0 40px rgba(99,102,241,.35)' }}>
+                  onMouseEnter={e => { if (!isBuilding && projectName && customPrompt) { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 32px rgba(84,128,186,.55)' } }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = isBuilding || !projectName || !customPrompt ? 'none' : '0 4px 20px rgba(84,128,186,.4)' }}
+                  style={{ width: '100%', padding: '16px', borderRadius: 100, fontSize: 15, fontWeight: 800, letterSpacing: '0.8px', textTransform: 'uppercase', border: 'none', cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? '#e5e7eb' : '#5480ba', color: isBuilding || !projectName || !customPrompt ? '#9ca3af' : '#fff', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 4px 20px rgba(84,128,186,.4)', transition: 'all .25s', animation: isBuilding || !projectName || !customPrompt ? 'none' : 'pulseBlue 2.5s ease-in-out infinite', marginTop: 8 }}>
                   {isBuilding ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                       <div style={{ width: 18, height: 18, border: '2px solid rgba(0,0,0,.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
@@ -1356,7 +1390,7 @@ document.addEventListener('click', function(e) {
                 {isBuilding && (
                   <div style={{ marginTop: 16 }}>
                     <div style={{ height: 4, borderRadius: 4, background: 'rgba(0,0,0,.05)', overflow: 'hidden', marginBottom: 8 }}>
-                      <div className="progress-bar" style={{ height: '100%', borderRadius: 4, width: `${buildPct}%`, background: 'linear-gradient(90deg,#6366f1,#a855f7,#e879f9)' }} />
+                      <div className="progress-bar" style={{ height: '100%', borderRadius: 4, width: `${buildPct}%`, background: 'linear-gradient(90deg,#5480ba,#8f9424,#e04580)', backgroundSize: '200% 100%', animation: 'gradientMove 2s ease infinite' }} />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(0,0,0,.4)' }}>
                       <span>{buildMsg}</span><span>{Math.floor(buildPct)}%</span>
@@ -1365,36 +1399,40 @@ document.addEventListener('click', function(e) {
                 )}
 
                 {buildError && !isBuilding && (
-                  <div style={{ marginTop: 14, padding: '13px 16px', borderRadius: 10, background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)', color: '#fca5a5', fontSize: 14 }}>
+                  <div style={{ marginTop: 14, padding: '13px 16px', borderRadius: 10, background: 'rgba(224,69,128,.07)', border: '1px solid rgba(224,69,128,.2)', color: '#c03060', fontSize: 14 }}>
                     ⚠ {buildError} — check My Projects, your result may still be saved.
                   </div>
                 )}
               </div>
 
               {/* Agent Pipeline */}
-              <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '22px 28px' }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 18 }}>Agent Pipeline</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="home-agent-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#5480ba', textTransform: 'uppercase', letterSpacing: '0.14em', margin: 0 }}>Agent Pipeline</p>
+                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', fontWeight: 500 }}>4 AI agents working in sequence</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   {[
-                    { icon: '◎', agent: 'Planner', desc: 'Architecture & file plan', pct: 10 },
-                    { icon: '◈', agent: 'Designer', desc: 'Design system & tokens', pct: 25 },
-                    { icon: '⟨/⟩', agent: 'Coder', desc: 'Full code generation', pct: 50 },
-                    { icon: '✓', agent: 'Validator', desc: 'Quality & consistency', pct: 90 },
+                    { icon: '◎', agent: 'Planner', desc: 'Architecture & file plan', pct: 10, color: '#5480ba', bg: 'rgba(84,128,186,.12)' },
+                    { icon: '◈', agent: 'Designer', desc: 'Design system & tokens', pct: 25, color: '#8f9424', bg: 'rgba(143,148,36,.12)' },
+                    { icon: '</>', agent: 'Coder', desc: 'Full code generation', pct: 50, color: '#e04580', bg: 'rgba(224,69,128,.1)' },
+                    { icon: '✓', agent: 'Validator', desc: 'Quality & consistency', pct: 90, color: '#1d662e', bg: 'rgba(29,102,46,.1)' },
                   ].map(a => {
                     const active = buildPct >= a.pct
+                    const running = active && buildPct < (a.pct + 25) && isBuilding
                     return (
-                      <div key={a.agent} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, background: active ? 'rgba(84,128,186,.12)' : 'rgba(255,255,255,.03)', border: `1px solid ${active ? 'rgba(99,102,241,.35)' : 'rgba(0,0,0,.05)'}`, color: active ? '#a5b4fc' : 'rgba(0,0,0,.15)' }}>
+                      <div key={a.agent} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 16px', borderRadius: 14, background: active ? a.bg : 'rgba(0,0,0,.02)', border: `1.5px solid ${active ? a.color + '40' : 'rgba(0,0,0,.06)'}`, transition: 'all .4s' }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, background: active ? a.color : 'rgba(0,0,0,.05)', color: active ? '#fff' : 'rgba(0,0,0,.25)', transition: 'all .4s', animation: running ? 'pulseBlue 1s ease-in-out infinite' : 'none' }}>
                           {a.icon}
                         </div>
-                        <div>
+                        <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: active ? '#e2e8f0' : 'rgba(0,0,0,.35)' }}>{a.agent}</span>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: active ? 'rgba(84,128,186,.12)' : 'rgba(0,0,0,.03)', color: active ? '#818cf8' : 'rgba(0,0,0,.15)' }}>
-                              {active && buildPct < (a.pct + 25) && isBuilding ? 'Running' : active ? 'Done' : 'Idle'}
+                            <span style={{ fontSize: 13, fontWeight: 700, color: active ? '#111827' : '#9ca3af' }}>{a.agent}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: running ? a.color : active ? a.bg : 'rgba(0,0,0,.04)', color: running ? '#fff' : active ? a.color : '#9ca3af' }}>
+                              {running ? '⚡ Running' : active ? '✓ Done' : 'Idle'}
                             </span>
                           </div>
-                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', margin: 0 }}>{a.desc}</p>
+                          <p style={{ fontSize: 12, color: active ? '#4b5563' : '#9ca3af', margin: 0 }}>{a.desc}</p>
                         </div>
                       </div>
                     )
@@ -1431,7 +1469,7 @@ document.addEventListener('click', function(e) {
                           <CardThumbnail prompt={g.prompt} />
                           {loadingProjectId === g.generationId && (
                             <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <div style={{ width: 22, height: 22, border: '2px solid rgba(0,0,0,.15)', borderTopColor: '#a5b4fc', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                              <div style={{ width: 22, height: 22, border: '2px solid rgba(0,0,0,.15)', borderTopColor: '#5480ba', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                             </div>
                           )}
                           <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'opacity .2s' }}>
@@ -1454,6 +1492,7 @@ document.addEventListener('click', function(e) {
                   </div>
                 </div>
               )}
+              </div>
             </div>
           )}
 
