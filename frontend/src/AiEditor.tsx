@@ -1206,25 +1206,18 @@ document.addEventListener('click', function(e) {
 
           {/* ── NEW PROJECT ── */}
           {homeTab === 'create' && (
-            <div style={{ position: 'relative', overflow: 'hidden', minHeight: '100vh' }}>
+            <div style={{ minHeight: '100vh', background: '#ffffff' }}>
 
-              {/* Animated background orbs */}
-              <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 }}>
-                <div className="bg-orb bg-orb-1" />
-                <div className="bg-orb bg-orb-2" />
-                <div className="bg-orb bg-orb-3" />
-              </div>
+              <div style={{ maxWidth: 780, margin: '0 auto', padding: '0 32px 60px' }}>
 
-              <div style={{ maxWidth: 760, margin: '0 auto', padding: '48px 40px 60px', position: 'relative', zIndex: 1 }}>
-
-              {/* Heading */}
-              <div style={{ textAlign: 'center', marginBottom: 32 }}>
+              {/* Hero heading */}
+              <div className="home-hero">
                 <h1 className="home-title">
                   What should we build,{' '}
                   <span className="gradient-text">{displayName}?</span>
                 </h1>
                 <p className="home-subtitle">
-                  Describe your app and our AI agents will architect, design, and build it for you.
+                  Describe your app and our AI agents will architect, design, and build it — instantly.
                 </p>
               </div>
 

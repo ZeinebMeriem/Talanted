@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',sans-serif;background:#f8f9fa;color:#1f2937;min-height:100vh;overflow-x:hidden}
+body{font-family:'Inter',sans-serif;background:#ffffff;color:#1f2937;min-height:100vh;overflow-x:hidden}
 
 /* ── IDE stays dark ── */
 #ide{--accent:#a5b4fc;--accent-dark:#6366f1;--border:rgba(255,255,255,.08);--text-muted:rgba(255,255,255,.35)}
@@ -85,19 +85,28 @@ body{font-family:'Inter',sans-serif;background:#f8f9fa;color:#1f2937;min-height:
   cursor:default;
 }
 
+.home-hero{
+  background:radial-gradient(ellipse 90% 55% at 50% -10%,rgba(84,128,186,.1) 0%,transparent 70%);
+  padding:60px 8px 40px;
+  text-align:center;
+}
+
 .home-title{
   font-family:'Inter',sans-serif;
-  font-size:clamp(24px,2.8vw,34px);
-  font-weight:700;
+  font-size:clamp(26px,3vw,38px);
+  font-weight:800;
   color:#111827;
-  line-height:1.2;
-  letter-spacing:-0.3px;
-  margin:0 0 12px;
+  line-height:1.18;
+  letter-spacing:-0.5px;
+  margin:0 0 14px;
   animation:fadeUp .6s ease .05s both;
 }
 
 .home-title .gradient-text{
-  color:#5480ba;
+  background:linear-gradient(135deg,#5480ba 0%,#6b367d 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
 }
 
 .home-subtitle{
@@ -125,10 +134,10 @@ body{font-family:'Inter',sans-serif;background:#f8f9fa;color:#1f2937;min-height:
 .home-form-card{
   background:#ffffff;
   border:1px solid #e5e7eb;
-  border-radius:16px;
-  padding:28px 28px 24px;
+  border-radius:20px;
+  padding:32px 32px 28px;
   margin-bottom:16px;
-  box-shadow:0 2px 12px rgba(0,0,0,.06);
+  box-shadow:0 4px 24px rgba(0,0,0,.07),0 1px 4px rgba(0,0,0,.04);
   animation:scaleIn .5s ease .15s both;
   opacity:0;
   animation-fill-mode:forwards;
@@ -137,9 +146,9 @@ body{font-family:'Inter',sans-serif;background:#f8f9fa;color:#1f2937;min-height:
 .home-agent-card{
   background:#ffffff;
   border:1px solid #e5e7eb;
-  border-radius:16px;
-  padding:22px 24px;
-  box-shadow:0 1px 6px rgba(0,0,0,.04);
+  border-radius:20px;
+  padding:24px 28px;
+  box-shadow:0 2px 12px rgba(0,0,0,.05);
   animation:scaleIn .5s ease .28s both;
   opacity:0;
   animation-fill-mode:forwards;
