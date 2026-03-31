@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',sans-serif;background:#f0f2f8;color:#1f2937;min-height:100vh;overflow-x:hidden}
+body{font-family:'Inter',sans-serif;background:#f8f9fa;color:#1f2937;min-height:100vh;overflow-x:hidden}
 
 /* ── IDE stays dark ── */
 #ide{--accent:#a5b4fc;--accent-dark:#6366f1;--border:rgba(255,255,255,.08);--text-muted:rgba(255,255,255,.35)}
@@ -69,29 +69,8 @@ body{font-family:'Inter',sans-serif;background:#f0f2f8;color:#1f2937;min-height:
 }
 @keyframes progress{from{background-position:0 0}to{background-position:40px 0}}
 
-/* ── Background orbs (home) ── */
-.bg-orb{
-  position:absolute;border-radius:50%;
-  filter:blur(90px);pointer-events:none;
-}
-.bg-orb-1{
-  width:600px;height:600px;opacity:.11;
-  background:#5480ba;
-  top:-200px;right:-80px;
-  animation:orbFloat1 14s ease-in-out infinite;
-}
-.bg-orb-2{
-  width:400px;height:400px;opacity:.08;
-  background:#e04580;
-  bottom:-120px;left:-120px;
-  animation:orbFloat2 17s ease-in-out infinite;
-}
-.bg-orb-3{
-  width:280px;height:280px;opacity:.07;
-  background:#8f9424;
-  top:45%;left:55%;
-  animation:orbFloat3 20s ease-in-out infinite;
-}
+/* ── Background orbs (home) — very subtle ── */
+.bg-orb{ display:none; }
 
 /* ── Home page components ── */
 .home-badge{
@@ -107,21 +86,18 @@ body{font-family:'Inter',sans-serif;background:#f0f2f8;color:#1f2937;min-height:
 }
 
 .home-title{
-  font-family:'Syne','Inter',sans-serif;
-  font-size:clamp(28px,3.5vw,42px);
-  font-weight:800;
+  font-family:'Inter',sans-serif;
+  font-size:clamp(24px,2.8vw,34px);
+  font-weight:700;
   color:#111827;
-  line-height:1.15;
-  letter-spacing:-0.5px;
-  margin:0 0 14px;
+  line-height:1.2;
+  letter-spacing:-0.3px;
+  margin:0 0 12px;
   animation:fadeUp .6s ease .05s both;
 }
 
 .home-title .gradient-text{
-  background:linear-gradient(135deg,#5480ba 0%,#3a5f9a 100%);
-  -webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;
-  background-clip:text;
+  color:#5480ba;
 }
 
 .home-subtitle{
@@ -147,28 +123,24 @@ body{font-family:'Inter',sans-serif;background:#f0f2f8;color:#1f2937;min-height:
 }
 
 .home-form-card{
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
-  background:rgba(255,255,255,.88);
-  border:1px solid rgba(255,255,255,.95);
-  border-radius:24px;
-  padding:32px 32px 28px;
-  margin-bottom:20px;
-  box-shadow:0 8px 48px rgba(84,128,186,.14),0 2px 12px rgba(0,0,0,.06),inset 0 1px 0 rgba(255,255,255,.9);
-  animation:scaleIn .6s ease .15s both;
+  background:#ffffff;
+  border:1px solid #e5e7eb;
+  border-radius:16px;
+  padding:28px 28px 24px;
+  margin-bottom:16px;
+  box-shadow:0 2px 12px rgba(0,0,0,.06);
+  animation:scaleIn .5s ease .15s both;
   opacity:0;
   animation-fill-mode:forwards;
 }
 
 .home-agent-card{
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  background:rgba(255,255,255,.7);
-  border:1px solid rgba(84,128,186,.12);
-  border-radius:20px;
-  padding:24px 28px;
-  box-shadow:0 4px 24px rgba(84,128,186,.08);
-  animation:scaleIn .6s ease .3s both;
+  background:#ffffff;
+  border:1px solid #e5e7eb;
+  border-radius:16px;
+  padding:22px 24px;
+  box-shadow:0 1px 6px rgba(0,0,0,.04);
+  animation:scaleIn .5s ease .28s both;
   opacity:0;
   animation-fill-mode:forwards;
 }

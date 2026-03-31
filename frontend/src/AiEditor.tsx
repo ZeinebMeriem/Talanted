@@ -1217,13 +1217,8 @@ document.addEventListener('click', function(e) {
 
               <div style={{ maxWidth: 760, margin: '0 auto', padding: '48px 40px 60px', position: 'relative', zIndex: 1 }}>
 
-              {/* Badge */}
-              <div style={{ textAlign: 'center' }}>
-                <div className="home-badge">✦ Talan AI Platform</div>
-              </div>
-
               {/* Heading */}
-              <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ textAlign: 'center', marginBottom: 32 }}>
                 <h1 className="home-title">
                   What should we build,{' '}
                   <span className="gradient-text">{displayName}?</span>
@@ -1231,14 +1226,6 @@ document.addEventListener('click', function(e) {
                 <p className="home-subtitle">
                   Describe your app and our AI agents will architect, design, and build it for you.
                 </p>
-              </div>
-
-              {/* Stats row */}
-              <div className="home-stats">
-                <span>React & HTML/CSS</span>
-                <span>Multi-LLM AI</span>
-                <span>Production-ready code</span>
-                <span>Live preview</span>
               </div>
 
               {/* Form */}
