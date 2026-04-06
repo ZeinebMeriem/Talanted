@@ -4,4 +4,5 @@ public class EditFileRequest {
     public String generationId;
     public String filePath;
     public String instruction;
+    public String model;
 }

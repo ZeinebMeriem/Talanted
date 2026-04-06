@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import re
 import shutil
 import subprocess
+import threading
 import time
-from typing import Any, Literal
+from typing import Any, Callable, Generator, Literal
 
 from ..schemas import AiReport, CodeBundle, CodeFile, GenerateRequest, GenerateResponse, UIEvaluation, EditFileRequest, EditFileResponse
-from .llm_provider import create_planner_provider, create_coder_provider, create_vision_provider
+from .llm_provider import create_planner_provider, create_coder_provider, create_vision_provider, create_coder_provider_with_model
 from .models import SourceItem, SourcePack
 from .agents import (
     OcrAgent,
     DocExtractAgent,
+    DiagramAgent,
     RagAgent,
     TextPrepAgent,
     PlannerAgent,
@@ -36,6 +39,7 @@ class Orchestrator:
         coder_provider = create_coder_provider()
         self.ocr = OcrAgent(create_vision_provider())
         self.doc = DocExtractAgent()
+        self.diagram = DiagramAgent()
         self.rag = RagAgent()
         self.prep = TextPrepAgent()
         self.planner = PlannerAgent(planner_provider)
@@ -45,7 +49,21 @@ class Orchestrator:
         self.ui_evaluator = UIEvaluatorAgent(planner_provider)
         self.entity_extractor = EntityExtractorAgent(planner_provider)
 
-    def run(self, req: GenerateRequest) -> GenerateResponse:
+    def run(self, req: GenerateRequest, _progress_cb: Callable[[dict], None] | None = None) -> GenerateResponse:
+        """Run the full generation pipeline.
+
+        Args:
+            req: The generation request.
+            _progress_cb: Optional callback called at each pipeline stage with a
+                          progress event dict: {"type":"progress","stage":str,"progress":int,"message":str,...}
+        """
+        def _emit(stage: str, pct: int, msg: str, **extra: Any) -> None:
+            if _progress_cb:
+                try:
+                    _progress_cb({"type": "progress", "stage": stage, "progress": pct, "message": msg, **extra})
+                except Exception:  # noqa: BLE001
+                    pass
+
         t0 = time.perf_counter()
         durations: dict[str, Any] = {}
         retries = 0
@@ -55,6 +73,18 @@ class Orchestrator:
         extract_warning: str | None = None
         pipeline: list[str] = ["orchestrator", "ocr", "extract", "rag", "domain", "prep"]
         ui_eval_result: dict[str, Any] | None = None
+        
+        # Create codegen agent with model override if provided
+        codegen_agent = self.llm_codegen  # default
+        if req.model:
+            try:
+                logger.info(f"Using model override: {req.model}")
+                coder_provider = create_coder_provider_with_model(req.model)
+                from .agents.llm_codegen import LlmCodegenAgent
+                codegen_agent = LlmCodegenAgent(coder_provider)
+            except Exception as e:
+                logger.warning(f"Failed to create coder with model {req.model}: {e}, using default")
+                codegen_agent = self.llm_codegen
 
         pack = SourcePack(items=[SourceItem(kind="prompt", content=req.prompt or "", meta={})])
         for fr in req.fileRefs or []:
@@ -70,6 +100,8 @@ class Orchestrator:
                     },
                 )
             )
+
+        _emit("entities", 5, "Analyzing requirements…")
 
         # ── Step 1: Universal entity extraction (replaces hardcoded domain rules) ──
         # Extract entities, features, style from ANY prompt — no predefined domains
@@ -94,11 +126,14 @@ class Orchestrator:
             )
 
         t1 = time.perf_counter()
-        pack = self.doc.run(pack)   # text / PDF / docx / pptx extraction first
-        pack = self.ocr.run(pack)   # vision: images + empty (scanned) PDFs second
+        _emit("extract", 10, "Extracting documents…")
+        pack = self.doc.run(pack)      # text / PDF / docx / pptx / .mmd / .excalidraw
+        pack = self.ocr.run(pack)      # vision: images + empty (scanned) PDFs
+        pack = self.diagram.run(pack)  # interpret Mermaid / Excalidraw → prose for planner
 
         # ── Step 2: RAG — replace full documents with relevant chunks ──────────
         if req.fileRefs:
+            _emit("rag", 16, "Building knowledge base from documents…")
             pack = self.rag.run(pack, query=req.prompt or "")
 
         durations["extract_ms"] = int((time.perf_counter() - t1) * 1000)
@@ -123,6 +158,7 @@ class Orchestrator:
                 )
 
         t_prep = time.perf_counter()
+        _emit("prep", 22, "Consolidating context…")
         pack = self.prep.run(pack)
         durations["prep_ms"] = int((time.perf_counter() - t_prep) * 1000)
 
@@ -130,6 +166,7 @@ class Orchestrator:
         planner_type = type(self.planner.provider).__name__
         coder_type = type(self.llm_codegen.provider).__name__
         t_plan = time.perf_counter()
+        _emit("planning", 28, "AI planning project structure…")
         try:
             # Retry planner on rate-limit (429) with 60s waits
             plan = None
@@ -193,6 +230,7 @@ class Orchestrator:
 
         # Design System (with rate-limit retry)
         t_design = time.perf_counter()
+        _emit("design", 38, "Creating design system…")
         design_tokens = None
         try:
             context_for_design = "\n\n".join(
@@ -225,9 +263,16 @@ class Orchestrator:
 
         # Code generation
         t_codegen = time.perf_counter()
+        n_files = len(plan.get("files", []))
+        _emit("codegen_start", 44, f"Starting code generation ({n_files} file{'s' if n_files != 1 else ''})…", totalFiles=n_files)
+
+        def _file_progress_cb(idx: int, total: int, path: str) -> None:
+            pct = 44 + int((idx / max(total, 1)) * 38)  # 44 % → 82 %
+            _emit("codegen_file", pct, f"Generating {path} ({idx}/{total})…", fileIndex=idx, totalFiles=total, filePath=path)
+
         try:
-            code = self.llm_codegen.generate(req, pack, plan, design_tokens)
-            pipeline.append(f"codegen:{coder_type}:{self.llm_codegen.model}")
+            code = codegen_agent.generate(req, pack, plan, design_tokens, file_progress_cb=_file_progress_cb)
+            pipeline.append(f"codegen:{coder_type}:{codegen_agent.model}")
         except Exception as e:  # noqa: BLE001
             codegen_err = f"Codegen: {type(e).__name__}: {e}"
             llm_error = ((llm_error + "; ") if llm_error else "") + codegen_err
@@ -252,6 +297,7 @@ class Orchestrator:
 
         # Image injection — replace placeholders with real photos
         t_images = time.perf_counter()
+        _emit("images", 84, "Fetching real images…")
         try:
             code = self.image_agent.run(code, plan, design_tokens)
             pipeline.append("images")
@@ -261,6 +307,7 @@ class Orchestrator:
         durations["images_ms"] = int((time.perf_counter() - t_images) * 1000)
 
         # Save project files to disk and build with Vite (with self-healing)
+        _emit("build", 88, "Building project…")
         projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
         safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", req.generationId)
         project_path = os.path.join(projects_dir, safe_id)
@@ -285,6 +332,7 @@ class Orchestrator:
         durations["build_ms"] = int((time.perf_counter() - t_build) * 1000)
 
         # UIEvaluator — automatic quality assessment
+        _emit("eval", 95, "Evaluating UI quality…")
         t_eval = time.perf_counter()
         try:
             tsx_files = [cf for cf in code.files if cf.path.endswith(".tsx")]
@@ -346,7 +394,39 @@ class Orchestrator:
             ui_evaluation=ui_eval_schema,
         )
 
-        return GenerateResponse(uiSpec=ui_spec, codeBundle=code, aiReport=report)
+        return GenerateResponse(generationId=req.generationId, uiSpec=ui_spec, codeBundle=code, aiReport=report)
+
+    def run_stream(self, req: GenerateRequest) -> Generator[dict, None, None]:
+        """Run the pipeline and yield SSE-ready progress events.
+
+        Each yielded dict is either:
+          {"type": "progress", "stage": str, "progress": int, "message": str, ...extra}
+          {"type": "complete",  "progress": 100, "result": {...GenerateResponse...}}
+          {"type": "error",     "message": str}
+        """
+        q: queue.Queue[dict] = queue.Queue()
+
+        def _cb(event: dict) -> None:
+            q.put(event)
+
+        def _worker() -> None:
+            try:
+                result = self.run(req, _progress_cb=_cb)
+                q.put({"type": "complete", "progress": 100, "result": result.model_dump(mode="json")})
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("run_stream worker failed")
+                q.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+
+        while True:
+            event = q.get()
+            yield event
+            if event.get("type") in ("complete", "error"):
+                break
+
+        t.join(timeout=30)
 
     def _list_src_files(self, src_dir: str) -> list[str]:
         """Return all .tsx/.ts/.css files under src/, relative to src_dir."""
@@ -429,7 +509,10 @@ class Orchestrator:
 
         coder_system = (
             "You are an expert React/TypeScript/Tailwind CSS developer. "
-            "You write clean, complete components. No markdown fences, no explanation — raw TSX code only."
+            "You write clean, COMPLETE components with NO truncation. "
+            "CRITICAL: Every JSX tag must have a proper closing tag. Every brace and parenthesis must be closed. "
+            "NEVER stop mid-code. Always finish the entire component. "
+            "No markdown fences, no explanation — raw TSX code only."
         )
 
         # Step 1: Generate the new page component
@@ -438,18 +521,21 @@ class Orchestrator:
             f"USER INSTRUCTION: {req.instruction}\n\n"
             f"CONTEXT — App.tsx (use same Tailwind color scheme, same UI patterns):\n"
             f"```\n{app_code[:3000]}\n```\n\n"
-            "RULES:\n"
-            f"- The component must be named `{page_name}` and exported as default.\n"
-            "- Use Tailwind CSS for styling. Match the color scheme of the app shown in App.tsx.\n"
-            "- Include realistic placeholder content (KPIs, charts, tables, forms — whatever fits the page).\n"
-            "- Import from 'recharts' for any charts, 'lucide-react' for icons.\n"
-            "- Return ONLY raw TypeScript/TSX code. No markdown, no explanations."
+            "CRITICAL RULES:\n"
+            f"1. The component must be named `{page_name}` and exported as default.\n"
+            "2. Use Tailwind CSS for styling. Match the color scheme of the app shown in App.tsx.\n"
+            "3. Include realistic placeholder content (KPIs, charts, tables, forms — whatever fits the page).\n"
+            "4. Import from 'recharts' for any charts, 'lucide-react' for icons.\n"
+            "5. COMPLETE THE ENTIRE COMPONENT - do not truncate or cut off.\n"
+            "6. Every <div> needs </div>, every <p> needs </p>, every {{ needs }}.\n"
+            "7. Return ONLY raw TypeScript/TSX code. No markdown, no explanations."
         )
         new_page_code = self.llm_codegen.provider.chat(coder_system, page_prompt)
 
         # Clean up
         new_page_code = re.sub(r"^```(?:tsx?|jsx?|typescript|javascript)?\n?", "", new_page_code.strip())
         new_page_code = re.sub(r"\n?```$", "", new_page_code.strip())
+        new_page_code = self.llm_codegen._repair_truncated_jsx(new_page_code)
         new_page_code = self._sanitize_tsx(new_page_code)
         new_page_code = self._add_missing_imports(new_page_code)
         new_page_code = self._fix_lucide_imports(new_page_code)
@@ -468,50 +554,32 @@ class Orchestrator:
             f"File to edit: `App.tsx`\n\n"
             f"USER INSTRUCTION: Add `{page_name}` to the sidebar navigation and routing.\n\n"
             f"CURRENT App.tsx:\n```\n{app_code}\n```\n\n"
-            "RULES:\n"
-            f"- Add: `import {page_name} from '{import_path}';`\n"
-            f"- Add a nav item for {page_name} in the sidebar (use the same pattern as existing nav items).\n"
-            f"- Add a route/conditional render for {page_name} (same pattern as existing pages).\n"
-            "- Do NOT redefine any existing components. Do NOT change any other logic or styles.\n"
-            "- Return the COMPLETE App.tsx with ONLY these additions. No markdown, no explanation."
+            "CRITICAL RULES:\n"
+            f"1. Add: `import {page_name} from '{import_path}';`\n"
+            f"2. Add a nav item for {page_name} in the sidebar (use the same pattern as existing nav items).\n"
+            f"3. Add a route/conditional render for {page_name} (same pattern as existing pages).\n"
+            "4. Do NOT redefine any existing components. Do NOT change any other logic or styles.\n"
+            "5. KEEP the function App() component and `export default App;` at the end.\n"
+            "6. Return the COMPLETE App.tsx - do not truncate. Every tag must be closed.\n"
+            "7. No markdown, no explanation - raw code only."
         )
         new_app_code = self.llm_codegen.provider.chat(coder_system, app_update_prompt)
 
         # Clean up App.tsx
         new_app_code = re.sub(r"^```(?:tsx?|jsx?|typescript|javascript)?\n?", "", new_app_code.strip())
         new_app_code = re.sub(r"\n?```$", "", new_app_code.strip())
+        new_app_code = self.llm_codegen._repair_truncated_jsx(new_app_code)
         new_app_code = self._sanitize_tsx(new_app_code)
         new_app_code = self._add_missing_imports(new_app_code)
         new_app_code = self._fix_lucide_imports(new_app_code)
+        new_app_code = self._ensure_default_export(new_app_code, "App.tsx")
 
         with open(app_tsx_path, "w", encoding="utf-8") as fh:
             fh.write(new_app_code)
         logger.info("_create_new_page: updated App.tsx with %s route", page_name)
 
-        # Build once
-        template_dir = "/app/vite-template"
-        vite_bin = os.path.join(template_dir, "node_modules", ".bin", "vite")
-        try:
-            result = subprocess.run(
-                [vite_bin, "build"],
-                cwd=project_path,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            build_success = result.returncode == 0
-            build_output = (result.stdout + result.stderr)[-2000:]
-        except subprocess.TimeoutExpired:
-            build_success = False
-            build_output = "Build timed out after 120 seconds"
-        except Exception as exc:
-            build_success = False
-            build_output = str(exc)
-
-        if not build_success:
-            logger.warning("_create_new_page: build failed:\n%s", build_output)
-        else:
-            logger.info("_create_new_page: build succeeded for new page %s", page_name)
+        # Build with retry loop
+        build_success, build_output = self._build_with_retry(project_path, app_tsx_path, "App.tsx", max_retries=2)
 
         return EditFileResponse(
             filePath=page_rel_path,
@@ -525,19 +593,35 @@ class Orchestrator:
         files = self._list_src_files(src_dir)
         instruction_lower = instruction.lower()
 
-        # FAST PATH: Check if instruction mentions a component defined in App.tsx
-        # If so, skip the LLM and use App.tsx directly (most generated apps are monolithic)
+        # FAST PATH: Check if instruction mentions a component defined in App.tsx,
+        # OR if key UI text from the instruction appears in App.tsx's content.
+        # This prevents the LLM from picking orphaned files (pages/ files that exist
+        # but are never imported) when the real UI content lives in App.tsx.
         app_tsx_path = os.path.join(src_dir, "App.tsx")
         if os.path.exists(app_tsx_path) and "App.tsx" in files:
             try:
                 with open(app_tsx_path, "r", encoding="utf-8") as fh:
                     app_content = fh.read()
-                # Extract component names from App.tsx
+                app_content_lower = app_content.lower()
+                # Check component names first
                 app_components = re.findall(r"(?:function|const)\s+([A-Z][a-zA-Z0-9]*)", app_content)
-                # Check if instruction mentions any component defined in App.tsx
                 for comp in app_components:
                     if comp.lower() in instruction_lower:
-                        logger.info("edit_file: instruction mentions '%s' which is in App.tsx → using App.tsx", comp)
+                        logger.info("edit_file: instruction mentions '%s' in App.tsx → using App.tsx", comp)
+                        return "App.tsx"
+                # Check if meaningful instruction keywords appear in App.tsx content
+                # (e.g. "subscriptions" → App.tsx has the subscriptions table, not an orphaned page file)
+                stop_words = {"the", "a", "an", "to", "in", "of", "and", "or", "add", "make",
+                              "change", "update", "remove", "delete", "edit", "set", "get",
+                              "with", "for", "from", "all", "my", "list", "page", "section",
+                              "this", "that", "show", "hide", "display", "column", "row",
+                              "item", "button", "text", "color", "size", "style"}
+                keywords = [w for w in re.findall(r"[a-z]+", instruction_lower)
+                            if w not in stop_words and len(w) > 3]
+                if keywords:
+                    matching = sum(1 for kw in keywords if kw in app_content_lower)
+                    if matching >= max(1, len(keywords) // 2):
+                        logger.info("edit_file: %d/%d keywords found in App.tsx → using App.tsx", matching, len(keywords))
                         return "App.tsx"
             except Exception:
                 pass
@@ -591,6 +675,18 @@ class Orchestrator:
 
         If filePath is empty the planner LLM auto-detects which file to edit.
         """
+        # Create codegen agent with model override if provided
+        codegen_agent = self.llm_codegen  # default
+        if req.model:
+            try:
+                logger.info(f"edit_file: Using model override: {req.model}")
+                coder_provider = create_coder_provider_with_model(req.model)
+                from .agents.llm_codegen import LlmCodegenAgent
+                codegen_agent = LlmCodegenAgent(coder_provider)
+            except Exception as e:
+                logger.warning(f"edit_file: Failed to create coder with model {req.model}: {e}, using default")
+                codegen_agent = self.llm_codegen
+        
         projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
         safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", req.generationId)
         project_path = os.path.join(projects_dir, safe_id)
@@ -626,32 +722,58 @@ class Orchestrator:
             logger.info("edit_file: MOCK MODE — returning file unchanged (no LLM call)")
             new_code = f"// [MOCK EDIT] instruction: {req.instruction}\n" + current_code
         else:
-            # Build edit prompt
+            # Always send the full file — partial extraction caused constant misalignment bugs.
+            # The coder fallback chain includes Claude Sonnet (200K context) which handles large files.
+            code_for_llm = current_code
+            extract_start = extract_end = None
+            logger.info("edit_file: sending full file (%d chars) to LLM", len(current_code))
+
+            # Build edit prompt with explicit completeness instructions
+            is_partial = code_for_llm != current_code
             edit_prompt = (
                 f"File to edit: `{rel_path}`\n\n"
                 f"USER INSTRUCTION: {req.instruction}\n\n"
-                f"CURRENT FILE:\n```\n{current_code}\n```\n\n"
-                "RULES:\n"
-                "- Make ONLY the minimal change required by the instruction.\n"
-                "- Do NOT change anything else — keep all other values, imports, logic exactly as-is.\n"
-                "- If editing CSS variables (HSL format `H S% L%`), only change the specific variable(s) relevant to the instruction. Do NOT touch other variables.\n"
-                "- Return the COMPLETE file with ONLY the requested change applied.\n"
-                "- No markdown fences, no explanation — raw file content only."
+                f"{'RELEVANT SECTION OF THE ' if is_partial else ''}CURRENT FILE:\n```\n{code_for_llm}\n```\n\n"
+                "CRITICAL RULES:\n"
+                "1. Return the COMPLETE file - do NOT truncate or cut off mid-code.\n"
+                "2. Every opening tag MUST have a matching closing tag (</div>, </p>, </span>, etc.).\n"
+                "3. Every opening brace {{ must have a closing brace }}.\n"
+                "4. Every opening parenthesis ( must have a closing ).\n"
+                "5. Make ONLY the minimal change required by the instruction.\n"
+                "6. If this is App.tsx, ensure there is a function App() and `export default App;`\n"
+                "7. Do NOT change anything else — keep all other values, imports, logic exactly as-is.\n"
+                "8. No markdown fences, no explanation — raw file content only.\n"
+                "9. IMPORTANT: Complete all JSX elements fully. Never end with incomplete tags like `<p className='...'/>` or `>/>`. "
+                "Every element needs proper content and closing tags.\n"
             )
 
             # Call the coder LLM
             try:
                 system_msg = (
-                    "You are a precise code editor. Apply only the minimal change the user asks for. "
-                    "Never modify anything beyond what is explicitly requested. "
-                    "Return the complete file with only that one change. No markdown, no explanation."
+                    "You are a precise code editor that generates COMPLETE, VALID code. "
+                    "NEVER truncate output - always finish all components, tags, and braces. "
+                    "Every JSX element must be properly closed. "
+                    "If editing App.tsx, ALWAYS include the App function and export default App. "
+                    "Return the complete file. No markdown, no explanation."
                 )
-                new_code = self.llm_codegen.provider.chat(system_msg, edit_prompt)
+                new_code = codegen_agent.provider.chat(system_msg, edit_prompt)
             except Exception as exc:
                 logger.error("edit_file: LLM call failed — %s", exc)
                 raise
 
+            # Strip markdown fences from the LLM output BEFORE patch-back.
+            # If we strip AFTER, the fence ends up embedded inside the full file.
+            new_code = re.sub(r"^```(?:tsx?|jsx?|typescript|javascript)?\n?", "", new_code.strip())
+            new_code = re.sub(r"\n?```$", "", new_code.strip())
+
             # LENGTH SAFEGUARD: reject if LLM rewrote the entire file (>1.5x original length)
+            # If we sent a partial section, patch it back into the full file
+            if extract_start is not None and extract_end is not None and new_code != code_for_llm:
+                lines = current_code.split("\n")
+                patched_lines = lines[:extract_start] + new_code.split("\n") + lines[extract_end:]
+                new_code = "\n".join(patched_lines)
+                logger.info("edit_file: patched section back into full file")
+
             orig_len = len(current_code)
             new_len = len(new_code)
             if orig_len > 500 and new_len > orig_len * 1.5:
@@ -671,6 +793,7 @@ class Orchestrator:
 
         # Apply same sanitization pipeline as code generation
         if rel_path.endswith((".tsx", ".ts")):
+            new_code = self.llm_codegen._repair_truncated_jsx(new_code)
             new_code = self._sanitize_tsx(new_code)
             new_code = self._add_missing_imports(new_code)
             new_code = self._fix_lucide_imports(new_code)
@@ -681,37 +804,203 @@ class Orchestrator:
             fh.write(new_code)
         logger.info("edit_file: wrote updated %s", full_path)
 
-        # Rebuild Vite (reuse existing project — no template copy)
-        template_dir = "/app/vite-template"
-        vite_bin = os.path.join(template_dir, "node_modules", ".bin", "vite")
-        try:
-            result = subprocess.run(
-                [vite_bin, "build"],
-                cwd=project_path,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            build_success = result.returncode == 0
-            build_output = (result.stdout + result.stderr)[-2000:]
-        except subprocess.TimeoutExpired:
-            build_success = False
-            build_output = "Build timed out after 120 seconds"
-        except Exception as exc:
-            build_success = False
-            build_output = str(exc)
-
-        if not build_success:
-            logger.warning("edit_file: build failed after edit of %s:\n%s", rel_path, build_output)
-        else:
-            logger.info("edit_file: build succeeded after edit of %s", rel_path)
+        # Rebuild Vite with retry loop
+        build_success, build_output = self._build_with_retry(project_path, full_path, rel_path, max_retries=2)
 
         return EditFileResponse(
             filePath=rel_path,
-            content=new_code,
+            content=new_code if build_success else open(full_path, 'r', encoding='utf-8').read(),
             buildSuccess=build_success,
             buildOutput=build_output,
         )
+
+    def _build_with_retry(self, project_path: str, full_path: str, rel_path: str, max_retries: int = 2) -> tuple:
+        """Build project with automatic error fixing and retry."""
+        template_dir = "/app/vite-template"
+        vite_bin = os.path.join(template_dir, "node_modules", ".bin", "vite")
+        
+        for attempt in range(max_retries + 1):
+            try:
+                result = subprocess.run(
+                    [vite_bin, "build"],
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                build_success = result.returncode == 0
+                build_output = (result.stdout + result.stderr)[-2000:]
+            except subprocess.TimeoutExpired:
+                return False, "Build timed out after 120 seconds"
+            except Exception as exc:
+                return False, str(exc)
+            
+            if build_success:
+                logger.info("edit_file: build succeeded on attempt %d", attempt + 1)
+                self._strip_crossorigin(os.path.join(project_path, "dist", "index.html"))
+                return True, build_output
+            
+            # If build failed and we have retries left, try to auto-fix
+            if attempt < max_retries:
+                logger.warning("edit_file: build failed on attempt %d, trying auto-fix", attempt + 1)
+                fixed = self._auto_fix_build_error(full_path, build_output)
+                if not fixed:
+                    logger.warning("edit_file: could not auto-fix, stopping retries")
+                    break
+        
+        logger.warning("edit_file: build failed after %d attempts:\n%s", max_retries + 1, build_output)
+        return False, build_output
+
+    def _auto_fix_build_error(self, file_path: str, build_output: str) -> bool:
+        """Attempt to automatically fix common build errors."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            original = content
+            
+            # Fix 1: >/> pattern - truncated self-closing tag
+            content = re.sub(r'>\s*/>', r' />', content)
+            
+            # Fix 2: Extra /> after closing tag like </h1>/>
+            content = re.sub(r'</(\w+)>\s*/>', r'</\1>', content)
+            
+            # Fix 3: Remove any '>Content</p>' patterns that were incorrectly added
+            content = re.sub(r"(['\"])\s*>Content</p>", r'\1 />', content)
+            
+            # Fix 3.5: Invalid JSX like "<10min" - escape the less-than
+            content = re.sub(r'([>}])\s*<(\d)', r'\1&lt;\2', content)
+            
+            # Fix 4: Missing closing tags - count and close
+            for tag in ['div', 'p', 'span', 'section', 'main', 'aside', 'header', 'footer']:
+                open_count = len(re.findall(rf'<{tag}\b[^>]*(?<!/)>', content))
+                close_count = len(re.findall(rf'</{tag}>', content))
+                diff = open_count - close_count
+                if diff > 0:
+                    # Find where to insert - before the last ) } or export
+                    insert_pos = content.rfind('\n  )')
+                    if insert_pos == -1:
+                        insert_pos = content.rfind('\nexport')
+                    if insert_pos == -1:
+                        insert_pos = len(content)
+                    
+                    closing_tags = f'\n{"    " * 2}</{tag}>' * min(diff, 10)
+                    content = content[:insert_pos] + closing_tags + content[insert_pos:]
+                    logger.info("_auto_fix: added %d closing </%s> tags", min(diff, 10), tag)
+            
+            # Fix 4: Missing App component in App.tsx
+            if file_path.endswith('App.tsx') and 'function App(' not in content:
+                logger.info("_auto_fix: App.tsx missing App function, adding it")
+                # Find the last function definition
+                content = self._ensure_app_component(content)
+            
+            # Fix 5: Wrong export in App.tsx
+            if file_path.endswith('App.tsx'):
+                wrong_export = re.search(r"export\s+default\s+(?!App\b)(\w+)", content)
+                if wrong_export:
+                    logger.info("_auto_fix: fixing wrong export %s -> App", wrong_export.group(1))
+                    content = re.sub(r"export\s+default\s+\w+\s*;?\s*$", "export default App;", content, flags=re.MULTILINE)
+            
+            # Fix 6: Unclosed braces/parens
+            open_braces = content.count('{') - content.count('}')
+            open_parens = content.count('(') - content.count(')')
+            if open_braces > 0 or open_parens > 0:
+                suffix = ""
+                for _ in range(min(open_parens, 5)):
+                    suffix += "\n  )"
+                for _ in range(min(open_braces, 5)):
+                    suffix += "\n}"
+                # Insert before export default
+                export_pos = content.rfind('\nexport default')
+                if export_pos != -1:
+                    content = content[:export_pos] + suffix + content[export_pos:]
+                else:
+                    content += suffix
+                logger.info("_auto_fix: closed %d braces, %d parens", open_braces, open_parens)
+            
+            if content != original:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                logger.info("_auto_fix: applied fixes to %s", file_path)
+                return True
+            
+            return False
+        except Exception as e:
+            logger.error("_auto_fix: failed with error: %s", e)
+            return False
+
+    def _ensure_app_component(self, content: str) -> str:
+        """Ensure App.tsx has a proper App component."""
+        if 'function App(' in content:
+            return content
+        
+        # Find all defined components
+        components = re.findall(r'function\s+(\w+)\s*\(', content)
+        
+        # Build routing based on what's available
+        routes = []
+        if 'DashboardPage' in components or 'Dashboard' in content:
+            routes.append("case 'dashboard': return <DashboardPage />;")
+        if 'ProjectsListPage' in components:
+            routes.append("case 'projects': return <ProjectsListPage />;")
+        if 'SettingsPage' in components:
+            routes.append("case 'settings': return <SettingsPage />;")
+        if 'AnalyticsPage' in components:
+            routes.append("case 'analytics': return <AnalyticsPage />;")
+        
+        default_page = 'DashboardPage' if 'DashboardPage' in components else (components[0] if components else 'div')
+        
+        app_code = f'''
+function App() {{
+  const [activePage, setActivePage] = React.useState('dashboard');
+  
+  const renderPage = () => {{
+    switch (activePage) {{
+      {chr(10).join('      ' + r for r in routes) if routes else "case 'dashboard': return <div>Welcome</div>;"}
+      default: return <{default_page} />;
+    }}
+  }};
+  
+  return (
+    <div className='flex min-h-screen bg-gray-50'>
+      <Sidebar activePage={{activePage}} setActivePage={{setActivePage}} />
+      <div className='flex-1 flex flex-col'>
+        {{typeof Navbar !== 'undefined' && <Navbar activePage={{activePage}} />}}
+        <main className='flex-1 p-6'>
+          {{renderPage()}}
+        </main>
+      </div>
+    </div>
+  );
+}}
+
+export default App;
+'''
+        # Remove any existing wrong export
+        content = re.sub(r"\nexport\s+default\s+\w+\s*;?\s*$", "", content, flags=re.MULTILINE)
+        return content.rstrip() + "\n" + app_code
+
+    def _strip_crossorigin(self, html_path: str) -> None:
+        """Remove crossorigin attribute from script/link tags in the built index.html.
+
+        Vite injects crossorigin on every build. When the iframe and parent are
+        served from different origins the browser sends a CORS-mode request for
+        each asset; if the CORS headers are absent the fetch fails silently and
+        the app never boots. Stripping the attribute makes the browser use a
+        no-cors simple request instead, which always succeeds.
+        """
+        try:
+            with open(html_path, "r", encoding="utf-8") as fh:
+                html = fh.read()
+            stripped = re.sub(r'\s+crossorigin(?:="[^"]*")?', "", html)
+            if stripped != html:
+                with open(html_path, "w", encoding="utf-8") as fh:
+                    fh.write(stripped)
+                logger.info("_strip_crossorigin: removed crossorigin from %s", html_path)
+        except FileNotFoundError:
+            logger.warning("_strip_crossorigin: %s not found, skipping", html_path)
+        except Exception as exc:
+            logger.warning("_strip_crossorigin: failed for %s: %s", html_path, exc)
 
     # Imports that the LLM may hallucinate but aren't installed in vite-template
     _BAD_IMPORTS = re.compile(
@@ -896,12 +1185,55 @@ class Orchestrator:
         If the file already has any `export default`, leave it alone.
         Otherwise find the top-level function/const that matches the filename
         and append `export default <Name>`.
+        
+        Special case: App.tsx must export App, not Sidebar or other components.
         """
+        basename = os.path.basename(filename)
+        
+        # Special handling for App.tsx - must export App
+        if basename == "App.tsx":
+            # Check if it exports something other than App
+            wrong_export = re.search(r"export\s+default\s+(?!App\b)(\w+)", content)
+            if wrong_export:
+                wrong_name = wrong_export.group(1)
+                logger.warning("_ensure_default_export: App.tsx exports %s instead of App, fixing", wrong_name)
+                # Remove the wrong export
+                content = re.sub(r"export\s+default\s+" + wrong_name + r"\s*;?\s*$", "", content, flags=re.MULTILINE)
+            
+            # Check if App function exists
+            if not re.search(r"function\s+App\s*\(", content):
+                # App function is missing - add a basic one
+                logger.warning("_ensure_default_export: App.tsx missing App function, adding basic App")
+                app_component = '''
+function App() {
+  const [activePage, setActivePage] = React.useState('dashboard');
+  return (
+    <div className='flex min-h-screen bg-gray-50'>
+      <Sidebar activePage={activePage} setActivePage={setActivePage} />
+      <div className='flex-1'>
+        <main className='p-6'>
+          <h1 className='text-2xl font-bold'>Welcome</h1>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+'''
+                content = content.rstrip() + "\n" + app_component
+                return content
+            
+            # App function exists, ensure it's exported
+            if "export default App" not in content:
+                content = content.rstrip() + "\n\nexport default App;\n"
+            return content
+        
         if "export default" in content:
             return content
 
         # Derive expected component name from filename (e.g. Navbar.tsx → Navbar)
-        component_name = re.sub(r"\.tsx?$", "", os.path.basename(filename))
+        component_name = re.sub(r"\.tsx?$", "", basename)
 
         # Look for: function ComponentName or const ComponentName =
         func_match = re.search(
@@ -1238,6 +1570,7 @@ class Orchestrator:
 
         if result.returncode == 0:
             logger.info("Vite build succeeded for %s", project_path)
+            self._strip_crossorigin(os.path.join(project_path, "dist", "index.html"))
             return True, combined
 
         stderr_short = combined[-2000:]

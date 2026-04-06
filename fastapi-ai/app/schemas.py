@@ -22,6 +22,8 @@ class GenerateRequest(BaseModel):
     # Domain context for prompt fine-tuning (ecommerce|medical|dashboard|education|saas|portfolio|restaurant|real_estate)
     # If None, the system auto-detects the domain from the prompt keywords
     domain: str | None = None
+    # Model override (gemini|claude|gpt|groq) - if None, uses .env defaults
+    model: str | None = None
 
 
 class CodeFile(BaseModel):
@@ -56,6 +58,7 @@ class AiReport(BaseModel):
 
 
 class GenerateResponse(BaseModel):
+    generationId: str = ""
     uiSpec: dict[str, Any]
     codeBundle: CodeBundle
     aiReport: AiReport
@@ -65,6 +68,7 @@ class EditFileRequest(BaseModel):
     generationId: str
     filePath: str        # e.g. "App.tsx" or "components/Sidebar.tsx"
     instruction: str     # e.g. "Change the header to dark blue and add a logout button"
+    model: str | None = None  # Model override (gemini|claude|gpt|groq)
 
 
 class EditFileResponse(BaseModel):
@@ -88,3 +92,11 @@ class RestoreRequest(BaseModel):
 class RestoreResponse(BaseModel):
     buildSuccess: bool
     buildOutput: str
+
+
+class DuplicateResponse(BaseModel):
+    """Response for duplicating a project."""
+    newGenerationId: str
+    buildSuccess: bool
+    buildOutput: str
+

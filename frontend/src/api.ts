@@ -92,6 +92,109 @@ export type GenerationRollbackResponse = {
   updatedAt?: string
 }
 
+// ─── SSE streaming types ────────────────────────────────────────────────────
+
+export type SseProgressEvent = {
+  type: 'progress'
+  stage: string
+  progress: number
+  message: string
+  totalFiles?: number
+  fileIndex?: number
+  filePath?: string
+}
+
+export type SseCompleteEvent = {
+  type: 'complete'
+  progress: 100
+  result: {
+    generationId?: string
+    codeBundle?: { files?: { path: string; content: string }[] }
+    uiSpec?: unknown
+    aiReport?: unknown
+  }
+}
+
+export type SseErrorEvent = {
+  type: 'error'
+  message: string
+}
+
+export type SseEvent = SseProgressEvent | SseCompleteEvent | SseErrorEvent
+
+/**
+ * Streaming generation — yields SSE events in real-time.
+ *
+ * Usage:
+ *   for await (const event of streamGeneration(prompt, files, token, domain)) {
+ *     if (event.type === 'progress') { ... }
+ *     if (event.type === 'complete') { ... }
+ *   }
+ */
+export async function* streamGeneration(
+  prompt: string,
+  files: File[],
+  accessToken?: string,
+  domain?: string | null,
+  model?: string,
+): AsyncGenerator<SseEvent, void, unknown> {
+  const form = new FormData()
+  form.append('prompt', prompt)
+  for (const f of files) form.append('files', f)
+  if (domain) form.append('domain', domain)
+  if (model) form.append('model', model)
+
+  const url = `${BFF_BASE_URL}/api/generations/stream`
+  console.error('🔴 streamGeneration: Fetching from URL:', url, 'with auth:', !!accessToken)
+
+  const res = await fetch(url, {
+    method: 'POST',
+    body: form,
+    headers: authHeaders(accessToken) as Record<string, string>,
+  })
+
+  console.error('🔴 streamGeneration: Response status:', res.status)
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`HTTP ${res.status}${text ? ': ' + text : ''}`)
+  }
+
+  if (!res.body) throw new Error('Response body is null — streaming not supported')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      // SSE events are separated by double newlines
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() ?? ''
+
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (line.startsWith('data:')) {
+            const raw = line.slice(5).trim()
+            if (!raw) continue
+            try {
+              yield JSON.parse(raw) as SseEvent
+            } catch {
+              // malformed JSON — skip silently
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {})
+  }
+}
+
 export async function createGeneration(prompt: string, files: File[], accessToken?: string, domain?: string | null): Promise<unknown> {
   const form = new FormData()
   form.append('prompt', prompt)
@@ -344,13 +447,14 @@ export async function editFile(
   filePath: string,
   instruction: string,
   accessToken?: string,
+  model?: string,
 ): Promise<EditFileResponse> {
   const res = await fetch(
     `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/edit-file`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders(accessToken) },
-      body: JSON.stringify({ generationId, filePath, instruction }),
+      body: JSON.stringify({ generationId, filePath, instruction, model }),
     },
   )
   const data: unknown = await readJsonOrNull(res)
@@ -379,3 +483,28 @@ export async function rollbackGeneration(
 
   return (typeof data === 'object' && data !== null ? (data as GenerationRollbackResponse) : {})
 }
+
+export type DuplicateResponse = {
+  newGenerationId?: string
+  buildSuccess?: boolean
+  buildOutput?: string
+}
+
+export async function duplicateGeneration(
+  generationId: string,
+  accessToken?: string,
+): Promise<DuplicateResponse> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/duplicate`,
+    { method: 'POST', headers: authHeaders(accessToken) },
+  )
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+
+  return (typeof data === 'object' && data !== null ? (data as DuplicateResponse) : {})
+}
+

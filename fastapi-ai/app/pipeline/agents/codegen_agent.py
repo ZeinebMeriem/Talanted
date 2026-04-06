@@ -4,7 +4,7 @@ import json as _json
 import logging
 import re as _re
 import time as _time
-from typing import Any
+from typing import Any, Callable
 
 import os
 import httpx
@@ -93,6 +93,17 @@ class LlmCodegenAgent:
     def _repair_truncated_jsx(content: str) -> str:
         """Close unclosed strings/braces/parens caused by LLM token-limit truncation."""
         repair = content.rstrip()
+        
+        # Fix common LLM malformations like "</h1>/>" or "</div>/>" (extra /> after closing tag)
+        repair = _re.sub(r'</(\w+)>\s*/>', r'</\1>', repair)
+        
+        # Fix >/> pattern (truncated self-closing that got mangled)
+        repair = _re.sub(r'>\s*/>', r' />', repair)
+        
+        # Fix truncated attributes ending with '>Content</p>' - remove the bad pattern
+        # This happens when our previous fix incorrectly added content
+        repair = _re.sub(r"(['\"])\s*>Content</p>", r'\1 />', repair)
+        
         # Fix unclosed string on the last line (e.g. className="text-lg hover:text-indigo-600)
         lines = repair.split('\n')
         last_line = lines[-1] if lines else ''
@@ -101,12 +112,32 @@ class LlmCodegenAgent:
         elif last_line.count("'") % 2 != 0:
             repair += "'"
         # Close unclosed JSX tag if last line looks like an open tag
-        if last_line.rstrip().endswith(('<', '>')):
+        if last_line.rstrip().endswith('<'):
             repair += '/>'
+            
         open_braces = repair.count('{') - repair.count('}')
         open_parens = repair.count('(') - repair.count(')')
+        
+        # Count unclosed tags (only count non-self-closing)
+        # Self-closing tags end with /> so we exclude those
+        open_divs = len(_re.findall(r'<div\b[^>]*(?<!/)>', repair)) - len(_re.findall(r'</div>', repair))
+        open_p = len(_re.findall(r'<p\b[^>]*(?<!/)>', repair)) - len(_re.findall(r'</p>', repair))
+        open_span = len(_re.findall(r'<span\b[^>]*(?<!/)>', repair)) - len(_re.findall(r'</span>', repair))
+        
+        # Only close tags if we have unclosed ones
+        if open_span > 0:
+            for _ in range(min(open_span, 10)):
+                repair += '</span>'
+        if open_p > 0:
+            for _ in range(min(open_p, 10)):
+                repair += '</p>'
+        if open_divs > 0:
+            for _ in range(min(open_divs, 20)):
+                repair += '\n    </div>'
+        
         if open_braces <= 0 and open_parens <= 0:
             return repair
+            
         # Close in reverse order: parens first, then braces
         for _ in range(min(open_parens, 20)):
             repair += '\n  )'
@@ -1244,6 +1275,7 @@ class LlmCodegenAgent:
         pack: SourcePack,
         plan: dict[str, Any],
         design_tokens: dict[str, Any] | None = None,
+        file_progress_cb: "Callable[[int, int, str], None] | None" = None,
     ) -> CodeBundle:
         context_chunks = [i.content for i in pack.items if i.kind == "context"]
         context = "\n\n".join(context_chunks).strip()
@@ -1281,6 +1313,11 @@ class LlmCodegenAgent:
         for idx, file_info in enumerate(ordered, 1):
             path = file_info.get("path", "unknown")
             logger.info("LlmCodegenAgent: generating %s (%d/%d)", path, idx, len(ordered))
+            if file_progress_cb:
+                try:
+                    file_progress_cb(idx, len(ordered), path)
+                except Exception:  # noqa: BLE001
+                    pass
             # Small delay between calls to stay within rate-limit windows
             if idx > 1:
                 _time.sleep(30)

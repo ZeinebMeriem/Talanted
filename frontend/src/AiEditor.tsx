@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  streamGeneration,
   createGeneration,
   downloadGenerationZip,
+  duplicateGeneration,
   getAdminActivity,
   getAdminDailyChart,
   getAdminFailed,
@@ -38,7 +40,7 @@ type Framework =
 
 type CenterTab = 'preview' | 'code' | 'terminal'
 
-type RightTab = 'chat' | 'console' | 'logs' | 'component'
+type RightTab = 'chat' | 'console' | 'logs'
 
 type FileNode =
   | { id: string; type: 'file'; name: string }
@@ -141,6 +143,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string>('gemini')
 
   // Auto-detect domain from prompt keywords (mirrors Python detect_domain())
   const autoDetectedDomain = useMemo(() => {
@@ -205,9 +208,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [ideVisible, setIdeVisible] = useState(false)
   const [centerTab, setCenterTab] = useState<CenterTab>('preview')
   const [rightTab, setRightTab] = useState<RightTab>('chat')
-  const [isMobile, setIsMobile] = useState(false)
-  const [selectMode, setSelectMode] = useState(false)
-  const [selectedEl, setSelectedEl] = useState<string | null>(null)
+  const [deviceMode, setDeviceMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
 
   const [chatInput, setChatInput] = useState('')
   const [diffVisible, setDiffVisible] = useState(false)
@@ -221,6 +222,11 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [buildPct, setBuildPct] = useState(0)
   const [isBuilding, setIsBuilding] = useState(false)
   const [buildError, setBuildError] = useState<string | null>(null)
+
+  // ── Inspect mode (click-to-select element in preview) ──────────────────
+  const [inspectMode, setInspectMode] = useState(false)
+  const [selectedZone, setSelectedZone] = useState<{ label: string; description: string } | null>(null)
+  const [hoverZoneBox, setHoverZoneBox] = useState<{ top: string; height: string; left: string; width: string } | null>(null)
 
   const [apiResult, setApiResult] = useState<GenerationApiResponse | null>(null)
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false)
@@ -630,6 +636,18 @@ document.addEventListener('click', function(e) {
     return () => window.removeEventListener('message', handleMessage)
   }, [effectiveFileContents])
 
+  // Esc closes inspect mode
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && inspectMode) {
+        setInspectMode(false)
+        setHoverZoneBox(null)
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [inspectMode])
+
   // Auto-scale preview like Lovable: observe container width and scale to fit 1280px
   useEffect(() => {
     const el = previewContainerRef.current
@@ -644,7 +662,7 @@ document.addEventListener('click', function(e) {
 
   // Derived — always in sync with apiResult, no separate state needed
   const builtProjectUrl = apiResult?.generationId
-    ? `http://localhost:8000/projects/${apiResult.generationId}/dist/index.html`
+    ? `/preview/${apiResult.generationId}/dist/index.html`
     : null
 
   const previewKey = useMemo(() => {
@@ -749,13 +767,15 @@ document.addEventListener('click', function(e) {
           <div
             className="file-row flex items-center gap-1.5 cursor-pointer select-none"
             style={{
-              padding: `4px 6px 4px ${padLeft}px`,
-              color: isActive ? '#e2e8f0' : 'rgba(255,255,255,.5)',
-              background: isActive ? 'rgba(0,0,0,.05)' : 'transparent',
-              borderLeft: isActive ? '2px solid #a5b4fc' : '2px solid transparent',
-              transition: 'background .1s',
-              fontSize: 12,
-              fontFamily: "'JetBrains Mono',monospace",
+              padding: `6px 8px 6px ${padLeft}px`,
+              color: isActive ? '#5480ba' : '#475569',
+              background: isActive ? 'linear-gradient(135deg, rgba(84,128,186,.12) 0%, rgba(107,163,217,.08) 100%)' : 'transparent',
+              borderLeft: isActive ? '3px solid #5480ba' : '3px solid transparent',
+              transition: 'all .15s',
+              fontSize: 13,
+              fontWeight: isActive ? 600 : 500,
+              fontFamily: "'JetBrains Mono','Fira Code','Consolas',monospace",
+              borderRadius: 8,
             }}
             onClick={() => {
               if (node.type === 'file') openFile(node.id)
@@ -764,17 +784,17 @@ document.addEventListener('click', function(e) {
           >
             {node.type === 'folder' ? (
               <>
-                <span style={{ fontSize: 9, color: 'rgba(0,0,0,.2)', minWidth: 8 }}>{node.open ? '▾' : '▸'}</span>
-                <span style={{ fontSize: 10, color: node.open ? '#facc15' : 'rgba(0,0,0,.35)', minWidth: 14, opacity: 0.7 }}>
-                  {node.open ? '▽' : '▷'}
+                <span style={{ fontSize: 10, color: '#94a3b8', minWidth: 12 }}>{node.open ? '▾' : '▸'}</span>
+                <span style={{ fontSize: 12, color: node.open ? '#f59e0b' : '#64748b', minWidth: 16, opacity: 0.9 }}>
+                  📁
                 </span>
               </>
             ) : (
               <>
-                <span style={{ minWidth: 8 }} />
+                <span style={{ minWidth: 12 }} />
                 <span
                   style={{
-                    fontSize: 9, fontWeight: 700, fontFamily: 'monospace', minWidth: 14, textAlign: 'center',
+                    fontSize: 12, fontWeight: 600, minWidth: 16, textAlign: 'center',
                     color: getFileIcon(node.name).color, opacity: 0.85,
                   }}
                 >
@@ -785,7 +805,7 @@ document.addEventListener('click', function(e) {
             <span className="flex-1 truncate">{node.name}</span>
             <button
               className="del-btn text-xs px-1 rounded cursor-pointer"
-              style={{ opacity: 0, background: 'none', border: 'none', color: 'rgba(248,113,113,.7)', lineHeight: 1 }}
+              style={{ opacity: 0, background: 'none', border: 'none', color: '#ef4444', lineHeight: 1 }}
               onClick={(e) => { e.stopPropagation() }}
               aria-label="Delete"
             >
@@ -798,63 +818,91 @@ document.addEventListener('click', function(e) {
     })
   }
 
+  // ── Inspect mode helpers ────────────────────────────────────────────────
+  const INSPECT_ZONES = [
+    { top: '0%',  height: '10%', left: '0%', width: '100%', label: 'header / navbar',   description: 'the header navigation bar'     },
+    { top: '10%', height: '20%', left: '0%', width: '100%', label: 'hero section',       description: 'the hero section'              },
+    { top: '30%', height: '22%', left: '0%', width: '100%', label: 'features / content', description: 'the features or content area'  },
+    { top: '52%', height: '23%', left: '0%', width: '100%', label: 'cards / grid',       description: 'the cards or data grid'        },
+    { top: '75%', height: '25%', left: '0%', width: '100%', label: 'footer',             description: 'the footer section'            },
+  ]
+  const INSPECT_ZONES_SIDEBAR = [
+    { top: '0%',  height: '100%', left: '0%',  width: '16%', label: 'sidebar',       description: 'the sidebar navigation'    },
+    { top: '0%',  height: '100%', left: '84%', width: '16%', label: 'right panel',   description: 'the right side panel'      },
+  ]
+
+  const detectZone = (relX: number, relY: number) => {
+    if (relX < 0.16) return INSPECT_ZONES_SIDEBAR[0]
+    if (relX > 0.84) return INSPECT_ZONES_SIDEBAR[1]
+    return (
+      INSPECT_ZONES.find((_, i) => {
+        const topPct  = parseFloat(INSPECT_ZONES[i].top)  / 100
+        const botPct  = topPct + parseFloat(INSPECT_ZONES[i].height) / 100
+        return relY >= topPct && relY < botPct
+      }) ?? INSPECT_ZONES[INSPECT_ZONES.length - 1]
+    )
+  }
+
+  const handleOverlayMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const relX = (e.clientX - rect.left) / rect.width
+    const relY = (e.clientY - rect.top) / rect.height
+    const zone = detectZone(relX, relY)
+    setHoverZoneBox({ top: zone.top, height: zone.height, left: zone.left, width: zone.width })
+  }
+
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const relX = (e.clientX - rect.left) / rect.width
+    const relY = (e.clientY - rect.top) / rect.height
+    const zone = detectZone(relX, relY)
+    setSelectedZone({ label: zone.label, description: zone.description })
+    setChatInput(`Modify ${zone.description}: `)
+    setRightTab('chat')
+    setInspectMode(false)
+    setHoverZoneBox(null)
+  }
+
   const startBuild = async () => {
     setIsBuilding(true)
     setBuildError(null)
     setBuildPct(0)
-    setBuildMsg('Extracting documents…')
-
-    // Time-based progress estimation.  Never reaches 100% until the API responds.
-    // Tuned for Groq planner (~5s) + Gemini coder (~15s/file × 4-6 files = ~90s total).
-    const startTime = Date.now()
-    let stopped = false
-    const tick = () => {
-      if (stopped) return
-      const elapsedS = (Date.now() - startTime) / 1000
-      // Faster curve — typical generation is 60-120 seconds
-      const pct = Math.min(95, 95 * (1 - Math.exp(-elapsedS / 90)))
-      setBuildPct(pct)
-
-      if (elapsedS < 10) setBuildMsg('Analyzing your requirements…')
-      else if (elapsedS < 25) setBuildMsg('AI planner creating project structure…')
-      else if (elapsedS < 45) setBuildMsg('AI generating HTML pages…')
-      else if (elapsedS < 70) setBuildMsg('Generating stylesheets…')
-      else if (elapsedS < 100) setBuildMsg('Generating JavaScript & final files…')
-      else if (elapsedS < 150) setBuildMsg('Almost done — finalizing…')
-      else setBuildMsg('Still working — large projects take a bit longer…')
-    }
-
-    const interval = window.setInterval(tick, 800)
+    setBuildMsg('Starting…')
 
     try {
       const prompt = customPrompt.trim() || `New project: ${projectName}`
-      const result = (await createGeneration(prompt, attachedFiles, accessToken, activeDomain)) as GenerationApiResponse
-      setAttachedFiles([])
-      setApiResult(result)
-      const r: any = (result as any)?.aiReport
-      const fileCount = (result as any)?.codeBundle?.files?.length ?? 1
-      const totalMs = r?.durations?.total_ms
-      const summary = (result as any)?.uiSpec?.meta?.summary
-      setChatMessages([{
-        role: 'ai',
-        text: `Project generated! Created ${fileCount} file${fileCount !== 1 ? 's' : ''}${summary ? ` — ${summary}` : ''}${totalMs ? ` in ${(totalMs / 1000).toFixed(1)}s` : ''}.`,
-      }])
-      void loadHistory().then(() => setHomeTab('projects'))
 
-      stopped = true
-      window.clearInterval(interval)
-      setBuildPct(100)
-      setBuildMsg('Build complete.')
-      setTimeout(() => {
-        setIsBuilding(false)
-        setShowSuccessOverlay(true)
-      }, 450)
+      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel)) {
+        if (event.type === 'progress') {
+          setBuildPct(event.progress)
+          setBuildMsg(event.message)
+        } else if (event.type === 'complete') {
+          const result = event.result as GenerationApiResponse
+          setAttachedFiles([])
+          setApiResult(result)
+          const r: any = (result as any)?.aiReport
+          const fileCount = (result as any)?.codeBundle?.files?.length ?? 1
+          const totalMs = r?.durations?.total_ms
+          const summary = (result as any)?.uiSpec?.meta?.summary
+          setChatMessages([{
+            role: 'ai',
+            text: `Project generated! Created ${fileCount} file${fileCount !== 1 ? 's' : ''}${summary ? ` — ${summary}` : ''}${totalMs ? ` in ${(totalMs / 1000).toFixed(1)}s` : ''}.`,
+          }])
+          void loadHistory().then(() => setHomeTab('projects'))
+          setBuildPct(100)
+          setBuildMsg('Build complete.')
+          setTimeout(() => {
+            setIsBuilding(false)
+            setShowSuccessOverlay(true)
+          }, 450)
+          return
+        } else if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      }
     } catch (e: any) {
-      stopped = true
-      window.clearInterval(interval)
       setIsBuilding(false)
       setBuildError(e?.message ?? 'Build failed')
-      // Refresh history — the server may have completed the generation even if the frontend timed out
       void loadHistory().then(() => setHomeTab('projects'))
     }
   }
@@ -871,16 +919,15 @@ document.addEventListener('click', function(e) {
       return
     }
 
-    const userText = val + (selectedEl ? ` [element: ${selectedEl}]` : '')
+    const userText = val
     setChatMessages((prev) => [...prev, { role: 'user', text: userText }])
     setChatInput('')
-    setSelectedEl(null)
-    setSelectMode(false)
+    setSelectedZone(null)
     setIsChatLoading(true)
 
     try {
       // Pass empty filePath so the backend auto-detects which file to edit
-      const resp = await editFile(generationId, '', val, accessToken)
+      const resp = await editFile(generationId, '', val, accessToken, selectedModel)
 
       // Update the file content in apiResult so the editor reflects the change
       if (resp.content && apiResult?.codeBundle?.files) {
@@ -1112,7 +1159,8 @@ document.addEventListener('click', function(e) {
         </div>
 
         {/* ── SIDEBAR ── */}
-        <aside style={{ width: 260, background: '#ffffff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto' }}>
+        <aside style={{ width: 260, background: '#ffffff', borderRight
+          : '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto' }}>
 
           {/* Logo */}
           <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #e5e7eb' }}>
@@ -1144,9 +1192,8 @@ document.addEventListener('click', function(e) {
               ...(isAdmin ? [{ icon: '⚙', label: 'Admin Dashboard', action: () => setHomeTab('admin'), active: homeTab === 'admin' }] : []),
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: item.active ? 'rgba(84,128,186,.1)' : 'transparent', color: item.active ? '#5480ba' : 'rgba(0,0,0,.55)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
-                onMouseEnter={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.04)' }}
-                onMouseLeave={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                className={`sidebar-nav-item${item.active ? ' active' : ''}`}
+                style={{ width: '100%', border: 'none', textAlign: 'left', marginBottom: 2 }}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
                 {item.label}
               </button>
@@ -1206,227 +1253,284 @@ document.addEventListener('click', function(e) {
 
           {/* ── NEW PROJECT ── */}
           {homeTab === 'create' && (
-            <div style={{ minHeight: '100vh', position: 'relative' }}>
+            <div className="home-container"
+              onMouseMove={e => {
+                const el = e.currentTarget as HTMLElement
+                const rect = el.getBoundingClientRect()
+                const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1)
+                const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1)
+                el.style.setProperty('--mx', `${x}%`)
+                el.style.setProperty('--my', `${y}%`)
+              }}>
 
-              {/* Subtle background */}
-              <div className="home-bg" />
-
-              <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 24px 60px', position: 'relative', zIndex: 1 }}>
-
-              {/* Hero heading */}
+              {/* ── Hero — compact ── */}
               <div className="home-hero">
+                <div className="home-badge">Talan AI Platform</div>
                 <h1 className="home-title">
-                  What do you want to <span className="gradient-text">build?</span>
+                  What should we <span className="gradient-text">build</span> today?
                 </h1>
                 <p className="home-subtitle">
-                  Describe your idea and let AI generate a complete, production-ready application.
+                  Describe your idea and our AI agents will build it in seconds.
                 </p>
               </div>
 
-              {/* Form */}
-              <div className="home-form-card">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>Project Name</label>
-                    <input
-                      className="home-input"
-                      placeholder="my-awesome-app"
-                      value={projectName}
-                      onChange={e => setProjectName(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>Stack</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {[{ id: 'HTML/CSS', label: 'Vanilla' }, { id: 'React', label: 'React' }].map(fw => (
-                        <button key={fw.id} onClick={() => setSelectedFw(fw.id as any)}
-                          style={{ flex: 1, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: 'pointer', transition: 'all .2s', background: selectedFw === fw.id ? '#0f172a' : '#f8fafc', border: `1px solid ${selectedFw === fw.id ? '#0f172a' : '#e2e8f0'}`, color: selectedFw === fw.id ? '#fff' : '#64748b' }}>
-                          {fw.label}
-                        </button>
-                      ))}
+              {/* ── Stats strip ── */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
+                {[
+                  { icon: '🤖', label: '4 AI Agents', sub: 'in sequence' },
+                  { icon: '⚛', label: 'React & Tailwind', sub: 'production code' },
+                  { icon: '⚡', label: 'Live Preview', sub: 'instant render' },
+                  { icon: '📦', label: 'Export Ready', sub: 'download ZIP' },
+                ].map((s, i) => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 10, background: 'rgba(255,255,255,.72)', border: '1px solid rgba(84,128,186,.15)', backdropFilter: 'blur(8px)', animation: `fadeUp .5s ease ${i * 0.08}s both`, transition: 'transform .2s, box-shadow .2s' }}
+                    onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 6px 20px rgba(84,128,186,.18)' }}
+                    onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = '' }}>
+                    <span style={{ fontSize: 15 }}>{s.icon}</span>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#1f2937' }}>{s.label}</p>
+                      <p style={{ margin: 0, fontSize: 10, color: '#9ca3af' }}>{s.sub}</p>
                     </div>
                   </div>
-                </div>
+                ))}
+              </div>
 
-                <div style={{ marginBottom: 24 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <label style={{ fontSize: 14, fontWeight: 500, color: '#334155' }}>Describe your application</label>
-                    <button style={{ fontSize: 13, fontWeight: 500, color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer' }}
-                      onClick={() => setCustomPrompt('Build a SaaS analytics dashboard with a fixed left sidebar, 4-column KPI card grid, revenue line chart, plan distribution donut chart, and a user data table with status badges.')}>
-                      Try example →
-                    </button>
-                  </div>
-                  <textarea
-                    className="home-textarea"
-                    placeholder="E.g. Build a modern dashboard with sidebar navigation, KPI cards, charts, and a data table…"
-                    value={customPrompt}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomPrompt(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customPrompt.trim() && projectName) startBuild() }}
-                  />
-                </div>
+              {/* ── 2-column layout ── */}
+              <div style={{ maxWidth: 1260, margin: '0 auto', padding: '0 24px 32px', display: 'grid', gridTemplateColumns: '1fr 360px', gap: 22, position: 'relative', zIndex: 1 }}>
 
-                {/* Document upload */}
-                <div style={{ marginBottom: 24 }}>
-                  <label style={{ fontSize: 14, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 8 }}>
-                    Attach documents <span style={{ fontWeight: 400 }}>(optional)</span>
-                  </label>
-                  <div
-                    onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={e => {
-                      e.preventDefault(); setDragOver(false)
-                      const dropped = Array.from(e.dataTransfer.files)
-                      setAttachedFiles(prev => [...prev, ...dropped])
-                    }}
-                    onClick={() => { const el = document.getElementById('doc-file-input'); el && el.click() }}
-                    style={{ border: `1px dashed ${dragOver ? '#3b82f6' : '#e2e8f0'}`, borderRadius: 10, padding: '20px', cursor: 'pointer', background: dragOver ? '#f0f9ff' : '#f8fafc', transition: 'all .2s', textAlign: 'center' }}>
-                    <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg" style={{ display: 'none' }}
-                      onChange={e => { if (e.target.files) setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
-                    {attachedFiles.length === 0 ? (
-                      <p style={{ margin: 0, fontSize: 14, color: '#94a3b8' }}>
-                        Drop files here or <span style={{ color: '#3b82f6', fontWeight: 500 }}>browse</span>
-                      </p>
-                    ) : (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                        {attachedFiles.map((f, i) => (
-                          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: 13, color: '#334155' }}>
-                            {f.name}
-                            <button onClick={e => { e.stopPropagation(); setAttachedFiles(prev => prev.filter((_, j) => j !== i)) }}
-                              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
-                          </span>
+                {/* LEFT — Form */}
+                <div className="home-form-card" style={{ marginBottom: 0, borderLeft: '3px solid #5480ba' }}>
+
+                  {/* Name + Stack */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5 }}>Project Name</label>
+                      <input
+                        className="home-input"
+                        placeholder="my-awesome-app"
+                        value={projectName}
+                        onChange={e => setProjectName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5 }}>Stack</label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {[{ id: 'HTML/CSS', label: 'Vanilla' }, { id: 'React', label: 'React' }].map(fw => (
+                          <button key={fw.id} onClick={() => setSelectedFw(fw.id as any)}
+                            className={`stack-btn ${selectedFw === fw.id ? 'active' : 'inactive'}`}>
+                            {fw.label}
+                          </button>
                         ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI Model Selector */}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5, display: 'block' }}>AI Model</label>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        fontSize: 13,
+                        fontWeight: 500,
+                        border: '1.5px solid #d1d5db',
+                        borderRadius: 10,
+                        background: '#fff',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        outline: 'none',
+                        transition: 'all .2s'
+                      }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#5480ba'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(84,128,186,.1)' }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.boxShadow = 'none' }}
+                    >
+                      <option value="gemini">🔮 Gemini 2.0 Flash (Fast & Smart)</option>
+                      <option value="claude">🧠 Claude Sonnet 4 (Best Quality)</option>
+                      <option value="gpt">⚡ GPT-4o (Balanced)</option>
+                      <option value="groq">🚀 Llama 3.3 70B (Free)</option>
+                    </select>
+                  </div>
+
+                  {/* Prompt */}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: '#4b5563' }}>Describe your application</label>
+                      <button style={{ fontSize: 11, fontWeight: 500, color: '#5480ba', background: 'none', border: 'none', cursor: 'pointer' }}
+                        onClick={() => setCustomPrompt('Build a SaaS analytics dashboard with a fixed left sidebar, 4-column KPI card grid, revenue line chart, plan distribution donut chart, and a user data table with status badges.')}>
+                        Try example →
+                      </button>
+                    </div>
+                    <textarea
+                      className="home-textarea"
+                      style={{ minHeight: 96 }}
+                      placeholder="E.g. Build a modern dashboard with sidebar navigation, KPI cards, charts, and a data table…"
+                      value={customPrompt}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomPrompt(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customPrompt.trim() && projectName) startBuild() }}
+                    />
+                    {customPrompt && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <div style={{ height: 3, flex: 1, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 3, width: `${Math.min(customPrompt.split(/\s+/).filter(Boolean).length / 50 * 100, 100)}%`, background: 'linear-gradient(90deg,#5480ba,#6b367d)', transition: 'width .3s ease' }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: customPrompt.split(/\s+/).filter(Boolean).length > 40 ? '#5480ba' : '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {customPrompt.split(/\s+/).filter(Boolean).length} words
+                        </span>
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Template chips */}
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
-                  {[
-                    { label: 'Dashboard', prompt: 'Build a SaaS analytics dashboard with sidebar, KPI cards, Chart.js revenue charts, and user data table' },
-                    { label: 'Landing Page', prompt: 'Build a modern SaaS landing page with hero section, features grid, pricing table, and CTA' },
-                    { label: 'E-commerce', prompt: 'Build an e-commerce store with product grid, filters sidebar, product detail modal, and cart' },
-                    { label: 'Portfolio', prompt: 'Build a minimal portfolio with hero, skills section, projects showcase, and contact form' },
-                  ].map(t => (
-                    <button key={t.label} onClick={() => setCustomPrompt(t.prompt)}
-                      className="template-chip">
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
-                  className={`btn-generate ${isBuilding || !projectName || !customPrompt ? 'disabled' : 'enabled'}`}>
-                  {isBuilding ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                      <div style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                      {buildMsg}
-                    </div>
-                  ) : 'Generate'}
-                </button>
-
-                {isBuilding && (
-                  <div style={{ marginTop: 20 }}>
-                    <div style={{ height: 4, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden', marginBottom: 8 }}>
-                      <div className="progress-bar" style={{ height: '100%', borderRadius: 4, width: `${buildPct}%`, background: '#0f172a' }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b' }}>
-                      <span>{buildMsg}</span><span style={{ fontWeight: 600, color: '#0f172a' }}>{Math.floor(buildPct)}%</span>
-                    </div>
-                  </div>
-                )}
-
-                {buildError && !isBuilding && (
-                  <div style={{ marginTop: 14, padding: '13px 16px', borderRadius: 10, background: 'rgba(224,69,128,.07)', border: '1px solid rgba(224,69,128,.2)', color: '#c03060', fontSize: 14 }}>
-                    ⚠ {buildError} — check My Projects, your result may still be saved.
-                  </div>
-                )}
-              </div>
-
-              {/* Agent Pipeline */}
-              <div className="home-agent-card">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                  <p style={{ fontSize: 11, fontWeight: 800, color: '#5480ba', textTransform: 'uppercase', letterSpacing: '0.14em', margin: 0 }}>Agent Pipeline</p>
-                  <span style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', fontWeight: 500 }}>4 AI agents working in sequence</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  {[
-                    { icon: '◎', agent: 'Planner', desc: 'Architecture & file plan', pct: 10, color: '#5480ba', bg: 'rgba(84,128,186,.12)' },
-                    { icon: '◈', agent: 'Designer', desc: 'Design system & tokens', pct: 25, color: '#8f9424', bg: 'rgba(143,148,36,.12)' },
-                    { icon: '</>', agent: 'Coder', desc: 'Full code generation', pct: 50, color: '#e04580', bg: 'rgba(224,69,128,.1)' },
-                    { icon: '✓', agent: 'Validator', desc: 'Quality & consistency', pct: 90, color: '#1d662e', bg: 'rgba(29,102,46,.1)' },
-                  ].map(a => {
-                    const active = buildPct >= a.pct
-                    const running = active && buildPct < (a.pct + 25) && isBuilding
-                    return (
-                      <div key={a.agent} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 16px', borderRadius: 14, background: active ? a.bg : 'rgba(0,0,0,.02)', border: `1.5px solid ${active ? a.color + '40' : 'rgba(0,0,0,.06)'}`, transition: 'all .4s' }}>
-                        <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, background: active ? a.color : 'rgba(0,0,0,.05)', color: active ? '#fff' : 'rgba(0,0,0,.25)', transition: 'all .4s', animation: running ? 'pulseBlue 1s ease-in-out infinite' : 'none' }}>
-                          {a.icon}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: active ? '#111827' : '#9ca3af' }}>{a.agent}</span>
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: running ? a.color : active ? a.bg : 'rgba(0,0,0,.04)', color: running ? '#fff' : active ? a.color : '#9ca3af' }}>
-                              {running ? '⚡ Running' : active ? '✓ Done' : 'Idle'}
-                            </span>
-                          </div>
-                          <p style={{ fontSize: 12, color: active ? '#4b5563' : '#9ca3af', margin: 0 }}>{a.desc}</p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* ── Recent Projects (shown on home page too, like Lovable) ── */}
-              {validProjects.length > 0 && (
-                <div style={{ marginTop: 32 }}>
-                  {/* Section header */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {(['My projects'] as const).map(label => (
-                        <span key={label} style={{ fontSize: 14, fontWeight: 700, color: '#111827', padding: '5px 14px', borderRadius: 20, background: 'rgba(0,0,0,.05)', border: '1px solid rgba(0,0,0,.1)' }}>{label}</span>
-                      ))}
-                    </div>
-                    <button onClick={() => setHomeTab('projects')}
-                      style={{ background: 'none', border: 'none', color: '#5480ba', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      Browse all →
-                    </button>
-                  </div>
-
-                  {/* Cards row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 18 }}>
-                    {validProjects.slice(0, 3).map(g => (
-                      <div key={g.generationId}
-                        className="group project-card"
-                        onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
-                        <div className="project-card-thumb" style={{ position: 'relative', height: 140 }}>
-                          <CardThumbnail prompt={g.prompt} />
-                          {loadingProjectId === g.generationId && (
-                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <div style={{ width: 24, height: 24, border: '3px solid rgba(84,128,186,.2)', borderTopColor: '#5480ba', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                            </div>
-                          )}
-                          <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(84,128,186,.9),rgba(99,102,241,.9))', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'opacity .25s' }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, padding: '10px 20px', borderRadius: 10, background: '#fff', color: '#5480ba' }}>Open →</span>
-                            <span style={{ fontSize: 13, fontWeight: 700, padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,.2)', color: '#fff', cursor: 'pointer', backdropFilter: 'blur(8px)' }}
-                              onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇</span>
-                          </div>
-                        </div>
-                        <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: '#fff' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg,#5480ba,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                            {displayName.charAt(0).toUpperCase()}
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
-                            <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
-                          </div>
-                        </div>
-                      </div>
+                  {/* Template chips */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {[
+                      { label: '📊 Dashboard', prompt: 'Build a SaaS analytics dashboard with sidebar, KPI cards, Chart.js revenue charts, and user data table' },
+                      { label: '🚀 Landing Page', prompt: 'Build a modern SaaS landing page with hero section, features grid, pricing table, and CTA' },
+                      { label: '🛒 E-commerce', prompt: 'Build an e-commerce store with product grid, filters sidebar, product detail modal, and cart' },
+                      { label: '🎨 Portfolio', prompt: 'Build a minimal portfolio with hero, skills section, projects showcase, and contact form' },
+                    ].map(t => (
+                      <button key={t.label} onClick={() => setCustomPrompt(t.prompt)} className="template-chip">
+                        {t.label}
+                      </button>
                     ))}
                   </div>
+
+                  {/* Generate row + attach */}
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
+                      className={`btn-generate ${isBuilding || !projectName || !customPrompt ? 'disabled' : 'enabled'}`}
+                      style={{ flex: 1 }}>
+                      {isBuilding ? (
+                        <>
+                          <div style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                          {buildMsg}
+                        </>
+                      ) : (
+                        <>
+                          ⚡ Generate App
+                          {projectName && customPrompt && (
+                            <span style={{ marginLeft: 6, fontSize: 10, opacity: .65, background: 'rgba(255,255,255,.25)', padding: '2px 6px', borderRadius: 5 }}>⌘ ↵</span>
+                          )}
+                        </>
+                      )}
+                    </button>
+                    <label title="Attach files"
+                      style={{ width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.04)', border: '1.5px solid #e5e7eb', cursor: 'pointer', fontSize: 18, flexShrink: 0, transition: 'all .2s' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#5480ba' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}>
+                      📎
+                      <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.mmd,.excalidraw" style={{ display: 'none' }}
+                        onChange={e => { if (e.target.files) setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
+                    </label>
+                  </div>
+
+                  {/* Attached files chips */}
+                  {attachedFiles.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                      {attachedFiles.map((f, i) => (
+                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(84,128,186,.1)', border: '1px solid rgba(84,128,186,.25)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#5480ba' }}>
+                          {f.name}
+                          <button onClick={() => setAttachedFiles(prev => prev.filter((_, j) => j !== i))}
+                            style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Progress bar */}
+                  {isBuilding && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ height: 3, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden', marginBottom: 6 }}>
+                        <div className="progress-bar" style={{ height: '100%', borderRadius: 3, width: `${buildPct}%`, background: 'linear-gradient(90deg,#5480ba,#6b367d)' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280' }}>
+                        <span>{buildMsg}</span>
+                        <span style={{ fontWeight: 700, color: '#5480ba' }}>{Math.floor(buildPct)}%</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {buildError && !isBuilding && (
+                    <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(224,69,128,.07)', border: '1px solid rgba(224,69,128,.2)', color: '#c03060', fontSize: 13 }}>
+                      {buildError} — check My Projects.
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* RIGHT column */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                  {/* Agent Pipeline — compact */}
+                  <div className="home-agent-card">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <p style={{ fontSize: 10, fontWeight: 800, color: '#5480ba', textTransform: 'uppercase', letterSpacing: '0.14em', margin: 0 }}>Agent Pipeline</p>
+                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,.3)', fontWeight: 500 }}>4 in sequence</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
+                      {/* Timeline connector */}
+                      <div style={{ position: 'absolute', left: 19, top: 30, bottom: 30, width: 1, background: 'linear-gradient(to bottom, #5480ba, #8f9424, #e04580, #1d662e)', opacity: .25, pointerEvents: 'none' }} />
+                      {[
+                        { icon: '◎', agent: 'Planner', desc: 'Architecture & plan', pct: 10, color: '#5480ba', bg: 'rgba(84,128,186,.1)' },
+                        { icon: '◈', agent: 'Designer', desc: 'Design system', pct: 25, color: '#8f9424', bg: 'rgba(143,148,36,.1)' },
+                        { icon: '</>', agent: 'Coder', desc: 'Code generation', pct: 50, color: '#e04580', bg: 'rgba(224,69,128,.08)' },
+                        { icon: '✓', agent: 'Validator', desc: 'Quality check', pct: 90, color: '#1d662e', bg: 'rgba(29,102,46,.08)' },
+                      ].map((a, idx) => {
+                        const active = buildPct >= a.pct
+                        const running = active && buildPct < (a.pct + 25) && isBuilding
+                        return (
+                          <div key={a.agent} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: idx === 0 ? '10px 10px 10px 12px' : '6px 10px 10px 12px', borderRadius: 10, background: active ? a.bg : 'transparent', border: `1px solid ${active ? a.color + '35' : 'transparent'}`, transition: 'all .4s', marginBottom: 2 }}>
+                            <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: active ? a.color : 'rgba(0,0,0,.07)', color: active ? '#fff' : 'rgba(0,0,0,.25)', transition: 'all .4s', position: 'relative', zIndex: 1, boxShadow: active ? `0 0 0 3px ${a.color}25` : 'none' }}>
+                              {a.icon}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: active ? '#111827' : '#9ca3af' }}>{a.agent}</span>
+                                <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: running ? a.color : active ? a.bg : 'rgba(0,0,0,.04)', color: running ? '#fff' : active ? a.color : '#9ca3af' }}>
+                                  {running ? '⚡ Running' : active ? '✓ Done' : 'Idle'}
+                                </span>
+                              </div>
+                              <p style={{ fontSize: 11, color: active ? '#6b7280' : '#9ca3af', margin: 0 }}>{a.desc}</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Recent Projects — compact list */}
+                  {validProjects.length > 0 && (
+                    <div className="home-agent-card">
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <p style={{ fontSize: 10, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Recent</p>
+                        <button onClick={() => setHomeTab('projects')}
+                          style={{ background: 'none', border: 'none', color: '#5480ba', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                          All →
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {validProjects.slice(0, 4).map(g => (
+                          <div key={g.generationId}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', transition: 'background .15s', background: loadingProjectId === g.generationId ? 'rgba(84,128,186,.08)' : 'transparent' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.04)' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = loadingProjectId === g.generationId ? 'rgba(84,128,186,.08)' : 'transparent' }}
+                            onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
+                            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'linear-gradient(135deg,#5480ba,#6b367d)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                              {displayName.charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <p style={{ fontSize: 12, fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
+                              <p style={{ fontSize: 10, color: '#9ca3af', margin: 0 }}>{timeAgo(g.updatedAt || g.createdAt)}</p>
+                            </div>
+                            {loadingProjectId === g.generationId && (
+                              <div style={{ width: 14, height: 14, border: '2px solid rgba(84,128,186,.2)', borderTopColor: '#5480ba', borderRadius: '50%', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1975,91 +2079,88 @@ document.addEventListener('click', function(e) {
   return (
     <div id="ide" className="flex flex-col" style={{ height: '100vh' }}>
       <div
-        className="flex items-center gap-3 px-3 shrink-0"
-        style={{ height: 40, background: '#ffffff', borderBottom: '1px solid rgba(0,0,0,.05)' }}
+        className="flex items-center gap-3 px-4 shrink-0"
+        style={{ height: 56, background: 'rgba(255,255,255,.95)', borderBottom: '1px solid rgba(226,232,240,.8)', boxShadow: '0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.02)', backdropFilter: 'blur(8px)' }}
       >
         {/* Home button */}
         <button
           onClick={() => setIdeVisible(false)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md transition-all cursor-pointer"
-          style={{ background: 'none', border: '1px solid rgba(0,0,0,.05)', color: 'rgba(0,0,0,.4)', fontSize: 11 }}
-          onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,.7)')}
-          onMouseLeave={e => (e.currentTarget.style.color = 'rgba(0,0,0,.4)')}
+          style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #fff 0%, #f8fafc 100%)', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .25s', boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}
+          onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.12)'; e.currentTarget.style.borderColor = '#cbd5e1' }}
+          onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.borderColor = '#e2e8f0' }}
           type="button"
           title="Back to Home"
         >
-          ‹ Home
+          ← Home
         </button>
-        <div className="w-px h-4" style={{ background: 'rgba(0,0,0,.05)' }} />
-        <span className="font-extrabold text-sm tracking-tight heading" style={{ color: 'var(--accent)' }}>
-          ✦ AIEditor
+        <div className="w-px h-6" style={{ background: 'linear-gradient(to bottom, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '0 8px' }} />
+        <span style={{ fontSize: 16, fontWeight: 800, background: 'linear-gradient(135deg, #5480ba 0%, #6ba3d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
+          AIEditor
         </span>
-        <span className="mono text-[10px] uppercase tracking-wider" style={{ color: 'rgba(0,0,0,.35)' }}>
+        <span className="mono" style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginLeft: 4 }}>
           {projectName}
         </span>
         <div className="flex-1" />
-        <span className="mono text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(84,128,186,.08)', border: '1px solid rgba(84,128,186,.12)', color: 'var(--accent)' }}>
+        <span className="mono" style={{ fontSize: 11, padding: '6px 12px', borderRadius: 8, background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', color: '#3b82f6', fontWeight: 600, boxShadow: '0 1px 2px rgba(59,130,246,.08)' }}>
           {previewSrcDoc ? 'HTML/CSS' : `${selectedFw ?? 'React'} + Vite`}
         </span>
-        <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
-        <span className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.35)' }}>
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981', marginLeft: 12, boxShadow: '0 0 0 3px rgba(16,185,129,.15)' }} />
+        <span className="mono" style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>
           localhost:5173
         </span>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         <div
-          className="flex flex-col shrink-0 glass"
-          style={{ width: 240, borderRight: '1px solid var(--border)', background: 'rgba(2, 6, 23, 0.4)' }}
+          className="flex flex-col shrink-0"
+          style={{ width: 280, borderRight: '1px solid rgba(226,232,240,.6)', background: 'linear-gradient(to bottom, #fafbfc 0%, #f8fafc 100%)', boxShadow: '2px 0 8px rgba(0,0,0,.02)' }}
         >
-          <div className="flex justify-between items-center px-3 pt-3 pb-2">
+          <div className="flex items-center px-4 pt-4 pb-3">
             <span
-              className="mono uppercase tracking-[0.2em]"
-              style={{ fontSize: 9, color: 'rgba(0,0,0,.2)', fontWeight: 700 }}
+              className="mono uppercase"
+              style={{ fontSize: 10, color: '#64748b', fontWeight: 700, letterSpacing: '0.1em' }}
             >
               Explorer
             </span>
-            <button
-              className="transition-colors cursor-pointer flex items-center justify-center rounded"
-              style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.15)', width: 20, height: 20, fontSize: 16, lineHeight: 1 }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'rgba(99,102,241,.7)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(0,0,0,.15)')}
-              onClick={() => window.alert('Add file (demo)')}
-              type="button"
-              title="New file"
-            >
-              +
-            </button>
           </div>
-          <div className="flex-1 overflow-y-auto py-2 px-2 custom-scrollbar">{renderTreeNodes(effectiveTree, 0)}</div>
-          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--border)' }}>
-            <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)', opacity: 0.5 }}>
-              {fileCount} files scaffolded
+          <div className="flex-1 overflow-y-auto py-2 px-3 custom-scrollbar">{renderTreeNodes(effectiveTree, 0)}</div>
+          <div className="px-4 py-3" style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+            <span className="mono" style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>
+              {fileCount} files
             </span>
           </div>
         </div>
 
-        <div className="flex flex-col flex-1 overflow-hidden" style={{ borderRight: '1px solid var(--border)' }}>
+        <div className="flex flex-col flex-1 overflow-hidden" style={{ borderRight: '1px solid rgba(226,232,240,.6)', background: '#ffffff' }}>
           <div
-            className="flex items-center gap-1 px-4 shrink-0 glass"
-            style={{ height: 44, borderBottom: '1px solid var(--border)' }}
+            style={{ height: 54, borderBottom: '1px solid rgba(226,232,240,.6)', background: 'rgba(255,255,255,.95)', display: 'flex', alignItems: 'center', gap: 2, padding: '0 20px', boxShadow: '0 1px 2px rgba(0,0,0,.02)' }}
           >
             {([
-              { id: 'preview', label: 'Preview' },
-              { id: 'code', label: 'Code' },
-              { id: 'terminal', label: 'Terminal' },
+              { id: 'preview', label: 'Preview', icon: '👁' },
+              { id: 'code', label: 'Code', icon: '⚡' },
+              { id: 'terminal', label: 'Terminal', icon: '▶' },
             ] as const).map((t) => {
               const active = centerTab === t.id
               return (
                 <button
                   key={t.id}
-                  className={`relative px-6 h-full text-[9px] font-black tracking-[0.2em] uppercase transition-all duration-300 cursor-pointer ${active ? 'text-indigo-400 bg-indigo-500/5' : 'text-slate-500 hover:text-slate-300 hover:bg-white/2'}`}
                   onClick={() => setCenterTab(t.id)}
                   type="button"
+                  style={{
+                    position: 'relative', padding: '0 20px', height: 38, border: 'none', cursor: 'pointer',
+                    fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
+                    background: active ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : 'transparent',
+                    color: active ? '#5480ba' : '#94a3b8',
+                    transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    borderRadius: 10,
+                    boxShadow: active ? '0 2px 8px rgba(84,128,186,.1)' : 'none'
+                  }}
+                  onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
+                  onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
                 >
                   {t.label}
                   {active && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_10px_#6366f1]" />
+                    <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #5480ba, #6ba3d9)', borderRadius: 3, boxShadow: '0 0 8px rgba(84,128,186,.3)' }} />
                   )}
                 </button>
               )
@@ -2067,212 +2168,254 @@ document.addEventListener('click', function(e) {
 
             <div className="flex-1" />
 
-            <button
-              className={`flex items-center gap-2 px-4 py-1.5 text-[10px] font-black tracking-widest uppercase rounded-xl transition-all duration-300 cursor-pointer border ${selectMode
-                ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.15)]'
-                : 'border-white/5 bg-white/2 text-slate-500 hover:bg-white/5'
-                }`}
-              onClick={() => {
-                setSelectMode((v: boolean) => !v)
-                setSelectedEl(null)
-              }}
-              type="button"
-            >
-              <span className="text-xs">{selectMode ? '●' : '⊕'}</span> <span>{selectMode ? 'Selecting' : 'Select'}</span>
-            </button>
-
-            <div className="w-px h-4 mx-3 bg-white/10" />
-
-            <div className="flex bg-white/5 p-1 rounded-lg gap-1">
-              <button
-                className={`w-8 h-7 flex items-center justify-center rounded-md transition-all cursor-pointer ${!isMobile ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                onClick={() => setIsMobile(false)}
-                title="Desktop View"
-                type="button"
-              >
-                🖥
-              </button>
-              <button
-                className={`w-8 h-7 flex items-center justify-center rounded-md transition-all cursor-pointer ${isMobile ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                onClick={() => setIsMobile(true)}
-                title="Mobile View"
-                type="button"
-              >
-                📱
-              </button>
+            <div style={{ display: 'flex', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', padding: 4, borderRadius: 10, gap: 3, border: '1px solid #e2e8f0' }}>
+              {(['desktop', 'tablet', 'mobile'] as const).map((device) => {
+                const active = deviceMode === device
+                const icons = { desktop: '🖥', tablet: '📱', mobile: '📱' }
+                return (
+                  <button
+                    key={device}
+                    style={{
+                      padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 700, letterSpacing: '.02em',
+                      background: active ? 'linear-gradient(135deg, #5480ba 0%, #4a6fa5 100%)' : 'transparent',
+                      color: active ? '#fff' : '#64748b',
+                      border: 'none', cursor: 'pointer', textTransform: 'uppercase', transition: 'all .25s',
+                      boxShadow: active ? '0 2px 6px rgba(84,128,186,.25)' : 'none',
+                      display: 'flex', alignItems: 'center', gap: 6
+                    }}
+                    onClick={() => setDeviceMode(device)}
+                    type="button"
+                    title={`${device.charAt(0).toUpperCase() + device.slice(1)} preview${device === 'desktop' ? ' (100%)' : device === 'tablet' ? ' (768px)' : ' (375px)'}`}
+                  >
+                    <span style={{ fontSize: 14 }}>{icons[device]}</span>
+                    {device.charAt(0).toUpperCase() + device.slice(1)}
+                  </button>
+                )
+              })}
             </div>
 
-            <div className="w-px h-4 mx-3 bg-white/10" />
+            <div className="w-px h-6" style={{ background: 'linear-gradient(to bottom, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '0 12px' }} />
 
             <button
-              className="w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer border border-white/10 bg-white/5 text-slate-500 hover:text-slate-300 hover:bg-white/10"
+              style={{
+                width: 38, height: 38, borderRadius: 10, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', border: '1px solid #e2e8f0', color: '#64748b', transition: 'all .25s',
+                boxShadow: '0 1px 2px rgba(0,0,0,.04)'
+              }}
               onClick={() => setPreviewReloadCount(c => c + 1)}
               title="Reload preview"
               type="button"
-              style={{ fontSize: 16 }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.15)'; e.currentTarget.style.color = '#5480ba' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.color = '#64748b' }}
             >
               ↻
             </button>
 
-            <span
-              className="mono text-[9px] px-2 py-1 rounded-lg border border-white/10 bg-white/5 text-slate-500"
-              title="Auto-scaled to fit panel (1280px desktop)"
-            >
-              {Math.round(previewScale * 100)}%
-            </span>
-
-            <button
-              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer border ${isFullscreen ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'border-white/10 bg-white/5 text-slate-500 hover:text-slate-300 hover:bg-white/10'}`}
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Preview'}
-              type="button"
-            >
-              {isFullscreen ? '⤫' : '⛶'}
-            </button>
-
-            {previewSrcDoc && (
+            {apiResult?.generationId && (
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg transition-all cursor-pointer border border-white/10 bg-white/5 text-slate-500 hover:text-violet-400 hover:bg-violet-500/10 hover:border-violet-500/40"
-                onClick={() => {
-                  const blob = new Blob([previewSrcDoc], { type: 'text/html' })
-                  const url = URL.createObjectURL(blob)
-                  const win = window.open(url, '_blank')
-                  if (win) setTimeout(() => URL.revokeObjectURL(url), 10000)
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                  background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', border: '1px solid #86efac', color: '#16a34a',
+                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: '0 2px 6px rgba(34,197,94,.15)'
                 }}
-                title="Open in new tab (Presentation Mode)"
+                onClick={() => downloadGenerationZip(apiResult!.generationId!, accessToken)}
+                title="Download project as ZIP"
                 type="button"
-                style={{ fontSize: 14 }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(34,197,94,.25)' }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(34,197,94,.15)' }}
               >
-                ↗
+                ⬇ ZIP
               </button>
             )}
 
             {apiResult?.generationId && (
               <button
-                className="flex items-center gap-1.5 px-3 h-8 text-[9px] font-black tracking-widest uppercase rounded-lg transition-all cursor-pointer border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50"
-                onClick={() => downloadGenerationZip(apiResult!.generationId!, accessToken)}
-                title="Download project as ZIP"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                  background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)', border: '1px solid #93c5fd', color: '#2563eb',
+                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: '0 2px 6px rgba(37,99,235,.15)'
+                }}
+                onClick={async () => {
+                  try {
+                    const result = await duplicateGeneration(apiResult!.generationId!, accessToken)
+                    if (result.newGenerationId) {
+                      window.location.href = `/?gen=${result.newGenerationId}`
+                    }
+                  } catch (err) {
+                    alert(`Duplicate failed: ${err}`)
+                  }
+                }}
+                title="Duplicate this project"
                 type="button"
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(37,99,235,.25)' }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(37,99,235,.15)' }}
               >
-                ⬇ ZIP
+                📋 FORK
               </button>
             )}
           </div>
 
-          <div className="flex-1 overflow-auto relative bg-[#070b14]">
+          <div className="flex-1 overflow-auto relative" style={{ background: '#e8edf2' }}>
             {centerTab === 'preview' ? (
               <div className="h-full flex flex-col">
-                {selectMode ? (
-                  <div
-                    className="absolute top-4 left-1/2 -translate-x-1/2 z-10 text-[10px] px-4 py-2 rounded-full glass border-indigo-500/30 text-indigo-400 font-bold mono shadow-2xl"
-                  >
-                    ⊕ Click UI elements to modify them
-                  </div>
-                ) : null}
-
-                <div className={`flex-1 relative ${isFullscreen ? 'fixed inset-0 z-50 bg-[#070b14] flex flex-col' : ''}`}>
+                <div className={`flex-1 relative ${isFullscreen ? 'fixed inset-0 z-50 flex flex-col' : ''}`} style={isFullscreen ? { background: '#e8edf2' } : {}}>
                   {isFullscreen && (
-                    <div className="flex items-center justify-between px-6 h-14 border-b border-white/10 glass shrink-0">
-                      <div className="flex items-center gap-4">
-                        <span className="text-[10px] font-black tracking-[0.3em] uppercase text-indigo-400">Live Preview</span>
-                        <div className="w-px h-4 bg-white/10" />
-                        <div className="flex gap-2">
-                          <button
-                            className={`px-3 py-1 text-[9px] font-bold rounded ${!isMobile ? 'bg-white/10 text-white' : 'text-slate-500'}`}
-                            onClick={() => setIsMobile(false)}
-                          >
-                            DESKTOP
-                          </button>
-                          <button
-                            className={`px-3 py-1 text-[9px] font-bold rounded ${isMobile ? 'bg-white/10 text-white' : 'text-slate-500'}`}
-                            onClick={() => setIsMobile(true)}
-                          >
-                            MOBILE
-                          </button>
-                        </div>
-                      </div>
+                    <div className="flex items-center justify-between px-6 h-12 shrink-0" style={{ background: '#0d1117', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#60a5fa' }}>Live Preview</span>
                       <button
                         onClick={() => setIsFullscreen(false)}
-                        className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition-all cursor-pointer text-xl"
+                        style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.5)', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         ×
                       </button>
                     </div>
                   )}
+                  <div className={`transition-all duration-500 ease-out ${isFullscreen ? 'flex-1 overflow-auto p-10' : 'h-full p-4'}`}>
                   <div
-                    className={`transition-all duration-500 ease-out ${isFullscreen ? 'flex-1 overflow-auto p-8' : 'h-full'}`}
+                    className="transition-all duration-500 ease-out mx-auto flex flex-col"
+                    style={{
+                      width: deviceMode === 'mobile' ? 375 : deviceMode === 'tablet' ? 768 : '100%',
+                      height: isFullscreen ? (deviceMode === 'mobile' ? 667 : deviceMode === 'tablet' ? 1024 : '100%') : '100%',
+                      borderRadius: deviceMode === 'desktop' ? 10 : 32,
+                      boxShadow: deviceMode !== 'desktop'
+                        ? '0 0 0 10px #1e293b, 0 24px 64px rgba(0,0,0,0.35)'
+                        : '0 2px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08)',
+                      overflow: 'hidden',
+                      border: deviceMode !== 'desktop' ? '2px solid #334155' : 'none',
+                    }}
                   >
-                    <div
-                      className="transition-all duration-500 ease-out mx-auto flex flex-col"
-                      style={{
-                        width: isMobile ? 375 : '100%',
-                        height: isFullscreen ? (isMobile ? 667 : '100%') : '100%',
-                        borderRadius: isMobile ? 32 : 8,
-                        boxShadow: isMobile
-                          ? '0 0 0 12px #0f172a, 0 0 60px rgba(0,0,0,0.8)'
-                          : !isFullscreen ? '0 0 0 1px rgba(255,255,255,0.10), 0 16px 48px rgba(0,0,0,0.7)' : 'none',
-                        overflow: 'hidden',
-                        border: isMobile ? '2px solid rgba(255,255,255,0.05)' : '1px solid rgba(255,255,255,0.10)',
-                      }}
-                    >
                       {(builtProjectUrl || previewSrcDoc) ? (
                         <>
-                          {!isMobile && (
-                            <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ background: '#141927', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                              <div className="flex gap-1.5 mr-1">
-                                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
-                                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e' }} />
-                                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840' }} />
-                              </div>
-                              <button
-                                onClick={() => setPreviewReloadCount(c => c + 1)}
-                                className="flex items-center justify-center text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-                                title="Reload preview"
-                                style={{ width: 20, height: 20, fontSize: 14, background: 'none', border: 'none', padding: 0 }}
-                                type="button"
-                              >
-                                ↻
-                              </button>
-                              <div className="flex-1 flex items-center rounded-md px-3 min-w-0" style={{ background: '#ffffff', height: 24 }}>
-                                <span className="mono truncate" style={{ fontSize: 10, color: 'rgba(148,163,184,0.6)' }}>
-                                  {builtProjectUrl ? builtProjectUrl.replace('http://', '') : `localhost:5173/${activeFileId}`}
+                          {deviceMode === 'desktop' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                              <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#eef2f7', borderRadius: 6, padding: '3px 10px', height: 26, minWidth: 0 }}>
+                                <span className="mono truncate" style={{ fontSize: 10, color: '#94a3b8' }}>
+                                  {builtProjectUrl ? `localhost:5173${builtProjectUrl}` : `localhost:5173/${activeFileId}`}
                                 </span>
                               </div>
+                              {/* Inspect mode toggle */}
+                              {builtProjectUrl && (
+                                <button
+                                  title={inspectMode ? 'Exit inspect mode (Esc)' : 'Click to select & edit elements'}
+                                  onClick={() => { setInspectMode(v => !v); setHoverZoneBox(null) }}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                    padding: '3px 10px', height: 26, borderRadius: 6, border: 'none',
+                                    background: inspectMode ? '#5480ba' : '#e2e8f0',
+                                    color: inspectMode ? '#fff' : '#64748b',
+                                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                                    transition: 'all .15s', flexShrink: 0,
+                                    boxShadow: inspectMode ? '0 0 0 2px rgba(84,128,186,0.3)' : 'none',
+                                  }}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                  </svg>
+                                  {inspectMode ? 'Inspecting…' : 'Inspect'}
+                                </button>
+                              )}
                             </div>
                           )}
                           <div
                             ref={previewContainerRef}
-                            style={{
-                              flex: 1,
-                              overflow: 'hidden',
-                              position: 'relative',
-                              minHeight: 0,
-                            }}
+                            style={{ flex: 1, overflow: 'hidden', position: 'relative', minHeight: 0 }}
                           >
                             <iframe
-                            key={previewKey}
-                            title="preview"
-                            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-                            style={{
-                              width: `${100 / previewScale}%`,
-                              height: `${100 / previewScale}%`,
-                              border: 'none',
-                              background: '#fff',
-                              display: 'block',
-                              transform: `scale(${previewScale})`,
-                              transformOrigin: 'top left',
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                            }}
-                            src={builtProjectUrl ?? undefined}
-                            srcDoc={builtProjectUrl ? undefined : (previewSrcDoc ?? undefined)}
-                          />
+                              key={previewKey}
+                              title="preview"
+                              style={{
+                                width: `${100 / previewScale}%`,
+                                height: `${100 / previewScale}%`,
+                                border: 'none',
+                                background: '#fff',
+                                display: 'block',
+                                transform: `scale(${previewScale})`,
+                                transformOrigin: 'top left',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                              }}
+                              src={builtProjectUrl ? `${builtProjectUrl}?t=${previewReloadCount}` : undefined}
+                              srcDoc={builtProjectUrl ? undefined : (previewSrcDoc ?? undefined)}
+                            />
+
+                            {/* ── Inspect mode overlay ── */}
+                            {inspectMode && (
+                              <div
+                                style={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'crosshair' }}
+                                onMouseMove={handleOverlayMouseMove}
+                                onMouseLeave={() => setHoverZoneBox(null)}
+                                onClick={handleOverlayClick}
+                              >
+                                {/* Dim everything */}
+                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.25)' }} />
+
+                                {/* Hover zone highlight */}
+                                {hoverZoneBox && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: hoverZoneBox.top,
+                                    left: hoverZoneBox.left,
+                                    width: hoverZoneBox.width,
+                                    height: hoverZoneBox.height,
+                                    border: '2px solid #5480ba',
+                                    background: 'rgba(84,128,186,0.12)',
+                                    borderRadius: 4,
+                                    pointerEvents: 'none',
+                                    transition: 'all 0.12s ease',
+                                    boxShadow: '0 0 0 1px rgba(84,128,186,0.3) inset',
+                                  }} />
+                                )}
+
+                                {/* Top label */}
+                                <div style={{
+                                  position: 'absolute',
+                                  top: 10,
+                                  left: '50%',
+                                  transform: 'translateX(-50%)',
+                                  background: '#5480ba',
+                                  color: '#fff',
+                                  padding: '5px 14px',
+                                  borderRadius: 20,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                  boxShadow: '0 2px 8px rgba(84,128,186,0.4)',
+                                  pointerEvents: 'none',
+                                }}>
+                                  Click on any section to edit it — Press Esc to cancel
+                                </div>
+
+                                {/* Zone name tooltip near mouse */}
+                                {hoverZoneBox && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: `calc(${hoverZoneBox.top} + 6px)`,
+                                    left: `calc(${hoverZoneBox.left} + 8px)`,
+                                    background: '#1e293b',
+                                    color: '#e2e8f0',
+                                    padding: '2px 8px',
+                                    borderRadius: 4,
+                                    fontSize: 11,
+                                    fontWeight: 500,
+                                    pointerEvents: 'none',
+                                    fontFamily: 'monospace',
+                                  }}>
+                                    {INSPECT_ZONES.concat(INSPECT_ZONES_SIDEBAR).find(z => z.top === hoverZoneBox.top && z.left === hoverZoneBox.left)?.label ?? ''}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </>
                       ) : (
-                        <div className="h-full flex items-center justify-center text-slate-500 font-medium">
-                          Waiting for project build...
+                        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#fff' }}>
+                          <div style={{ fontSize: 32, opacity: .3 }}>⟳</div>
+                          <div style={{ fontSize: 13, color: '#94a3b8', fontWeight: 500 }}>Waiting for project build...</div>
                         </div>
                       )}
                     </div>
@@ -2313,23 +2456,24 @@ document.addEventListener('click', function(e) {
 
             {centerTab === 'code' ? (
               <div className="h-full flex flex-col">
-                <div className="px-4 py-2 border-b border-white/5 bg-white/2 flex items-center">
-                  <span className="mono text-[10px] text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded">
+                <div style={{ padding: '8px 20px', borderBottom: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5480ba', display: 'inline-block', boxShadow: '0 0 0 2px rgba(84,128,186,.15)' }} />
+                  <span className="mono" style={{ fontSize: 12, color: '#5480ba', fontWeight: 600 }}>
                     {activeFileName}
                   </span>
                 </div>
-                <div className="flex-1 overflow-auto p-4 custom-scrollbar">
-                  <pre className="mono text-[12px] leading-relaxed text-slate-300">
-                    <code>{activeCode}</code>
+                <div className="flex-1 overflow-auto custom-scrollbar" style={{ background: '#ffffff' }}>
+                  <pre className="mono leading-relaxed" style={{ fontSize: 13, color: '#334155', padding: '20px 24px', margin: 0 }}>
+                    <code style={{ fontFamily: "'JetBrains Mono','Fira Code','Consolas',monospace" }}>{activeCode}</code>
                   </pre>
                 </div>
               </div>
             ) : null}
 
             {centerTab === 'terminal' ? (
-              <div className="h-full p-6 mono text-[11px] leading-relaxed bg-[#070b14]">
-                <div className="text-indigo-400 flex items-center gap-2 mb-2">
-                  <span className="opacity-50">✦</span>
+              <div className="h-full p-6 mono leading-relaxed" style={{ fontSize: 12, background: '#0f172a', color: '#e2e8f0' }}>
+                <div style={{ color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ opacity: 0.5 }}>▶</span>
                   <span>npm run dev</span>
                 </div>
                 <div className="text-slate-500 mb-1">&gt; {projectName}@1.0.0 dev</div>
@@ -2354,10 +2498,10 @@ document.addEventListener('click', function(e) {
           </div>
         </div>
 
-        <div className="flex flex-col shrink-0" style={{ width: 340, background: '#070d1a', borderLeft: '1px solid rgba(0,0,0,.05)', height: '100%', overflow: 'hidden' }}>
-          <div className="flex items-center shrink-0" style={{ height: 44, borderBottom: '1px solid rgba(0,0,0,.05)', background: 'rgba(2,6,23,0.6)' }}>
+        <div className="flex flex-col shrink-0" style={{ width: 360, background: '#ffffff', borderLeft: '1px solid #e2e8f0', height: '100%', overflow: 'hidden' }}>
+          <div style={{ height: 50, borderBottom: '1px solid #e2e8f0', background: '#fff', display: 'flex', alignItems: 'center' }}>
             {([
-              { id: 'chat', label: '✦ Chat' },
+              { id: 'chat', label: 'Chat' },
               { id: 'console', label: 'Console' },
               { id: 'logs', label: 'History' },
             ] as const).map((t) => {
@@ -2365,8 +2509,16 @@ document.addEventListener('click', function(e) {
               return (
                 <button
                   key={t.id}
-                  className={`relative flex-1 h-full text-[9px] font-black tracking-[0.15em] uppercase transition-all duration-200 cursor-pointer ${active ? 'text-indigo-400' : 'text-slate-600 hover:text-slate-400'}`}
-                  style={{ background: active ? 'rgba(99,102,241,0.08)' : 'none', borderBottom: active ? '2px solid #6366f1' : '2px solid transparent' }}
+                  style={{
+                    flex: 1, height: '100%', border: 'none', cursor: 'pointer', position: 'relative',
+                    fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
+                    background: active ? '#f8fafc' : 'transparent',
+                    color: active ? '#5480ba' : '#94a3b8',
+                    borderBottom: active ? '3px solid #5480ba' : '3px solid transparent',
+                    transition: 'all .2s',
+                  }}
+                  onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
+                  onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
                   onClick={() => setRightTab(t.id)}
                   type="button"
                 >
@@ -2379,31 +2531,31 @@ document.addEventListener('click', function(e) {
           {rightTab === 'chat' ? (
             <div className="flex flex-col flex-1 overflow-hidden">
               {diffVisible ? (
-                <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ borderBottom: '1px solid rgba(251,191,36,.15)', background: 'rgba(251,191,36,.04)' }}>
-                  <span className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #fde68a', background: '#fef9c3' }}>
+                  <span className="mono" style={{ fontSize: 11, color: '#92400e' }}>
                     {diffEdits.map(e => e.file).join(', ')}
                   </span>
                   <div className="flex-1" />
-                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.25)', color: '#5480ba' }} onClick={() => setDiffVisible(false)} type="button">✓ Accept</button>
-                  <button className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer" style={{ background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.2)', color: '#e04580' }} onClick={() => setDiffVisible(false)} type="button">✗ Reject</button>
+                  <button className="mono" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }} onClick={() => setDiffVisible(false)} type="button">✓ Accept</button>
+                  <button className="mono" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', background: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626' }} onClick={() => setDiffVisible(false)} type="button">✗ Reject</button>
                 </div>
               ) : null}
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3" style={{ scrollBehavior: 'smooth' }}>
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3" style={{ scrollBehavior: 'smooth', background: '#fafbfc' }}>
                 {chatMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'rgba(0,0,0,.12)' }}>
-                    <div style={{ fontSize: 32 }}>✦</div>
-                    <div className="mono text-xs text-center" style={{ color: 'rgba(0,0,0,.15)', lineHeight: 1.6 }}>
-                      Describe what you want to<br />change in the selected file
+                  <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: '#cbd5e1' }}>
+                    <div style={{ fontSize: 36, opacity: 0.3 }}>💬</div>
+                    <div className="mono text-center" style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+                      Describe what you want to<br />change in your project
                     </div>
                   </div>
                 ) : chatMessages.map((m, idx) => {
                   const isAI = m.role === 'ai'
                   return (
                     <div key={idx} className={`flex gap-2 ${isAI ? '' : 'flex-row-reverse'}`}>
-                      <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold" style={{ background: isAI ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(0,0,0,.08)', color: isAI ? '#fff' : 'rgba(255,255,255,.5)', fontSize: 10, marginTop: 2 }}>
-                        {isAI ? '✦' : 'U'}
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, background: isAI ? '#5480ba' : '#e2e8f0', color: isAI ? '#fff' : '#64748b', fontSize: 11, marginTop: 2 }}>
+                        {isAI ? 'AI' : 'U'}
                       </div>
-                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 mono text-xs leading-relaxed ${isAI ? 'rounded-tl-sm' : 'rounded-tr-sm'}`} style={{ background: isAI ? 'rgba(99,102,241,.12)' : 'rgba(0,0,0,.05)', color: isAI ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.6)', border: isAI ? '1px solid rgba(99,102,241,.2)' : '1px solid rgba(0,0,0,.05)' }}>
+                      <div className="chat-msg-ai" style={isAI ? {} : { background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '16px 16px 4px 16px' }}>
                         {m.text}
                       </div>
                     </div>
@@ -2411,37 +2563,72 @@ document.addEventListener('click', function(e) {
                 })}
                 {isChatLoading ? (
                   <div className="flex gap-2">
-                    <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6366f1,#a5b4fc)', fontSize: 10 }}>✦</div>
-                    <div className="rounded-2xl rounded-tl-sm px-3 py-2" style={{ background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.2)' }}>
-                      <span className="mono text-xs" style={{ color: '#5480ba' }}>Editing {activeFileName}…</span>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#5480ba', fontSize: 11, color: '#fff', fontWeight: 700 }}>AI</div>
+                    <div className="chat-msg-ai">
+                      <span className="mono" style={{ fontSize: 12, color: '#1e40af' }}>Editing {activeFileName}…</span>
                     </div>
                   </div>
                 ) : null}
               </div>
-              <div className="shrink-0 p-3" style={{ borderTop: '1px solid rgba(0,0,0,.05)' }}>
-                <div className="text-[9px] mono mb-2" style={{ color: 'rgba(0,0,0,.15)' }}>
-                  AI will pick the right file automatically
-                </div>
-                {selectedEl ? (
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="mono text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(99,102,241,.12)', color: '#5480ba', border: '1px solid rgba(99,102,241,.2)' }}>⊕ {selectedEl}</span>
-                    <button className="text-sm cursor-pointer" style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.2)' }} onClick={() => setSelectedEl(null)} type="button">×</button>
+              <div className="shrink-0 p-4" style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+                {/* Selected zone badge */}
+                {selectedZone ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: '#eff6ff', border: '1px solid #bfdbfe',
+                      borderRadius: 8, padding: '4px 10px', flex: 1, minWidth: 0,
+                    }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                      <span className="mono truncate" style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}>
+                        Editing: {selectedZone.label}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => { setSelectedZone(null); setChatInput('') }}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '2px 4px' }}
+                      title="Clear selection"
+                    >×</button>
                   </div>
-                ) : null}
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <span className="mono" style={{ fontSize: 10, color: '#94a3b8' }}>
+                      AI will pick the right file automatically
+                    </span>
+                    {builtProjectUrl && !inspectMode && (
+                      <button
+                        onClick={() => { setInspectMode(true); setCenterTab('preview') }}
+                        style={{
+                          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4,
+                          background: 'none', border: '1px solid #e2e8f0', borderRadius: 6,
+                          padding: '2px 8px', fontSize: 10, color: '#64748b', cursor: 'pointer',
+                          fontFamily: 'monospace', whiteSpace: 'nowrap',
+                        }}
+                        title="Click an element in the preview to target it"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        Select element
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-2 items-end">
                   <textarea
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendChat() } }}
                     disabled={isChatLoading}
-                    placeholder={isChatLoading ? 'AI is editing…' : 'Describe your changes… (Enter to send)'}
+                    placeholder={isChatLoading ? 'AI is editing…' : selectedZone ? `What should change in ${selectedZone.label}?` : 'Describe your changes… (Enter to send)'}
                     rows={3}
-                    className="mono text-xs w-full resize-none custom-scrollbar"
-                    style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.1)', borderRadius: 10, padding: '8px 12px', outline: 'none', color: '#111827', opacity: isChatLoading ? 0.5 : 1, lineHeight: 1.5 }}
+                    className="mono w-full resize-none custom-scrollbar"
+                    style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1e293b', opacity: isChatLoading ? 0.5 : 1, lineHeight: 1.5 }}
                   />
                   <button
-                    className="flex items-center justify-center rounded-xl shrink-0 cursor-pointer font-bold"
-                    style={{ width: 36, height: 36, background: chatInput.trim() && !isChatLoading ? 'linear-gradient(135deg,#6366f1,#a5b4fc)' : 'rgba(0,0,0,.04)', border: 'none', color: chatInput.trim() && !isChatLoading ? '#fff' : 'rgba(0,0,0,.15)', fontSize: 16, transition: 'all .15s' }}
+                    style={{ width: 40, height: 40, borderRadius: 10, background: chatInput.trim() && !isChatLoading ? '#5480ba' : '#e2e8f0', border: 'none', color: chatInput.trim() && !isChatLoading ? '#fff' : '#94a3b8', fontSize: 18, transition: 'all .2s', cursor: chatInput.trim() && !isChatLoading ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                     onClick={() => void sendChat()}
                     disabled={isChatLoading}
                     type="button"
@@ -2454,36 +2641,11 @@ document.addEventListener('click', function(e) {
             </div>
           ) : (
           <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {rightTab === 'component' ? (
-              <div className="p-4">
-                <div className="mono uppercase tracking-[0.2em] mb-4" style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>
-                  Hierarchy
-                </div>
-                <div className="mono text-[11px] space-y-2">
-                  <div className="text-purple-400 font-bold">App</div>
-                  <div className="text-slate-500 pl-4 border-l border-white/5 py-1">
-                    <div className="flex items-center gap-2">
-                      <span className="opacity-30">├</span>
-                      <span>Navbar</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="opacity-30">└</span>
-                      <span className="text-slate-400">Hero</span>
-                    </div>
-                    <div className="flex items-center gap-2 pl-6">
-                      <span className="opacity-20">└</span>
-                      <span className="text-indigo-400/70 text-[10px]">button.btn-primary</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
             {rightTab === 'console' ? (
               <div className="py-1">
                 {logs.map((l, idx) => (
                   <div key={idx} className="flex gap-2 items-start px-3 py-1" style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}>
-                    <span className="mono shrink-0 mt-0.5" style={{ fontSize: 10, color: 'rgba(0,0,0,.15)' }}>
+                    <span className="mono shrink-0 mt-0.5" style={{ fontSize: 10, color: 'rgba(255,255,255,.25)' }}>
                       {l.t}
                     </span>
                     <span className="mono leading-relaxed" style={{ fontSize: 11, color: logColor[l.type] ?? logColor.info }}>
@@ -2497,14 +2659,15 @@ document.addEventListener('click', function(e) {
             {rightTab === 'logs' ? (
               <div className="p-3">
                 <div className="mb-3">
-                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
+                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>
                     Dashboard
                   </div>
-                  <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
-                    total generations: {history.length}
+                  <div className="text-sm text-slate-600">
+                    total generations: <span className="font-semibold text-slate-800">{history.length}</span>
                   </div>
-                  <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
+                  <div className="text-sm text-slate-600">
                     last activity:{' '}
+                    <span className="font-medium text-slate-700">
                     {(() => {
                       const latest = history
                         .map((g) => g.updatedAt || g.createdAt)
@@ -2514,17 +2677,17 @@ document.addEventListener('click', function(e) {
                         .reduce((a, b) => Math.max(a, b), 0)
                       return latest ? new Date(latest).toLocaleString() : '—'
                     })()}
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
                     Recent generations
                   </div>
                   <div className="flex-1" />
                   <button
-                    className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                    style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: 'rgba(0,0,0,.55)' }}
+                    className="text-xs px-3 py-1.5 rounded-lg cursor-pointer bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 font-medium transition-all"
                     onClick={() => void loadHistory()}
                     type="button"
                   >
@@ -2533,19 +2696,20 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 {historyLoading ? (
-                  <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
-                    Loading…
+                  <div className="text-sm text-slate-500 flex items-center gap-2">
+                    <span className="animate-spin">⟳</span> Loading…
                   </div>
                 ) : null}
 
                 {historyError ? (
-                  <div className="mono text-xs" style={{ color: '#e04580' }}>
+                  <div className="text-sm text-red-500 bg-red-50 p-3 rounded-lg border border-red-200">
                     {historyError}
                   </div>
                 ) : null}
 
                 {!historyLoading && !historyError && history.length === 0 ? (
-                  <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
+                  <div className="text-sm text-slate-400 text-center py-8">
+                    <div className="text-3xl mb-2">📭</div>
                     No generations yet.
                   </div>
                 ) : null}
@@ -2554,17 +2718,16 @@ document.addEventListener('click', function(e) {
                   {history.slice(0, 20).map((g) => (
                     <div
                       key={(g.generationId ?? '') + ':' + (g.createdAt ?? '')}
-                      className="rounded-md p-2"
+                      className="rounded-xl p-3 transition-all duration-200 hover:shadow-md cursor-pointer group"
                       style={{
                         background:
                           selectedGenerationId && g.generationId && selectedGenerationId === g.generationId
-                            ? 'rgba(84,128,186,.08)'
-                            : 'rgba(255,255,255,.03)',
+                            ? 'linear-gradient(135deg, rgba(84,128,186,.12) 0%, rgba(107,163,217,.08) 100%)'
+                            : '#fff',
                         border:
                           selectedGenerationId && g.generationId && selectedGenerationId === g.generationId
-                            ? '1px solid rgba(99,102,241,.35)'
-                            : '1px solid rgba(0,0,0,.05)',
-                        cursor: g.generationId ? 'pointer' : 'default',
+                            ? '1px solid rgba(84,128,186,.3)'
+                            : '1px solid #e2e8f0',
                       }}
                       title={g.prompt ?? ''}
                       onClick={() => {
@@ -2574,24 +2737,25 @@ document.addEventListener('click', function(e) {
                         void loadVersions(g.generationId)
                       }}
                     >
-                      <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
+                      <div className="text-xs text-slate-400 mb-1">
                         {g.createdAt ? new Date(g.createdAt).toLocaleString() : ''}
                       </div>
-                      <div className="mono text-[10px] mb-1 line-clamp-2" style={{ color: 'rgba(0,0,0,.55)' }}>
+                      <div className="text-sm text-slate-700 mb-2 line-clamp-2 font-medium">
                         {g.prompt ?? ''}
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${g.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : g.status === 'FAILED' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
                           {g.status ?? 'unknown'}
-                        </div>
+                        </span>
                         <div className="flex-1" />
                         {g.generationId && g.status === 'COMPLETED' ? (
                           <button
-                            className="mono text-[10px] px-2 py-0.5 rounded cursor-pointer"
+                            className="text-xs px-3 py-1.5 rounded-lg cursor-pointer font-semibold transition-all duration-200 hover:shadow-md"
                             style={{
-                              background: loadingProjectId === g.generationId ? 'rgba(84,128,186,.12)' : 'rgba(84,128,186,.08)',
-                              border: '1px solid rgba(84,128,186,.3)',
-                              color: '#5480ba',
+                              background: loadingProjectId === g.generationId ? '#5480ba' : 'linear-gradient(135deg, #5480ba 0%, #6ba3d9 100%)',
+                              border: 'none',
+                              color: '#fff',
+                              boxShadow: '0 2px 6px rgba(84,128,186,.25)'
                             }}
                             onClick={(e) => {
                               e.stopPropagation()
@@ -2600,7 +2764,7 @@ document.addEventListener('click', function(e) {
                             type="button"
                             disabled={loadingProjectId === g.generationId}
                           >
-                            {loadingProjectId === g.generationId ? 'Loading…' : '↑ Load'}
+                            {loadingProjectId === g.generationId ? '⟳ Loading…' : '↗ Load'}
                           </button>
                         ) : null}
                       </div>
@@ -2609,18 +2773,17 @@ document.addEventListener('click', function(e) {
                 </div>
 
                 {selectedGenerationId ? (
-                  <div className="mt-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                         Audit events
                       </div>
-                      <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)', wordBreak: 'break-all' }}>
+                      <div className="text-[10px] text-slate-400 truncate max-w-[100px]">
                         {selectedGenerationId}
                       </div>
                       <div className="flex-1" />
                       <button
-                        className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                        style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: 'rgba(0,0,0,.55)' }}
+                        className="text-[10px] px-2.5 py-1 rounded-md cursor-pointer font-medium transition-all bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200"
                         onClick={() => void loadAudit(selectedGenerationId)}
                         type="button"
                       >
@@ -2629,24 +2792,24 @@ document.addEventListener('click', function(e) {
                     </div>
 
                     {auditLoading ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
+                      <div className="text-xs text-slate-400">
                         Loading…
                       </div>
                     ) : null}
 
                     {auditError ? (
-                      <div className="mono text-xs" style={{ color: '#e04580' }}>
+                      <div className="text-xs text-rose-600 font-medium">
                         {auditError}
                       </div>
                     ) : null}
 
                     {!auditLoading && !auditError && auditEvents.length === 0 ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
+                      <div className="text-xs text-slate-400 italic">
                         No audit events.
                       </div>
                     ) : null}
 
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-2">
                       {auditEvents.map((e) => {
                         let detailsText = ''
                         try {
@@ -2659,20 +2822,19 @@ document.addEventListener('click', function(e) {
                         return (
                           <div
                             key={(e.eventId ?? '') + ':' + (e.timestamp ?? '')}
-                            className="rounded-md p-2"
-                            style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.04)' }}
+                            className="rounded-lg p-3 bg-slate-50 border border-slate-200 hover:shadow-sm transition-all"
                           >
-                            <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
+                            <div className="text-[10px] text-slate-400 mb-1">
                               {e.timestamp ? new Date(e.timestamp).toLocaleString() : ''}
                             </div>
-                            <div className="mono text-xs" style={{ color: '#a78bfa' }}>
+                            <div className="text-xs font-semibold text-violet-600">
                               {e.type ?? 'EVENT'}
                               {typeof e.durationMs === 'number' ? (
-                                <span style={{ color: 'rgba(0,0,0,.4)' }}> · {e.durationMs}ms</span>
+                                <span className="text-slate-400 font-normal"> · {e.durationMs}ms</span>
                               ) : null}
                             </div>
                             {detailsText ? (
-                              <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.45)', wordBreak: 'break-word' }}>
+                              <div className="text-[10px] text-slate-500 mt-1 break-words">
                                 {detailsText}
                               </div>
                             ) : null}
@@ -2686,13 +2848,13 @@ document.addEventListener('click', function(e) {
                 {selectedGenerationId ? (
                   <div className="mt-3">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(0,0,0,.35)' }}>
+                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>
                         Versions
                       </div>
                       <div className="flex-1" />
                       <button
                         className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                        style={{ background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.08)', color: 'rgba(0,0,0,.55)' }}
+                        style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.5)' }}
                         onClick={() => void loadVersions(selectedGenerationId)}
                         type="button"
                       >
@@ -2701,7 +2863,7 @@ document.addEventListener('click', function(e) {
                     </div>
 
                     {versionsLoading ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
+                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.4)' }}>
                         Loading…
                       </div>
                     ) : null}
@@ -2713,13 +2875,13 @@ document.addEventListener('click', function(e) {
                     ) : null}
 
                     {!versionsLoading && !versionsError && versions ? (
-                      <div className="mono text-[10px] mb-2" style={{ color: 'rgba(0,0,0,.45)' }}>
+                      <div className="mono text-[10px] mb-2" style={{ color: 'rgba(255,255,255,.4)' }}>
                         activeVersion: {typeof versions.activeVersion === 'number' ? versions.activeVersion : 'unknown'}
                       </div>
                     ) : null}
 
                     {!versionsLoading && !versionsError && (!versions || !versions.codeVersions || versions.codeVersions.length === 0) ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(0,0,0,.4)' }}>
+                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.4)' }}>
                         No versions.
                       </div>
                     ) : null}
@@ -2732,13 +2894,13 @@ document.addEventListener('click', function(e) {
                           <div
                             key={`code-v-${String(v.version)}-${String(v.createdAt ?? '')}`}
                             className="rounded-md p-2 flex items-start gap-2"
-                            style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.04)' }}
+                            style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}
                           >
                             <div className="flex-1">
-                              <div className="mono text-xs" style={{ color: '#5480ba' }}>
+                              <div className="mono text-xs" style={{ color: '#60a5fa' }}>
                                 code v{ver ?? '?'}{isActive ? ' (active)' : ''}
                               </div>
-                              <div className="mono text-[10px]" style={{ color: 'rgba(0,0,0,.4)' }}>
+                              <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
                                 {v.createdAt ? new Date(v.createdAt).toLocaleString() : ''}
                               </div>
                             </div>

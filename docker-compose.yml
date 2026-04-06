@@ -49,6 +49,7 @@ services:
     volumes:
       - ./keycloak/realm-ai-ui.json:/opt/keycloak/data/import/realm-ai-ui.json:ro
       - ./keycloak/themes/ai-ui-theme:/opt/keycloak/themes/ai-ui-theme:ro
+      - keycloak_data:/opt/keycloak/data
     healthcheck:
       test:
         [
@@ -105,7 +106,13 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -204,7 +211,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
-      CORS_ALLOWED_ORIGINS: http://localhost:5173
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://frontend:5173
       OAUTH_ISSUER: http://localhost:8083/realms/ai-ui
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
 
@@ -224,7 +231,10 @@ services:
       VITE_OIDC_AUTHORITY: http://localhost:8083/realms/ai-ui
       VITE_OIDC_CLIENT_ID: ai-ui-frontend
       VITE_OIDC_REDIRECT_URI: http://localhost:5173/auth/callback
+    volumes:
+      - ./frontend/src:/app/src
 
 volumes:
   mongo_data:
   minio_data:
+  keycloak_data:

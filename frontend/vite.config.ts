@@ -6,5 +6,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/preview': {
+        target: 'http://fastapi-ai:8000',
+        rewrite: (path) => path.replace(/^\/preview/, '/projects'),
+        changeOrigin: true,
+      },
+    },
   },
 })

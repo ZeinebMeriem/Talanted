@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import traceback
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .pipeline.orchestrator import Orchestrator
@@ -20,12 +22,20 @@ from .schemas import (
     ProjectFilesResponse,
     RestoreRequest,
     RestoreResponse,
+    DuplicateResponse,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI UI Generator - FastAPI (MVP)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 orchestrator = Orchestrator()
 
@@ -50,6 +60,31 @@ def health() -> dict[str, str]:
 @app.post("/internal/generate", response_model=GenerateResponse)
 def internal_generate(payload: GenerateRequest) -> GenerateResponse:
     return orchestrator.run(payload)
+
+
+@app.post("/internal/generate/stream")
+def internal_generate_stream(payload: GenerateRequest) -> StreamingResponse:
+    """SSE endpoint: yields progress events then the final result.
+
+    Each event is a Server-Sent Event line:
+      data: {"type":"progress","stage":"planning","progress":28,"message":"..."}\n\n
+      ...
+      data: {"type":"complete","progress":100,"result":{...}}\n\n
+      data: {"type":"error","message":"..."}\n\n
+    """
+    def _event_generator():
+        for event in orchestrator.run_stream(payload):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.post("/internal/edit-file", response_model=EditFileResponse)
@@ -96,3 +131,41 @@ def internal_restore_project(generation_id: str, payload: RestoreRequest) -> Res
     )
     success = result.returncode == 0
     return RestoreResponse(buildSuccess=success, buildOutput=(result.stdout + result.stderr)[-2000:])
+
+
+@app.post("/internal/projects/{generation_id}/duplicate", response_model=DuplicateResponse)
+def internal_duplicate_project(generation_id: str) -> DuplicateResponse:
+    """Duplicate an existing project with a new ID."""
+    import re
+    import subprocess
+    import shutil
+    import uuid
+    
+    projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", generation_id)
+    source_path = os.path.join(projects_dir, safe_id)
+    
+    if not os.path.isdir(source_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Project {generation_id} not found")
+    
+    # Generate new ID (using UUID since ulid may not be installed)
+    new_id = uuid.uuid4().hex[:26].upper()
+    new_path = os.path.join(projects_dir, new_id)
+    
+    # Copy entire project directory
+    shutil.copytree(source_path, new_path)
+    
+    # Rebuild the duplicated project
+    vite_bin = "/app/vite-template/node_modules/.bin/vite"
+    result = subprocess.run(
+        [vite_bin, "build"], cwd=new_path, capture_output=True, text=True, timeout=120
+    )
+    success = result.returncode == 0
+    
+    return DuplicateResponse(
+        newGenerationId=new_id,
+        buildSuccess=success,
+        buildOutput=(result.stdout + result.stderr)[-2000:]
+    )
+

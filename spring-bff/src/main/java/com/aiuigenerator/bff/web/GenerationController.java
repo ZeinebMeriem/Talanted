@@ -1,7 +1,13 @@
 package com.aiuigenerator.bff.web;
 
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.List;
 
+import jakarta.servlet.http.HttpServletResponse;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.aiuigenerator.bff.domain.AuditEvent;
 import com.aiuigenerator.bff.domain.Generation;
@@ -30,12 +37,59 @@ import com.aiuigenerator.bff.service.GenerationService;
 @RequestMapping("/api/generations")
 public class GenerationController {
 
+    private static final Logger log = LoggerFactory.getLogger(GenerationController.class);
     private final GenerationService service;
     private final AuditService audit;
 
     public GenerationController(GenerationService service, AuditService audit) {
         this.service = service;
         this.audit = audit;
+    }
+
+    /**
+     * Streaming generation endpoint.
+     *
+     * Writes SSE directly to HttpServletResponse to bypass Spring MVC / Tomcat
+     * response buffering. SseEmitter buffers internally and does not flush after
+     * each event, so progress events never reach the client until the pipeline
+     * finishes. Writing directly to the output stream and calling flush() after
+     * every event fixes the 0% progress bar problem.
+     *
+     * This is a SYNCHRONOUS handler — Spring MVC will block the thread until
+     * the response is committed, which is fine because the pipeline can take
+     * up to 10 minutes and we need to stream in real time.
+     */
+    @PostMapping(value = "/stream", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public void createStream(
+            @RequestParam("prompt") String prompt,
+            @RequestParam(name = "files", required = false) List<MultipartFile> files,
+            @RequestParam(name = "domain", required = false) String domain,
+            @RequestParam(name = "model", required = false) String model,
+            JwtAuthenticationToken token,
+            HttpServletResponse response) throws IOException {
+
+        String userId = (String) token.getToken().getClaims().get("sub");
+        log.info("POST /api/generations/stream: userId={}, prompt={}, filesCount={}, domain={}, model={}",
+                userId, prompt.substring(0, Math.min(50, prompt.length())),
+                files == null ? 0 : files.size(), domain, model);
+
+        // Set SSE headers — disable all buffering layers
+        response.setContentType("text/event-stream");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setHeader("X-Accel-Buffering", "no"); // disables Nginx proxy buffering
+        response.setHeader("Connection", "keep-alive");
+        response.flushBuffer(); // commit the headers immediately
+
+        PrintWriter writer = response.getWriter();
+
+        service.createGenerationStream(userId, prompt, files, domain, model, writer);
+
+        // Ensure the response is fully committed
+        if (!writer.checkError()) {
+            writer.flush();
+        }
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -87,12 +141,21 @@ public class GenerationController {
             @PathVariable("id") String id,
             @RequestBody EditFileRequest body) {
         body.generationId = id;
-        EditFileResponse resp = service.editFile(id, body.filePath, body.instruction);
+        EditFileResponse resp = service.editFile(id, body.filePath, body.instruction, body.model);
         return ResponseEntity.ok(resp);
     }
 
     @GetMapping("/{id}/chat")
     public List<ChatMessageDto> chatHistory(@PathVariable("id") String id) {
         return service.getChatHistory(id);
+    }
+
+    @PostMapping("/{id}/duplicate")
+    public ResponseEntity<com.aiuigenerator.bff.dto.DuplicateResponse> duplicate(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        String userId = (String) token.getToken().getClaims().get("sub");
+        com.aiuigenerator.bff.dto.DuplicateResponse resp = service.duplicateGeneration(id, userId);
+        return ResponseEntity.ok(resp);
     }
 }

@@ -792,6 +792,29 @@ def create_vision_provider() -> LlmProvider | None:
     return None
 
 
+def create_coder_provider_with_model(model_override: str | None = None) -> LlmProvider:
+    """Create a coder provider with optional model override.
+    
+    Args:
+        model_override: Model name to use (gemini|claude|gpt|groq). If None, uses .env defaults.
+    
+    Returns:
+        LlmProvider instance configured for coding tasks.
+    """
+    max_tokens = int(os.getenv("CODER_MAX_TOKENS", "8192"))
+    temperature = 0.1
+    
+    # If model is explicitly specified, use it
+    if model_override and model_override in _PROVIDER_BUILDERS:
+        try:
+            return _PROVIDER_BUILDERS[model_override](role="coder", max_tokens=max_tokens, temperature=temperature)
+        except Exception as e:
+            logger.warning(f"Failed to create provider for model {model_override}: {e}, falling back to default")
+    
+    # Otherwise use the standard coder provider (respects CODER_PROVIDER env var)
+    return create_coder_provider()
+
+
 # ── Helpers ─────────────────────────────────────────────────────────────
 
 

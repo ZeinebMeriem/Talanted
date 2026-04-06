@@ -4,6 +4,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import com.aiuigenerator.bff.dto.DuplicateResponse;
 import com.aiuigenerator.bff.dto.EditFileRequest;
 import com.aiuigenerator.bff.dto.EditFileResponse;
 import com.aiuigenerator.bff.dto.FastApiGenerateRequest;
@@ -12,6 +13,8 @@ import com.aiuigenerator.bff.dto.ProjectFilesResponse;
 import com.aiuigenerator.bff.dto.RestoreRequest;
 import com.aiuigenerator.bff.dto.RestoreResponse;
 
+import reactor.core.publisher.Flux;
+
 @Service
 public class FastApiClient {
 
@@ -19,6 +22,24 @@ public class FastApiClient {
 
     public FastApiClient(WebClient fastApiWebClient) {
         this.webClient = fastApiWebClient;
+    }
+
+    /**
+     * Streaming variant: calls FastAPI /internal/generate/stream and returns a
+     * Flux of raw SSE data strings (the JSON payload after "data: ").
+     */
+    public Flux<String> generateStream(FastApiGenerateRequest request) {
+        return webClient.post()
+                .uri("/internal/generate/stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToFlux(String.class)
+                // SSE lines arrive as "data: {...}" — strip the prefix to get pure JSON
+                .filter(line -> line != null && !line.isBlank())
+                .map(line -> line.startsWith("data: ") ? line.substring(6).trim() : line.trim())
+                .filter(json -> !json.isEmpty());
     }
 
     public FastApiGenerateResponse generate(FastApiGenerateRequest request) {
@@ -60,6 +81,15 @@ public class FastApiClient {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(RestoreResponse.class)
+                .block();
+    }
+
+    public DuplicateResponse duplicateProject(String generationId) {
+        return webClient.post()
+                .uri("/internal/projects/{id}/duplicate", generationId)
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(DuplicateResponse.class)
                 .block();
     }
 }

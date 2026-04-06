@@ -40,6 +40,8 @@ _TEXT_EXTS: tuple[str, ...] = (
     ".js", ".ts", ".tsx", ".jsx", ".html", ".htm", ".css",
     ".py", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".rs",
     ".sql", ".sh", ".env.example",
+    # diagrams (text-based)
+    ".mmd", ".excalidraw",
 )
 
 _DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

@@ -14,4 +14,6 @@ public interface CodeVersionRepository extends MongoRepository<CodeVersion, Stri
 
     @Query(value = "{ 'generationId': ?0 }", fields = "{ 'files': 0 }")
     List<CodeVersion> findByGenerationId(String generationId, Sort sort);
+
+    List<CodeVersion> findByGenerationIdOrderByVersionAsc(String generationId);
 }
