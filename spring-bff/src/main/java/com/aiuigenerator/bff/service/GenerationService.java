@@ -287,7 +287,8 @@ public class GenerationService {
             generationRepo.save(g);
 
             audit.recordEvent("GENERATION_REQUESTED", gId, sId, 0,
-                    Map.of("hasFiles", files != null && !files.isEmpty(), "streaming", true, "model", model != null ? model : "default"));
+                    Map.of("hasFiles", files != null && !files.isEmpty(), "streaming", true, "model",
+                            model != null ? model : "default"));
 
             // ── Upload files to MinIO ────────────────────────────────────────
             List<FileRefDto> fileRefs = new ArrayList<>();
@@ -510,7 +511,8 @@ public class GenerationService {
                 writer.print("data: {\"type\":\"error\",\"message\":\"" +
                         e.getMessage().replace("\"", "'") + "\"}\n\n");
                 writer.flush();
-            } catch (Exception ignored) { /* response may already be closed */ }
+            } catch (Exception ignored) {
+                /* response may already be closed */ }
         }
     }
 
