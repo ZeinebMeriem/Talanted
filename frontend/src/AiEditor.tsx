@@ -136,7 +136,7 @@ function findNode(nodes: FileNode[], id: string): FileNode | null {
   return null
 }
 
-export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, roles = [], onLogout }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; roles?: string[]; onLogout?: () => void }) {
+export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, roles = [], onLogout, initialGenerationId }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; roles?: string[]; onLogout?: () => void; initialGenerationId?: string | null }) {
   const [selectedFw, setSelectedFw] = useState<Framework | null>(null)
   const [projectName, setProjectName] = useState('my-awesome-app')
   const [customPrompt, setCustomPrompt] = useState('')
@@ -313,6 +313,13 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     },
     [accessToken],
   )
+
+  // Auto-load generation from URL query param (?gen=...) on component mount
+  useEffect(() => {
+    if (initialGenerationId && !apiResult) {
+      void loadGeneration(initialGenerationId)
+    }
+  }, [initialGenerationId, apiResult, loadGeneration])
 
   const doRollback = useCallback(
     async (generationId: string, version: number) => {

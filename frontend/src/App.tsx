@@ -483,6 +483,10 @@ export default function App() {
     }
   }
 
+  // Extract ?gen=... parameter if present (for loading forked projects)
+  const params = new URLSearchParams(window.location.search)
+  const generationIdFromUrl = params.get('gen')
+
   return (
     <AiEditor
       accessToken={auth.user?.access_token}
@@ -493,6 +497,7 @@ export default function App() {
       userSub={userSub}
       roles={roles}
       onLogout={doLogout}
+      initialGenerationId={generationIdFromUrl}
     />
   )
 }
