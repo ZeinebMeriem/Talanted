@@ -33,6 +33,8 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, HistoryPanel, AuditEventsPanel, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+
 
 type Framework =
   | 'HTML/CSS'
@@ -42,15 +44,6 @@ type CenterTab = 'preview' | 'code' | 'terminal'
 
 type RightTab = 'chat' | 'console' | 'logs'
 
-type FileNode =
-  | { id: string; type: 'file'; name: string }
-  | { id: string; type: 'folder'; name: string; open: boolean; children: FileNode[] }
-
-type ChatMsg = {
-  role: 'ai' | 'user'
-  text: string
-  edits?: { file: string; added: number; removed: number }[]
-}
 
 type CodeFile = { path: string; content: string }
 
@@ -227,6 +220,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [inspectMode, setInspectMode] = useState(false)
   const [selectedZone, setSelectedZone] = useState<{ label: string; description: string } | null>(null)
   const [hoverZoneBox, setHoverZoneBox] = useState<{ top: string; height: string; left: string; width: string } | null>(null)
+  const [chatPrefill, setChatPrefill] = useState('')  // Pre-filled chat message from inspect
 
   const [apiResult, setApiResult] = useState<GenerationApiResponse | null>(null)
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false)
@@ -244,6 +238,40 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [versions, setVersions] = useState<GenerationVersionsResponse | null>(null)
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionsError, setVersionsError] = useState<string | null>(null)
+
+  // Handle element selection from inspect mode
+  const handleElementSelected = useCallback((info: ElementInfo) => {
+    // Don't auto-switch to chat anymore - let them use the visual editor
+  }, []);
+
+  // Handle style change from visual editor
+  const handleStyleChange = useCallback((change: StyleChange) => {
+    // Build a natural language description of the change
+    const elementDesc = change.element.textContent 
+      ? `the ${change.element.tagName} with text "${change.element.textContent.slice(0, 30)}..."`
+      : `the ${change.element.tagName}${change.element.className ? `.${change.element.className.split(' ')[0]}` : ''}`;
+    
+    const propNames: Record<string, string> = {
+      'color': 'text color',
+      'background-color': 'background color',
+      'font-size': 'font size',
+      'font-family': 'font',
+      'font-weight': 'font weight',
+      'padding': 'padding',
+      'margin': 'margin',
+      'border-radius': 'border radius',
+      'text-align': 'text alignment'
+    };
+    
+    // Handle multiple style changes from "Apply to Code" button
+    if (change.property === 'multiple') {
+      setChatPrefill(`Change ${elementDesc}: ${change.newValue}`);
+    } else {
+      const propName = propNames[change.property] || change.property;
+      setChatPrefill(`Change ${propName} of ${elementDesc} to ${change.newValue}`);
+    }
+    setRightTab('chat');
+  }, []);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -266,6 +294,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
         getChatHistory(generationId, accessToken),
       ])
       setApiResult({ generationId, codeBundle: bundle, uiSpec: undefined, aiReport: undefined })
+      setSelectedGenerationId(generationId)  // Enable chat editing
       setChatMessages(history.map((m: ApiChatMessage) => ({
         role: m.role === 'user' ? 'user' : 'ai',
         text: m.content,
@@ -672,6 +701,14 @@ document.addEventListener('click', function(e) {
     ? `/preview/${apiResult.generationId}/dist/index.html`
     : null
 
+  // Debug logging
+  console.log('AiEditor Debug:', { 
+    generationId: apiResult?.generationId, 
+    builtProjectUrl, 
+    hasCodeBundle: !!apiResult?.codeBundle,
+    filesCount: apiResult?.codeBundle?.files?.length 
+  })
+
   const previewKey = useMemo(() => {
     if (!builtProjectUrl && !previewSrcDoc) return 'no-preview'
     const gen = apiResult?.generationId ?? 'no-gen'
@@ -991,27 +1028,27 @@ document.addEventListener('click', function(e) {
       const p = (prompt || '').toLowerCase()
       if (p.includes('dashboard') || p.includes('analytics') || p.includes('admin')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#0d1117"/>
-          <rect x="0" y="0" width="56" height="180" fill="#161b22"/>
-          <rect x="8" y="16" width="40" height="6" rx="3" fill="#30363d"/>
+          <rect width="320" height="180" fill="#f8fafc"/>
+          <rect x="0" y="0" width="56" height="180" fill="#ffffff"/>
+          <rect x="8" y="16" width="40" height="6" rx="3" fill="#e2e8f0"/>
           <rect x="8" y="30" width="40" height="6" rx="3" fill="#6366f1" opacity="0.8"/>
-          <rect x="8" y="44" width="40" height="6" rx="3" fill="#30363d"/>
-          <rect x="8" y="58" width="40" height="6" rx="3" fill="#30363d"/>
-          <rect x="8" y="72" width="40" height="6" rx="3" fill="#30363d"/>
-          <rect x="64" y="10" width="60" height="32" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="8" y="44" width="40" height="6" rx="3" fill="#e2e8f0"/>
+          <rect x="8" y="58" width="40" height="6" rx="3" fill="#e2e8f0"/>
+          <rect x="8" y="72" width="40" height="6" rx="3" fill="#e2e8f0"/>
+          <rect x="64" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="70" y="16" width="24" height="4" rx="2" fill="#6366f1" opacity="0.7"/>
-          <rect x="70" y="24" width="16" height="8" rx="2" fill="#e2e8f0" opacity="0.8"/>
-          <rect x="132" y="10" width="60" height="32" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="70" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
+          <rect x="132" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="138" y="16" width="24" height="4" rx="2" fill="#10b981" opacity="0.7"/>
-          <rect x="138" y="24" width="16" height="8" rx="2" fill="#e2e8f0" opacity="0.8"/>
-          <rect x="200" y="10" width="60" height="32" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="138" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
+          <rect x="200" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="206" y="16" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.7"/>
-          <rect x="206" y="24" width="16" height="8" rx="2" fill="#e2e8f0" opacity="0.8"/>
-          <rect x="268" y="10" width="44" height="32" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="206" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
+          <rect x="268" y="10" width="44" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="274" y="16" width="20" height="4" rx="2" fill="#8b5cf6" opacity="0.7"/>
-          <rect x="274" y="24" width="12" height="8" rx="2" fill="#e2e8f0" opacity="0.8"/>
-          <rect x="64" y="52" width="168" height="80" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-          <rect x="72" y="60" width="50" height="4" rx="2" fill="#30363d"/>
+          <rect x="274" y="24" width="12" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
+          <rect x="64" y="52" width="168" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+          <rect x="72" y="60" width="50" height="4" rx="2" fill="#e2e8f0"/>
           <rect x="72" y="115" width="10" height="14" rx="2" fill="#6366f1" opacity="0.5"/>
           <rect x="86" y="105" width="10" height="24" rx="2" fill="#6366f1" opacity="0.6"/>
           <rect x="100" y="95" width="10" height="34" rx="2" fill="#6366f1" opacity="0.7"/>
@@ -1022,65 +1059,65 @@ document.addEventListener('click', function(e) {
           <rect x="170" y="88" width="10" height="41" rx="2" fill="#6366f1" opacity="0.8"/>
           <rect x="184" y="97" width="10" height="32" rx="2" fill="#6366f1" opacity="0.7"/>
           <rect x="198" y="82" width="10" height="47" rx="2" fill="#6366f1" opacity="0.85"/>
-          <rect x="240" y="52" width="72" height="80" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="240" y="52" width="72" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <circle cx="276" cy="90" r="22" fill="none" stroke="#6366f1" strokeWidth="8" strokeDasharray="69 30" opacity="0.7"/>
           <circle cx="276" cy="90" r="22" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray="20 79" strokeDashoffset="-69" opacity="0.7"/>
-          <rect x="64" y="142" width="248" height="30" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-          <rect x="72" y="149" width="40" height="4" rx="2" fill="#30363d"/>
-          <rect x="72" y="158" width="30" height="4" rx="2" fill="#30363d"/>
-          <rect x="140" y="149" width="30" height="4" rx="2" fill="#30363d"/>
-          <rect x="140" y="158" width="24" height="4" rx="2" fill="#30363d"/>
+          <rect x="64" y="142" width="248" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+          <rect x="72" y="149" width="40" height="4" rx="2" fill="#e2e8f0"/>
+          <rect x="72" y="158" width="30" height="4" rx="2" fill="#e2e8f0"/>
+          <rect x="140" y="149" width="30" height="4" rx="2" fill="#e2e8f0"/>
+          <rect x="140" y="158" width="24" height="4" rx="2" fill="#e2e8f0"/>
           <rect x="220" y="149" width="20" height="4" rx="2" fill="#10b981" opacity="0.6"/>
         </svg>
       )
       if (p.includes('landing') || p.includes('saas') || p.includes('marketing')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#0d1117"/>
-          <rect x="0" y="0" width="320" height="28" fill="#161b22"/>
+          <rect width="320" height="180" fill="#f8fafc"/>
+          <rect x="0" y="0" width="320" height="28" fill="#ffffff"/>
           <rect x="16" y="10" width="40" height="8" rx="4" fill="#6366f1" opacity="0.8"/>
-          <rect x="120" y="12" width="24" height="5" rx="2" fill="#30363d"/>
-          <rect x="152" y="12" width="24" height="5" rx="2" fill="#30363d"/>
-          <rect x="184" y="12" width="24" height="5" rx="2" fill="#30363d"/>
+          <rect x="120" y="12" width="24" height="5" rx="2" fill="#94a3b8"/>
+          <rect x="152" y="12" width="24" height="5" rx="2" fill="#94a3b8"/>
+          <rect x="184" y="12" width="24" height="5" rx="2" fill="#94a3b8"/>
           <rect x="264" y="9" width="40" height="10" rx="5" fill="#6366f1" opacity="0.8"/>
-          <rect x="80" y="42" width="160" height="10" rx="5" fill="#e2e8f0" opacity="0.9"/>
-          <rect x="96" y="58" width="128" height="6" rx="3" fill="#e2e8f0" opacity="0.5"/>
-          <rect x="108" y="68" width="104" height="5" rx="2" fill="#e2e8f0" opacity="0.3"/>
+          <rect x="80" y="42" width="160" height="10" rx="5" fill="#1f2937" opacity="0.9"/>
+          <rect x="96" y="58" width="128" height="6" rx="3" fill="#64748b" opacity="0.5"/>
+          <rect x="108" y="68" width="104" height="5" rx="2" fill="#94a3b8" opacity="0.3"/>
           <rect x="120" y="82" width="36" height="12" rx="6" fill="#6366f1" opacity="0.9"/>
-          <rect x="164" y="82" width="36" height="12" rx="6" fill="#30363d"/>
-          <rect x="32" y="108" width="72" height="52" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="164" y="82" width="36" height="12" rx="6" fill="#e2e8f0"/>
+          <rect x="32" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="40" y="116" width="24" height="4" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="40" y="124" width="48" height="3" rx="1" fill="#30363d"/>
-          <rect x="40" y="130" width="40" height="3" rx="1" fill="#30363d"/>
-          <rect x="124" y="108" width="72" height="52" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="40" y="124" width="48" height="3" rx="1" fill="#cbd5e1"/>
+          <rect x="40" y="130" width="40" height="3" rx="1" fill="#cbd5e1"/>
+          <rect x="124" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="132" y="116" width="24" height="4" rx="2" fill="#10b981" opacity="0.6"/>
-          <rect x="132" y="124" width="48" height="3" rx="1" fill="#30363d"/>
-          <rect x="132" y="130" width="40" height="3" rx="1" fill="#30363d"/>
-          <rect x="216" y="108" width="72" height="52" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="132" y="124" width="48" height="3" rx="1" fill="#cbd5e1"/>
+          <rect x="132" y="130" width="40" height="3" rx="1" fill="#cbd5e1"/>
+          <rect x="216" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="224" y="116" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.6"/>
-          <rect x="224" y="124" width="48" height="3" rx="1" fill="#30363d"/>
-          <rect x="224" y="130" width="40" height="3" rx="1" fill="#30363d"/>
+          <rect x="224" y="124" width="48" height="3" rx="1" fill="#cbd5e1"/>
+          <rect x="224" y="130" width="40" height="3" rx="1" fill="#cbd5e1"/>
         </svg>
       )
       if (p.includes('ecommerce') || p.includes('shop') || p.includes('store') || p.includes('product')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#0d1117"/>
-          <rect x="0" y="0" width="320" height="24" fill="#161b22"/>
+          <rect width="320" height="180" fill="#f8fafc"/>
+          <rect x="0" y="0" width="320" height="24" fill="#ffffff"/>
           <rect x="12" y="8" width="32" height="8" rx="4" fill="#6366f1" opacity="0.8"/>
-          <rect x="260" y="8" width="20" height="8" rx="4" fill="#30363d"/>
-          <rect x="286" y="8" width="20" height="8" rx="4" fill="#30363d"/>
-          <rect x="0" y="24" width="70" height="156" fill="#161b22"/>
-          <rect x="8" y="32" width="54" height="5" rx="2" fill="#30363d"/>
-          <rect x="8" y="44" width="40" height="4" rx="2" fill="#30363d"/>
-          <rect x="8" y="52" width="44" height="4" rx="2" fill="#30363d"/>
-          <rect x="8" y="60" width="36" height="4" rx="2" fill="#30363d"/>
-          <rect x="8" y="76" width="54" height="5" rx="2" fill="#30363d"/>
+          <rect x="260" y="8" width="20" height="8" rx="4" fill="#e2e8f0"/>
+          <rect x="286" y="8" width="20" height="8" rx="4" fill="#e2e8f0"/>
+          <rect x="0" y="24" width="70" height="156" fill="#ffffff"/>
+          <rect x="8" y="32" width="54" height="5" rx="2" fill="#e2e8f0"/>
+          <rect x="8" y="44" width="40" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="8" y="52" width="44" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="8" y="60" width="36" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="8" y="76" width="54" height="5" rx="2" fill="#e2e8f0"/>
           <rect x="8" y="88" width="40" height="4" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="8" y="96" width="44" height="4" rx="2" fill="#30363d"/>
+          <rect x="8" y="96" width="44" height="4" rx="2" fill="#cbd5e1"/>
           {[0,1,2].map(col => [0,1].map(row => (
             <g key={`${col}-${row}`}>
-              <rect x={78 + col * 84} y={30 + row * 74} width="76" height="64" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-              <rect x={82 + col * 84} y={34 + row * 74} width="68" height="38" rx="4" fill="#21262d"/>
-              <rect x={86 + col * 84} y={76 + row * 74} width="40" height="4" rx="2" fill="#30363d"/>
+              <rect x={78 + col * 84} y={30 + row * 74} width="76" height="64" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+              <rect x={82 + col * 84} y={34 + row * 74} width="68" height="38" rx="4" fill="#f1f5f9"/>
+              <rect x={86 + col * 84} y={76 + row * 74} width="40" height="4" rx="2" fill="#cbd5e1"/>
               <rect x={86 + col * 84} y={83 + row * 74} width="28" height="4" rx="2" fill="#6366f1" opacity="0.7"/>
             </g>
           )))}
@@ -1088,52 +1125,52 @@ document.addEventListener('click', function(e) {
       )
       if (p.includes('portfolio') || p.includes('resume') || p.includes('personal')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#0d1117"/>
-          <rect x="0" y="0" width="320" height="24" fill="#161b22"/>
-          <rect x="16" y="8" width="40" height="8" rx="4" fill="#e2e8f0" opacity="0.8"/>
-          <rect x="220" y="10" width="20" height="5" rx="2" fill="#30363d"/>
-          <rect x="248" y="10" width="20" height="5" rx="2" fill="#30363d"/>
-          <rect x="276" y="10" width="20" height="5" rx="2" fill="#30363d"/>
-          <circle cx="160" cy="64" r="22" fill="#21262d" stroke="#6366f1" strokeWidth="2" opacity="0.8"/>
-          <rect x="124" y="92" width="72" height="8" rx="4" fill="#e2e8f0" opacity="0.8"/>
+          <rect width="320" height="180" fill="#f8fafc"/>
+          <rect x="0" y="0" width="320" height="24" fill="#ffffff"/>
+          <rect x="16" y="8" width="40" height="8" rx="4" fill="#1f2937" opacity="0.8"/>
+          <rect x="220" y="10" width="20" height="5" rx="2" fill="#cbd5e1"/>
+          <rect x="248" y="10" width="20" height="5" rx="2" fill="#cbd5e1"/>
+          <rect x="276" y="10" width="20" height="5" rx="2" fill="#cbd5e1"/>
+          <circle cx="160" cy="64" r="22" fill="#f1f5f9" stroke="#6366f1" strokeWidth="2" opacity="0.8"/>
+          <rect x="124" y="92" width="72" height="8" rx="4" fill="#1f2937" opacity="0.8"/>
           <rect x="136" y="105" width="48" height="5" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="86" y="125" width="44" height="36" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-          <rect x="92" y="131" width="32" height="18" rx="4" fill="#21262d"/>
-          <rect x="92" y="152" width="24" height="4" rx="2" fill="#30363d"/>
-          <rect x="138" y="125" width="44" height="36" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-          <rect x="144" y="131" width="32" height="18" rx="4" fill="#21262d"/>
-          <rect x="144" y="152" width="24" height="4" rx="2" fill="#30363d"/>
-          <rect x="190" y="125" width="44" height="36" rx="6" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-          <rect x="196" y="131" width="32" height="18" rx="4" fill="#21262d"/>
-          <rect x="196" y="152" width="24" height="4" rx="2" fill="#30363d"/>
+          <rect x="86" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+          <rect x="92" y="131" width="32" height="18" rx="4" fill="#f1f5f9"/>
+          <rect x="92" y="152" width="24" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="138" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+          <rect x="144" y="131" width="32" height="18" rx="4" fill="#f1f5f9"/>
+          <rect x="144" y="152" width="24" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="190" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+          <rect x="196" y="131" width="32" height="18" rx="4" fill="#f1f5f9"/>
+          <rect x="196" y="152" width="24" height="4" rx="2" fill="#cbd5e1"/>
         </svg>
       )
       return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#0d1117"/>
-          <rect x="0" y="0" width="320" height="24" fill="#161b22"/>
+          <rect width="320" height="180" fill="#f8fafc"/>
+          <rect x="0" y="0" width="320" height="24" fill="#ffffff"/>
           <rect x="16" y="8" width="48" height="8" rx="4" fill="#6366f1" opacity="0.8"/>
           <rect x="246" y="9" width="58" height="7" rx="3" fill="#6366f1" opacity="0.5"/>
-          <rect x="20" y="36" width="130" height="60" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-          <rect x="30" y="46" width="60" height="6" rx="3" fill="#e2e8f0" opacity="0.8"/>
-          <rect x="30" y="58" width="100" height="4" rx="2" fill="#30363d"/>
-          <rect x="30" y="66" width="80" height="4" rx="2" fill="#30363d"/>
-          <rect x="30" y="74" width="90" height="4" rx="2" fill="#30363d"/>
+          <rect x="20" y="36" width="130" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+          <rect x="30" y="46" width="60" height="6" rx="3" fill="#1f2937" opacity="0.8"/>
+          <rect x="30" y="58" width="100" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="30" y="66" width="80" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="30" y="74" width="90" height="4" rx="2" fill="#cbd5e1"/>
           <rect x="30" y="85" width="36" height="10" rx="5" fill="#6366f1" opacity="0.8"/>
-          <rect x="164" y="36" width="136" height="60" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
+          <rect x="164" y="36" width="136" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
           <rect x="174" y="52" width="10" height="28" rx="2" fill="#6366f1" opacity="0.5"/>
           <rect x="190" y="44" width="10" height="36" rx="2" fill="#6366f1" opacity="0.6"/>
           <rect x="206" y="50" width="10" height="30" rx="2" fill="#6366f1" opacity="0.7"/>
           <rect x="222" y="40" width="10" height="40" rx="2" fill="#6366f1" opacity="0.8"/>
           <rect x="238" y="46" width="10" height="34" rx="2" fill="#6366f1" opacity="0.65"/>
           <rect x="254" y="36" width="10" height="44" rx="2" fill="#6366f1"/>
-          <rect x="20" y="108" width="280" height="52" rx="8" fill="#161b22" stroke="#30363d" strokeWidth="1"/>
-          <rect x="30" y="118" width="50" height="4" rx="2" fill="#30363d"/>
-          <rect x="30" y="127" width="60" height="4" rx="2" fill="#30363d"/>
-          <rect x="30" y="136" width="40" height="4" rx="2" fill="#30363d"/>
-          <rect x="120" y="118" width="50" height="4" rx="2" fill="#30363d"/>
-          <rect x="120" y="127" width="40" height="4" rx="2" fill="#30363d"/>
-          <rect x="120" y="136" width="55" height="4" rx="2" fill="#30363d"/>
+          <rect x="20" y="108" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
+          <rect x="30" y="118" width="50" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="30" y="127" width="60" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="30" y="136" width="40" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="120" y="118" width="50" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="120" y="127" width="40" height="4" rx="2" fill="#cbd5e1"/>
+          <rect x="120" y="136" width="55" height="4" rx="2" fill="#cbd5e1"/>
           <rect x="260" y="122" width="28" height="10" rx="5" fill="#6366f1" opacity="0.6"/>
         </svg>
       )
@@ -1591,11 +1628,11 @@ document.addEventListener('click', function(e) {
               ) : historyLoading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
                   {[1,2,3,4,5,6].map(i => (
-                    <div key={i} style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.05)' }}>
-                      <div style={{ height: 180, background: 'rgba(0,0,0,.03)' }} />
+                    <div key={i} style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}>
+                      <div style={{ height: 200, background: 'linear-gradient(90deg, rgba(0,0,0,.02) 0%, rgba(0,0,0,.04) 50%, rgba(0,0,0,.02) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
                       <div style={{ padding: 16 }}>
-                        <div style={{ height: 16, borderRadius: 8, background: 'rgba(0,0,0,.04)', marginBottom: 8, width: '70%' }} />
-                        <div style={{ height: 12, borderRadius: 8, background: '#ffffff', width: '45%' }} />
+                        <div style={{ height: 16, borderRadius: 8, background: 'rgba(0,0,0,.06)', marginBottom: 8, width: '70%' }} />
+                        <div style={{ height: 12, borderRadius: 8, background: 'rgba(0,0,0,.04)', width: '45%' }} />
                       </div>
                     </div>
                   ))}
@@ -1614,32 +1651,34 @@ document.addEventListener('click', function(e) {
                   {validProjects.slice(0, showAllProjects ? undefined : 6).map(g => (
                     <div key={g.generationId}
                       className="group"
-                      style={{ borderRadius: 16, overflow: 'hidden', background: '#111827', border: '1px solid #1f2937', cursor: 'pointer', transition: 'all .2s' }}
-                      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.5)'; el.style.boxShadow = '0 8px 40px rgba(84,128,186,.12)'; el.style.transform = 'translateY(-2px)' }}
-                      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#1f2937'; el.style.boxShadow = 'none'; el.style.transform = 'none' }}
+                      style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.1)', cursor: 'pointer', transition: 'all .2s', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}
+                      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.4)'; el.style.boxShadow = '0 8px 40px rgba(84,128,186,.15)'; el.style.transform = 'translateY(-2px)' }}
+                      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(0,0,0,.1)'; el.style.boxShadow = '0 2px 8px rgba(0,0,0,.04)'; el.style.transform = 'none' }}
                       onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
                       {/* Thumbnail */}
-                      <div style={{ position: 'relative', height: 180, background: '#0d1117', overflow: 'hidden' }}>
-                        <CardThumbnail prompt={g.prompt} />
+                      <div style={{ position: 'relative', height: 200, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)' }}>
+                          <CardThumbnail prompt={g.prompt} />
+                        </div>
                         {loadingProjectId === g.generationId && (
-                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <div style={{ width: 26, height: 26, border: '2px solid rgba(0,0,0,.15)', borderTopColor: '#a5b4fc', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                            <div style={{ width: 26, height: 26, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                           </div>
                         )}
-                        <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'opacity .2s' }}>
+                        <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'opacity .2s', zIndex: 5 }}>
                           <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: '#5480ba', color: '#fff', boxShadow: '0 4px 20px rgba(99,102,241,.4)' }}>Open →</span>
-                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'rgba(0,0,0,.1)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
+                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'rgba(255,255,255,.95)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
                             onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇ ZIP</span>
                         </div>
                       </div>
                       {/* Card footer */}
-                      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: '#ffffff' }}>
                         <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                           {displayName.charAt(0).toUpperCase()}
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
-                          <p style={{ fontSize: 13, color: 'rgba(0,0,0,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+                          <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
                         </div>
                         {g.status !== 'COMPLETED' && (
                           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#fbbf24', flexShrink: 0 }}>⟳</span>
@@ -2201,6 +2240,42 @@ document.addEventListener('click', function(e) {
               })}
             </div>
 
+            {/* Zoom controls */}
+            <div className="flex items-center gap-2" style={{ marginLeft: 8 }}>
+              <button
+                style={{
+                  width: 32, height: 32, borderRadius: 8, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: previewScale <= 0.3 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
+                  border: '1px solid #e2e8f0', color: previewScale <= 0.3 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
+                }}
+                onClick={() => setPreviewScale(s => Math.max(0.3, s - 0.1))}
+                disabled={previewScale <= 0.3}
+                title="Zoom out"
+                type="button"
+              >
+                −
+              </button>
+              <span style={{ 
+                fontSize: 12, fontWeight: 600, color: '#64748b', minWidth: 45, textAlign: 'center',
+                background: '#f1f5f9', padding: '4px 8px', borderRadius: 6
+              }}>
+                {Math.round(previewScale * 100)}%
+              </span>
+              <button
+                style={{
+                  width: 32, height: 32, borderRadius: 8, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: previewScale >= 1.5 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
+                  border: '1px solid #e2e8f0', color: previewScale >= 1.5 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
+                }}
+                onClick={() => setPreviewScale(s => Math.min(1.5, s + 0.1))}
+                disabled={previewScale >= 1.5}
+                title="Zoom in"
+                type="button"
+              >
+                +
+              </button>
+            </div>
+
             <div className="w-px h-6" style={{ background: 'linear-gradient(to bottom, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '0 12px' }} />
 
             <button
@@ -2216,6 +2291,26 @@ document.addEventListener('click', function(e) {
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.color = '#64748b' }}
             >
               ↻
+            </button>
+
+            {/* Inspect Mode Toggle */}
+            <button
+              style={{
+                padding: '0 14px', height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', 
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: inspectMode 
+                  ? 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)' 
+                  : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
+                border: inspectMode ? '1px solid #c084fc' : '1px solid #e2e8f0', 
+                color: inspectMode ? '#9333ea' : '#64748b', 
+                transition: 'all .25s',
+                boxShadow: inspectMode ? '0 2px 8px rgba(147,51,234,.2)' : '0 1px 2px rgba(0,0,0,.04)'
+              }}
+              onClick={() => setInspectMode(!inspectMode)}
+              title="Toggle inspect mode"
+              type="button"
+            >
+              🎯 {inspectMode ? 'Inspecting' : 'Inspect'}
             </button>
 
             {apiResult?.generationId && (
@@ -2247,12 +2342,20 @@ document.addEventListener('click', function(e) {
                   boxShadow: '0 2px 6px rgba(37,99,235,.15)'
                 }}
                 onClick={async () => {
+                  console.log('🔵 FORK button clicked, generationId:', apiResult?.generationId)
                   try {
+                    console.log('🔵 Calling duplicateGeneration...')
                     const result = await duplicateGeneration(apiResult!.generationId!, accessToken)
+                    console.log('🔵 Fork result:', result)
                     if (result.newGenerationId) {
+                      console.log('🔵 Redirecting to /?gen=' + result.newGenerationId)
                       window.location.href = `/?gen=${result.newGenerationId}`
+                    } else {
+                      console.error('🔴 No newGenerationId in response:', result)
+                      alert('Fork failed: No generation ID returned')
                     }
                   } catch (err) {
+                    console.error('🔴 Fork error:', err)
                     alert(`Duplicate failed: ${err}`)
                   }
                 }}
@@ -2268,213 +2371,35 @@ document.addEventListener('click', function(e) {
 
           <div className="flex-1 overflow-auto relative" style={{ background: '#e8edf2' }}>
             {centerTab === 'preview' ? (
-              <div className="h-full flex flex-col">
-                <div className={`flex-1 relative ${isFullscreen ? 'fixed inset-0 z-50 flex flex-col' : ''}`} style={isFullscreen ? { background: '#e8edf2' } : {}}>
-                  {isFullscreen && (
-                    <div className="flex items-center justify-between px-6 h-12 shrink-0" style={{ background: '#0d1117', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#60a5fa' }}>Live Preview</span>
-                      <button
-                        onClick={() => setIsFullscreen(false)}
-                        style={{ width: 32, height: 32, borderRadius: '50%', background: 'none', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.5)', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                  <div className={`transition-all duration-500 ease-out ${isFullscreen ? 'flex-1 overflow-auto p-10' : 'h-full p-4'}`}>
-                  <div
-                    className="transition-all duration-500 ease-out mx-auto flex flex-col"
-                    style={{
-                      width: deviceMode === 'mobile' ? 375 : deviceMode === 'tablet' ? 768 : '100%',
-                      height: isFullscreen ? (deviceMode === 'mobile' ? 667 : deviceMode === 'tablet' ? 1024 : '100%') : '100%',
-                      borderRadius: deviceMode === 'desktop' ? 10 : 32,
-                      boxShadow: deviceMode !== 'desktop'
-                        ? '0 0 0 10px #1e293b, 0 24px 64px rgba(0,0,0,0.35)'
-                        : '0 2px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08)',
-                      overflow: 'hidden',
-                      border: deviceMode !== 'desktop' ? '2px solid #334155' : 'none',
-                    }}
-                  >
-                      {(builtProjectUrl || previewSrcDoc) ? (
-                        <>
-                          {deviceMode === 'desktop' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                              <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#eef2f7', borderRadius: 6, padding: '3px 10px', height: 26, minWidth: 0 }}>
-                                <span className="mono truncate" style={{ fontSize: 10, color: '#94a3b8' }}>
-                                  {builtProjectUrl ? `localhost:5173${builtProjectUrl}` : `localhost:5173/${activeFileId}`}
-                                </span>
-                              </div>
-                              {/* Inspect mode toggle */}
-                              {builtProjectUrl && (
-                                <button
-                                  title={inspectMode ? 'Exit inspect mode (Esc)' : 'Click to select & edit elements'}
-                                  onClick={() => { setInspectMode(v => !v); setHoverZoneBox(null) }}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', gap: 5,
-                                    padding: '3px 10px', height: 26, borderRadius: 6, border: 'none',
-                                    background: inspectMode ? '#5480ba' : '#e2e8f0',
-                                    color: inspectMode ? '#fff' : '#64748b',
-                                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                                    transition: 'all .15s', flexShrink: 0,
-                                    boxShadow: inspectMode ? '0 0 0 2px rgba(84,128,186,0.3)' : 'none',
-                                  }}
-                                >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                                  </svg>
-                                  {inspectMode ? 'Inspecting…' : 'Inspect'}
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          <div
-                            ref={previewContainerRef}
-                            style={{ flex: 1, overflow: 'hidden', position: 'relative', minHeight: 0 }}
-                          >
-                            <iframe
-                              key={previewKey}
-                              title="preview"
-                              style={{
-                                width: `${100 / previewScale}%`,
-                                height: `${100 / previewScale}%`,
-                                border: 'none',
-                                background: '#fff',
-                                display: 'block',
-                                transform: `scale(${previewScale})`,
-                                transformOrigin: 'top left',
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                              }}
-                              src={builtProjectUrl ? `${builtProjectUrl}?t=${previewReloadCount}` : undefined}
-                              srcDoc={builtProjectUrl ? undefined : (previewSrcDoc ?? undefined)}
-                            />
-
-                            {/* ── Inspect mode overlay ── */}
-                            {inspectMode && (
-                              <div
-                                style={{ position: 'absolute', inset: 0, zIndex: 20, cursor: 'crosshair' }}
-                                onMouseMove={handleOverlayMouseMove}
-                                onMouseLeave={() => setHoverZoneBox(null)}
-                                onClick={handleOverlayClick}
-                              >
-                                {/* Dim everything */}
-                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.25)' }} />
-
-                                {/* Hover zone highlight */}
-                                {hoverZoneBox && (
-                                  <div style={{
-                                    position: 'absolute',
-                                    top: hoverZoneBox.top,
-                                    left: hoverZoneBox.left,
-                                    width: hoverZoneBox.width,
-                                    height: hoverZoneBox.height,
-                                    border: '2px solid #5480ba',
-                                    background: 'rgba(84,128,186,0.12)',
-                                    borderRadius: 4,
-                                    pointerEvents: 'none',
-                                    transition: 'all 0.12s ease',
-                                    boxShadow: '0 0 0 1px rgba(84,128,186,0.3) inset',
-                                  }} />
-                                )}
-
-                                {/* Top label */}
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 10,
-                                  left: '50%',
-                                  transform: 'translateX(-50%)',
-                                  background: '#5480ba',
-                                  color: '#fff',
-                                  padding: '5px 14px',
-                                  borderRadius: 20,
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                  boxShadow: '0 2px 8px rgba(84,128,186,0.4)',
-                                  pointerEvents: 'none',
-                                }}>
-                                  Click on any section to edit it — Press Esc to cancel
-                                </div>
-
-                                {/* Zone name tooltip near mouse */}
-                                {hoverZoneBox && (
-                                  <div style={{
-                                    position: 'absolute',
-                                    top: `calc(${hoverZoneBox.top} + 6px)`,
-                                    left: `calc(${hoverZoneBox.left} + 8px)`,
-                                    background: '#1e293b',
-                                    color: '#e2e8f0',
-                                    padding: '2px 8px',
-                                    borderRadius: 4,
-                                    fontSize: 11,
-                                    fontWeight: 500,
-                                    pointerEvents: 'none',
-                                    fontFamily: 'monospace',
-                                  }}>
-                                    {INSPECT_ZONES.concat(INSPECT_ZONES_SIDEBAR).find(z => z.top === hoverZoneBox.top && z.left === hoverZoneBox.left)?.label ?? ''}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#fff' }}>
-                          <div style={{ fontSize: 32, opacity: .3 }}>⟳</div>
-                          <div style={{ fontSize: 13, color: '#94a3b8', fontWeight: 500 }}>Waiting for project build...</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {apiResult ? (
-                  <div className="px-4 py-2.5 shrink-0" style={{ borderTop: '1px solid rgba(0,0,0,.05)', background: '#ffffff' }}>
-                    {(() => {
-                      const r: any = (apiResult as any)?.aiReport
-                      const ui: any = (apiResult as any)?.uiSpec
-                      const provider = (r && (r.llm_provider ?? r.llmProvider)) || '(unknown)'
-                      const issuesCount = Array.isArray(r?.issues) ? r.issues.length : 0
-                      const pipeline = Array.isArray(r?.pipeline) ? r.pipeline.join(' → ') : ''
-                      const reqsRaw = ui?.meta?.requirements
-                      const requirements = Array.isArray(reqsRaw)
-                        ? (reqsRaw as any[])
-                          .filter((x) => typeof x === 'string' && x.trim())
-                          .map((s) => String(s).trim())
-                        : []
-                      const _reqPreview = requirements.slice(0, 3).join(' · ')
-                      void _reqPreview
-                      return (
-                        <div className="flex items-center gap-6 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <span className="mono text-[9px] uppercase tracking-wider" style={{ color: 'rgba(0,0,0,.2)' }}>Active Issues</span>
-                            <span className={`mono text-[10px] font-bold ${issuesCount ? 'text-red-400' : ''}`} style={{ color: issuesCount ? '#f87171' : 'rgba(0,0,0,.35)' }}>
-                              {issuesCount} detected
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })()}
-                  </div>
-                ) : null}
-              </div>
+              <Preview
+                deviceMode={deviceMode}
+                setDeviceMode={setDeviceMode}
+                previewScale={previewScale}
+                setPreviewScale={setPreviewScale}
+                previewSrcDoc={previewSrcDoc}
+                builtProjectUrl={builtProjectUrl}
+                buildPct={buildPct}
+                isBuilding={isBuilding}
+                buildMsg={buildMsg}
+                buildError={buildError}
+                inspectMode={inspectMode}
+                setInspectMode={setInspectMode}
+                selectedZone={selectedZone}
+                hoverZoneBox={hoverZoneBox}
+                previewReloadCount={previewReloadCount}
+                onElementSelected={handleElementSelected}
+                onStyleChange={handleStyleChange}
+              />
             ) : null}
 
             {centerTab === 'code' ? (
-              <div className="h-full flex flex-col">
-                <div style={{ padding: '8px 20px', borderBottom: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5480ba', display: 'inline-block', boxShadow: '0 0 0 2px rgba(84,128,186,.15)' }} />
-                  <span className="mono" style={{ fontSize: 12, color: '#5480ba', fontWeight: 600 }}>
-                    {activeFileName}
-                  </span>
-                </div>
-                <div className="flex-1 overflow-auto custom-scrollbar" style={{ background: '#ffffff' }}>
-                  <pre className="mono leading-relaxed" style={{ fontSize: 13, color: '#334155', padding: '20px 24px', margin: 0 }}>
-                    <code style={{ fontFamily: "'JetBrains Mono','Fira Code','Consolas',monospace" }}>{activeCode}</code>
-                  </pre>
-                </div>
-              </div>
+              <CodeViewer
+                tree={tree}
+                setTree={setTree}
+                activeFileId={activeFileId}
+                setActiveFileId={setActiveFileId}
+                effectiveFileContents={effectiveFileContents}
+              />
             ) : null}
 
             {centerTab === 'terminal' ? (
@@ -2511,6 +2436,7 @@ document.addEventListener('click', function(e) {
               { id: 'chat', label: 'Chat' },
               { id: 'console', label: 'Console' },
               { id: 'logs', label: 'History' },
+              { id: 'versions', label: 'Versions' },
             ] as const).map((t) => {
               const active = rightTab === t.id
               return (
@@ -2536,116 +2462,26 @@ document.addEventListener('click', function(e) {
           </div>
 
           {rightTab === 'chat' ? (
-            <div className="flex flex-col flex-1 overflow-hidden">
-              {diffVisible ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #fde68a', background: '#fef9c3' }}>
-                  <span className="mono" style={{ fontSize: 11, color: '#92400e' }}>
-                    {diffEdits.map(e => e.file).join(', ')}
-                  </span>
-                  <div className="flex-1" />
-                  <button className="mono" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e40af' }} onClick={() => setDiffVisible(false)} type="button">✓ Accept</button>
-                  <button className="mono" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', background: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626' }} onClick={() => setDiffVisible(false)} type="button">✗ Reject</button>
-                </div>
-              ) : null}
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3" style={{ scrollBehavior: 'smooth', background: '#fafbfc' }}>
-                {chatMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: '#cbd5e1' }}>
-                    <div style={{ fontSize: 36, opacity: 0.3 }}>💬</div>
-                    <div className="mono text-center" style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
-                      Describe what you want to<br />change in your project
-                    </div>
-                  </div>
-                ) : chatMessages.map((m, idx) => {
-                  const isAI = m.role === 'ai'
-                  return (
-                    <div key={idx} className={`flex gap-2 ${isAI ? '' : 'flex-row-reverse'}`}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, background: isAI ? '#5480ba' : '#e2e8f0', color: isAI ? '#fff' : '#64748b', fontSize: 11, marginTop: 2 }}>
-                        {isAI ? 'AI' : 'U'}
-                      </div>
-                      <div className="chat-msg-ai" style={isAI ? {} : { background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '16px 16px 4px 16px' }}>
-                        {m.text}
-                      </div>
-                    </div>
-                  )
-                })}
-                {isChatLoading ? (
-                  <div className="flex gap-2">
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#5480ba', fontSize: 11, color: '#fff', fontWeight: 700 }}>AI</div>
-                    <div className="chat-msg-ai">
-                      <span className="mono" style={{ fontSize: 12, color: '#1e40af' }}>Editing {activeFileName}…</span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="shrink-0 p-4" style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
-                {/* Selected zone badge */}
-                {selectedZone ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      background: '#eff6ff', border: '1px solid #bfdbfe',
-                      borderRadius: 8, padding: '4px 10px', flex: 1, minWidth: 0,
-                    }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                      </svg>
-                      <span className="mono truncate" style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}>
-                        Editing: {selectedZone.label}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => { setSelectedZone(null); setChatInput('') }}
-                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '2px 4px' }}
-                      title="Clear selection"
-                    >×</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <span className="mono" style={{ fontSize: 10, color: '#94a3b8' }}>
-                      AI will pick the right file automatically
-                    </span>
-                    {builtProjectUrl && !inspectMode && (
-                      <button
-                        onClick={() => { setInspectMode(true); setCenterTab('preview') }}
-                        style={{
-                          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4,
-                          background: 'none', border: '1px solid #e2e8f0', borderRadius: 6,
-                          padding: '2px 8px', fontSize: 10, color: '#64748b', cursor: 'pointer',
-                          fontFamily: 'monospace', whiteSpace: 'nowrap',
-                        }}
-                        title="Click an element in the preview to target it"
-                      >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                        </svg>
-                        Select element
-                      </button>
-                    )}
-                  </div>
-                )}
-                <div className="flex gap-2 items-end">
-                  <textarea
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendChat() } }}
-                    disabled={isChatLoading}
-                    placeholder={isChatLoading ? 'AI is editing…' : selectedZone ? `What should change in ${selectedZone.label}?` : 'Describe your changes… (Enter to send)'}
-                    rows={3}
-                    className="mono w-full resize-none custom-scrollbar"
-                    style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#1e293b', opacity: isChatLoading ? 0.5 : 1, lineHeight: 1.5 }}
-                  />
-                  <button
-                    style={{ width: 40, height: 40, borderRadius: 10, background: chatInput.trim() && !isChatLoading ? '#5480ba' : '#e2e8f0', border: 'none', color: chatInput.trim() && !isChatLoading ? '#fff' : '#94a3b8', fontSize: 18, transition: 'all .2s', cursor: chatInput.trim() && !isChatLoading ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                    onClick={() => void sendChat()}
-                    disabled={isChatLoading}
-                    type="button"
-                    aria-label="Send"
-                  >
-                    ↑
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ChatPanel
+              chatMessages={chatMessages}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              isChatLoading={isChatLoading}
+              selectedGenerationId={selectedGenerationId}
+              selectedZone={selectedZone}
+              diffVisible={diffVisible}
+              setDiffVisible={setDiffVisible}
+              diffEdits={diffEdits}
+              setDiffEdits={setDiffEdits}
+              accessToken={accessToken}
+              selectedModel={selectedModel}
+              onFileUpdated={(newMessages, edits) => {
+                setChatMessages(newMessages)
+                setDiffEdits(edits)
+              }}
+              prefillMessage={chatPrefill}
+              onPrefillUsed={() => setChatPrefill('')}
+            />
           ) : (
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {rightTab === 'console' ? (
@@ -2664,270 +2500,41 @@ document.addEventListener('click', function(e) {
             ) : null}
 
             {rightTab === 'logs' ? (
-              <div className="p-3">
-                <div className="mb-3">
-                  <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>
-                    Dashboard
-                  </div>
-                  <div className="text-sm text-slate-600">
-                    total generations: <span className="font-semibold text-slate-800">{history.length}</span>
-                  </div>
-                  <div className="text-sm text-slate-600">
-                    last activity:{' '}
-                    <span className="font-medium text-slate-700">
-                    {(() => {
-                      const latest = history
-                        .map((g) => g.updatedAt || g.createdAt)
-                        .filter(Boolean)
-                        .map((s) => new Date(String(s)).getTime())
-                        .filter((n) => Number.isFinite(n))
-                        .reduce((a, b) => Math.max(a, b), 0)
-                      return latest ? new Date(latest).toLocaleString() : '—'
-                    })()}
-                    </span>
-                  </div>
-                </div>
+              <>
+                <HistoryPanel
+                  history={history}
+                  historyLoading={historyLoading}
+                  historyError={historyError}
+                  selectedGenerationId={selectedGenerationId}
+                  loadingProjectId={loadingProjectId}
+                  onRefresh={() => void loadHistory()}
+                  onSelectGeneration={(id) => {
+                    setSelectedGenerationId(id)
+                    void loadAudit(id)
+                    void loadVersions(id)
+                  }}
+                  onLoadGeneration={(id) => void loadGeneration(id)}
+                />
 
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Recent generations
-                  </div>
-                  <div className="flex-1" />
-                  <button
-                    className="text-xs px-3 py-1.5 rounded-lg cursor-pointer bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 font-medium transition-all"
-                    onClick={() => void loadHistory()}
-                    type="button"
-                  >
-                    Refresh
-                  </button>
-                </div>
-
-                {historyLoading ? (
-                  <div className="text-sm text-slate-500 flex items-center gap-2">
-                    <span className="animate-spin">⟳</span> Loading…
-                  </div>
-                ) : null}
-
-                {historyError ? (
-                  <div className="text-sm text-red-500 bg-red-50 p-3 rounded-lg border border-red-200">
-                    {historyError}
-                  </div>
-                ) : null}
-
-                {!historyLoading && !historyError && history.length === 0 ? (
-                  <div className="text-sm text-slate-400 text-center py-8">
-                    <div className="text-3xl mb-2">📭</div>
-                    No generations yet.
-                  </div>
-                ) : null}
-
-                <div className="flex flex-col gap-2">
-                  {history.slice(0, 20).map((g) => (
-                    <div
-                      key={(g.generationId ?? '') + ':' + (g.createdAt ?? '')}
-                      className="rounded-xl p-3 transition-all duration-200 hover:shadow-md cursor-pointer group"
-                      style={{
-                        background:
-                          selectedGenerationId && g.generationId && selectedGenerationId === g.generationId
-                            ? 'linear-gradient(135deg, rgba(84,128,186,.12) 0%, rgba(107,163,217,.08) 100%)'
-                            : '#fff',
-                        border:
-                          selectedGenerationId && g.generationId && selectedGenerationId === g.generationId
-                            ? '1px solid rgba(84,128,186,.3)'
-                            : '1px solid #e2e8f0',
-                      }}
-                      title={g.prompt ?? ''}
-                      onClick={() => {
-                        if (!g.generationId) return
-                        setSelectedGenerationId(g.generationId)
-                        void loadAudit(g.generationId)
-                        void loadVersions(g.generationId)
-                      }}
-                    >
-                      <div className="text-xs text-slate-400 mb-1">
-                        {g.createdAt ? new Date(g.createdAt).toLocaleString() : ''}
-                      </div>
-                      <div className="text-sm text-slate-700 mb-2 line-clamp-2 font-medium">
-                        {g.prompt ?? ''}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${g.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : g.status === 'FAILED' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {g.status ?? 'unknown'}
-                        </span>
-                        <div className="flex-1" />
-                        {g.generationId && g.status === 'COMPLETED' ? (
-                          <button
-                            className="text-xs px-3 py-1.5 rounded-lg cursor-pointer font-semibold transition-all duration-200 hover:shadow-md"
-                            style={{
-                              background: loadingProjectId === g.generationId ? '#5480ba' : 'linear-gradient(135deg, #5480ba 0%, #6ba3d9 100%)',
-                              border: 'none',
-                              color: '#fff',
-                              boxShadow: '0 2px 6px rgba(84,128,186,.25)'
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void loadGeneration(g.generationId!)
-                            }}
-                            type="button"
-                            disabled={loadingProjectId === g.generationId}
-                          >
-                            {loadingProjectId === g.generationId ? '⟳ Loading…' : '↗ Load'}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <AuditEventsPanel
+                  selectedGenerationId={selectedGenerationId}
+                  auditEvents={auditEvents}
+                  auditLoading={auditLoading}
+                  auditError={auditError}
+                  onRefresh={(id) => void loadAudit(id)}
+                />
 
                 {selectedGenerationId ? (
-                  <div className="mt-4 pt-4 border-t border-slate-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        Audit events
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate max-w-[100px]">
-                        {selectedGenerationId}
-                      </div>
-                      <div className="flex-1" />
-                      <button
-                        className="text-[10px] px-2.5 py-1 rounded-md cursor-pointer font-medium transition-all bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200"
-                        onClick={() => void loadAudit(selectedGenerationId)}
-                        type="button"
-                      >
-                        Refresh
-                      </button>
-                    </div>
-
-                    {auditLoading ? (
-                      <div className="text-xs text-slate-400">
-                        Loading…
-                      </div>
-                    ) : null}
-
-                    {auditError ? (
-                      <div className="text-xs text-rose-600 font-medium">
-                        {auditError}
-                      </div>
-                    ) : null}
-
-                    {!auditLoading && !auditError && auditEvents.length === 0 ? (
-                      <div className="text-xs text-slate-400 italic">
-                        No audit events.
-                      </div>
-                    ) : null}
-
-                    <div className="flex flex-col gap-2">
-                      {auditEvents.map((e) => {
-                        let detailsText = ''
-                        try {
-                          const s = e.details ? JSON.stringify(e.details) : ''
-                          detailsText = s.length > 160 ? s.slice(0, 160) + '…' : s
-                        } catch {
-                          detailsText = ''
-                        }
-
-                        return (
-                          <div
-                            key={(e.eventId ?? '') + ':' + (e.timestamp ?? '')}
-                            className="rounded-lg p-3 bg-slate-50 border border-slate-200 hover:shadow-sm transition-all"
-                          >
-                            <div className="text-[10px] text-slate-400 mb-1">
-                              {e.timestamp ? new Date(e.timestamp).toLocaleString() : ''}
-                            </div>
-                            <div className="text-xs font-semibold text-violet-600">
-                              {e.type ?? 'EVENT'}
-                              {typeof e.durationMs === 'number' ? (
-                                <span className="text-slate-400 font-normal"> · {e.durationMs}ms</span>
-                              ) : null}
-                            </div>
-                            {detailsText ? (
-                              <div className="text-[10px] text-slate-500 mt-1 break-words">
-                                {detailsText}
-                              </div>
-                            ) : null}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
+                  <VersionHistory
+                    versions={versions}
+                    versionsLoading={versionsLoading}
+                    versionsError={versionsError}
+                    selectedGenerationId={selectedGenerationId}
+                    onRollback={doRollback}
+                    onRefresh={() => void loadVersions(selectedGenerationId)}
+                  />
                 ) : null}
-
-                {selectedGenerationId ? (
-                  <div className="mt-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="mono uppercase tracking-widest" style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>
-                        Versions
-                      </div>
-                      <div className="flex-1" />
-                      <button
-                        className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                        style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', color: 'rgba(255,255,255,.5)' }}
-                        onClick={() => void loadVersions(selectedGenerationId)}
-                        type="button"
-                      >
-                        Refresh
-                      </button>
-                    </div>
-
-                    {versionsLoading ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.4)' }}>
-                        Loading…
-                      </div>
-                    ) : null}
-
-                    {versionsError ? (
-                      <div className="mono text-xs" style={{ color: '#e04580' }}>
-                        {versionsError}
-                      </div>
-                    ) : null}
-
-                    {!versionsLoading && !versionsError && versions ? (
-                      <div className="mono text-[10px] mb-2" style={{ color: 'rgba(255,255,255,.4)' }}>
-                        activeVersion: {typeof versions.activeVersion === 'number' ? versions.activeVersion : 'unknown'}
-                      </div>
-                    ) : null}
-
-                    {!versionsLoading && !versionsError && (!versions || !versions.codeVersions || versions.codeVersions.length === 0) ? (
-                      <div className="mono text-xs" style={{ color: 'rgba(255,255,255,.4)' }}>
-                        No versions.
-                      </div>
-                    ) : null}
-
-                    <div className="flex flex-col gap-1">
-                      {(versions?.codeVersions ?? []).map((v) => {
-                        const ver = typeof v.version === 'number' ? v.version : null
-                        const isActive = ver !== null && ver === versions?.activeVersion
-                        return (
-                          <div
-                            key={`code-v-${String(v.version)}-${String(v.createdAt ?? '')}`}
-                            className="rounded-md p-2 flex items-start gap-2"
-                            style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}
-                          >
-                            <div className="flex-1">
-                              <div className="mono text-xs" style={{ color: '#60a5fa' }}>
-                                code v{ver ?? '?'}{isActive ? ' (active)' : ''}
-                              </div>
-                              <div className="mono text-[10px]" style={{ color: 'rgba(255,255,255,.35)' }}>
-                                {v.createdAt ? new Date(v.createdAt).toLocaleString() : ''}
-                              </div>
-                            </div>
-                            {!isActive && ver !== null ? (
-                              <button
-                                className="mono text-[10px] px-2 py-1 rounded cursor-pointer"
-                                style={{ background: 'rgba(84,128,186,.08)', border: '1px solid rgba(99,102,241,.25)', color: '#5480ba' }}
-                                onClick={() => void doRollback(selectedGenerationId, ver)}
-                                type="button"
-                              >
-                                Set active
-                              </button>
-                            ) : null}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              </>
             ) : null}
           </div>
           )}

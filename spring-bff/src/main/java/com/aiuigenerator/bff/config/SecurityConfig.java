@@ -30,23 +30,35 @@ import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    @Value("${app.security.dev-mode:false}")
+    private boolean devMode;
+
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
+        http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(eh -> eh.authenticationEntryPoint(new HttpStatusEntryPoint(UNAUTHORIZED)))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/error").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("admin")
-                        .requestMatchers("/api/**").authenticated()
-                        .anyRequest().permitAll())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
-                        jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
-                .build();
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+
+        if (devMode) {
+            // DEV MODE: Allow all requests without authentication
+            http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        } else {
+            // PRODUCTION: Require authentication
+            http
+                    .exceptionHandling(eh -> eh.authenticationEntryPoint(new HttpStatusEntryPoint(UNAUTHORIZED)))
+                    .authorizeHttpRequests(auth -> auth
+                            .requestMatchers("/", "/error").permitAll()
+                            .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                            .requestMatchers("/api/admin/**").hasRole("admin")
+                            .requestMatchers("/api/**").authenticated()
+                            .anyRequest().permitAll())
+                    .oauth2ResourceServer(
+                            oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+        }
+
+        return http.build();
     }
 
     @Bean
@@ -70,6 +82,11 @@ public class SecurityConfig {
     JwtDecoder jwtDecoder(
             @Value("${OAUTH_JWKS_URI:${oauth.jwks-uri:}}") String jwksUri,
             @Value("${OAUTH_ISSUER:${oauth.issuer:}}") String issuer) {
+        // In dev mode, return a no-op decoder
+        if (devMode) {
+            return token -> null;
+        }
+
         if (jwksUri == null || jwksUri.isBlank()) {
             throw new IllegalStateException("Missing JWKS URI. Set OAUTH_JWKS_URI env var.");
         }

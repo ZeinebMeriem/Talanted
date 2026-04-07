@@ -86,7 +86,7 @@ class GenerationControllerTest {
 
     GenerationCreateResponse response = new GenerationCreateResponse();
     response.generationId = genId;
-    response.status = "PENDING";
+    response.status = GenerationStatus.PENDING;
 
     when(service.createGeneration(eq("user-123"), eq(prompt), any(), any()))
         .thenReturn(response);

@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useEffect } from 'react'
-import { editFile, type EditFileResponse } from './api'
+import React, { useCallback, useRef, useEffect, useState } from 'react'
+import { editFile, type EditFileResponse } from '../api'
 
 export type ChatMsg = {
   role: 'ai' | 'user'
@@ -21,6 +21,8 @@ interface ChatPanelProps {
   accessToken: string
   selectedModel: string
   onFileUpdated: (updatedMessages: ChatMsg[], edits: { file: string; added: number; removed: number }[]) => void
+  prefillMessage?: string
+  onPrefillUsed?: () => void
 }
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -37,13 +39,29 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   accessToken,
   selectedModel,
   onFileUpdated,
+  prefillMessage,
+  onPrefillUsed,
 }) => {
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Auto-scroll to latest message
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [chatMessages])
+
+  // Handle prefill message from inspect mode
+  useEffect(() => {
+    if (prefillMessage && !chatInput) {
+      setChatInput(prefillMessage)
+      onPrefillUsed?.()
+      // Focus the input and put cursor at end
+      setTimeout(() => {
+        inputRef.current?.focus()
+        inputRef.current?.setSelectionRange(prefillMessage.length, prefillMessage.length)
+      }, 100)
+    }
+  }, [prefillMessage, chatInput, setChatInput, onPrefillUsed])
 
   const sendChat = useCallback(async () => {
     if (!chatInput.trim() || !selectedGenerationId) return
@@ -143,6 +161,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       <div className="px-4 py-3 border-t border-slate-700 bg-slate-800">
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             type="text"
             placeholder="What would you like to change?"
             value={chatInput}

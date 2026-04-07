@@ -73,7 +73,7 @@ class GenerationServiceTest {
 
       assertNotNull(result);
       assertNotNull(result.generationId);
-      assertEquals("PENDING", result.status);
+      assertEquals(GenerationStatus.PENDING, result.status);
     } catch (Exception e) {
       // May fail due to missing backend, but should not throw unexpected errors
       assertTrue(true);
@@ -90,7 +90,7 @@ class GenerationServiceTest {
     gen.setPrompt("test");
     gen.setStatus(GenerationStatus.COMPLETED);
 
-    when(generationRepo.findByUserId(userId)).thenReturn(List.of(gen));
+    when(generationRepo.findByUserIdOrderByCreatedAtDesc(userId)).thenReturn(List.of(gen));
 
     List<Generation> result = generationService.listGenerations(userId);
 

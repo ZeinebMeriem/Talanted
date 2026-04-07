@@ -525,6 +525,13 @@ public class GenerationService {
         return generationRepo.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
+    public List<Generation> listAllGenerations() {
+        return generationRepo.findAll()
+                .stream()
+                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                .toList();
+    }
+
     public GenerationVersionsResponse getVersions(String generationId) {
         Generation g = generationRepo.findById(generationId)
                 .orElseThrow(() -> new IllegalArgumentException("generation not found"));

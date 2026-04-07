@@ -156,6 +156,54 @@ def internal_duplicate_project(generation_id: str) -> DuplicateResponse:
     # Copy entire project directory
     shutil.copytree(source_path, new_path)
     
+    # Fix common JSX syntax errors in duplicated projects
+    app_tsx_path = os.path.join(new_path, "src", "App.tsx")
+    if os.path.exists(app_tsx_path):
+        try:
+            with open(app_tsx_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # More aggressive fix: remove duplicate closing patterns
+            lines = content.split('\n')
+            fixed_lines = []
+            prev_lines = []
+            
+            for line in lines:
+                stripped = line.strip()
+                
+                # Skip if this is a duplicate closing element
+                skip_line = False
+                
+                # Check for duplicate closing parenthesis
+                if stripped == '  )':
+                    # Count how many recent closing parentheses we've seen
+                    recent_closing_parens = sum(1 for prev in prev_lines[-3:] if prev.strip() == '  )')
+                    if recent_closing_parens >= 1:
+                        skip_line = True
+                
+                # Check for duplicate closing div
+                if stripped == '    </div>':
+                    # Count how many recent closing divs we've seen
+                    recent_closing_divs = sum(1 for prev in prev_lines[-5:] if prev.strip() == '    </div>')
+                    if recent_closing_divs >= 2:  # Allow 2, skip the 3rd+
+                        skip_line = True
+                
+                # Check for extra closing brace after function
+                if stripped == '}' and prev_lines and prev_lines[-1].strip() == '  )':
+                    skip_line = True
+                
+                if not skip_line:
+                    fixed_lines.append(line)
+                    prev_lines.append(line)
+            
+            fixed_content = '\n'.join(fixed_lines)
+            
+            with open(app_tsx_path, 'w', encoding='utf-8') as f:
+                f.write(fixed_content)
+                
+        except Exception as e:
+            print(f"Warning: Could not fix JSX syntax in {app_tsx_path}: {e}")
+    
     # Rebuild the duplicated project
     vite_bin = "/app/vite-template/node_modules/.bin/vite"
     result = subprocess.run(

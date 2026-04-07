@@ -1,4 +1,6 @@
 export { ChatPanel, type ChatMsg } from './ChatPanel'
 export { CodeViewer, type FileNode } from './CodeViewer'
-export { Preview } from './Preview'
+export { Preview, type ElementInfo, type ElementStyles, type StyleChange } from './Preview'
 export { VersionHistory } from './VersionHistory'
+export { HistoryPanel } from './HistoryPanel'
+export { AuditEventsPanel } from './AuditEventsPanel'

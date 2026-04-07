@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,6 +41,9 @@ public class GenerationController {
     private static final Logger log = LoggerFactory.getLogger(GenerationController.class);
     private final GenerationService service;
     private final AuditService audit;
+
+    @Value("${app.security.dev-mode:false}")
+    private boolean devMode;
 
     public GenerationController(GenerationService service, AuditService audit) {
         this.service = service;
@@ -105,12 +109,24 @@ public class GenerationController {
     }
 
     @GetMapping("/{id}")
-    public Generation get(@PathVariable("id") String id) {
-        return service.getGeneration(id);
+    public Generation get(@PathVariable("id") String id, JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        // In production mode, verify ownership
+        if (!devMode && token != null) {
+            String userId = (String) token.getToken().getClaims().get("sub");
+            if (!g.getUserId().equals(userId)) {
+                throw new IllegalArgumentException("generation not found");
+            }
+        }
+        return g;
     }
 
     @GetMapping
     public List<Generation> list(JwtAuthenticationToken token) {
+        // In dev mode or without token, show all projects
+        if (devMode || token == null) {
+            return service.listAllGenerations();
+        }
         return service.listGenerations((String) token.getToken().getClaims().get("sub"));
     }
 

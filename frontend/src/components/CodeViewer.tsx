@@ -4,12 +4,17 @@ export type FileNode =
   | { id: string; type: 'file'; name: string }
   | { id: string; type: 'folder'; name: string; open: boolean; children: FileNode[] }
 
+interface CodeFile {
+  path: string
+  content: string
+}
+
 interface CodeViewerProps {
   tree: FileNode[]
   setTree: (tree: FileNode[]) => void
   activeFileId: string | null
   setActiveFileId: (id: string) => void
-  effectiveFileContents: Map<string, string>
+  effectiveFileContents: Map<string, CodeFile>
 }
 
 const SYNTAX_HIGHLIGHTING_COLORS: Record<string, string> = {
@@ -84,7 +89,8 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
   )
 
   const activeFileContent = useMemo(() => {
-    return activeFileId ? effectiveFileContents.get(activeFileId) || '' : ''
+    const file = activeFileId ? effectiveFileContents.get(activeFileId) : null
+    return file?.content ?? ''
   }, [activeFileId, effectiveFileContents])
 
   const activeFileName = useMemo(() => {
@@ -105,12 +111,6 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
 
   return (
     <div className="flex h-full bg-slate-900">
-      {/* File Tree */}
-      <div className="w-48 bg-slate-800 border-r border-slate-700 overflow-y-auto p-2">
-        <div className="text-xs font-semibold text-slate-400 mb-2 px-2">FILES</div>
-        {renderTreeNodes(tree)}
-      </div>
-
       {/* Code Editor */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
@@ -134,7 +134,9 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
 
         {/* Footer - Line count */}
         <div className="bg-slate-800 border-t border-slate-700 px-4 py-2 text-xs text-slate-400">
-          {activeFileContent.split('\n').length} lines
+          {activeFileContent && typeof activeFileContent === 'string' 
+            ? `${activeFileContent.split('\n').length} lines` 
+            : 'No file selected'}
         </div>
       </div>
     </div>
