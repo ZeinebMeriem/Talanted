@@ -1,8 +1,8 @@
-# AI UI Generator
+# UI Generator
 
 > Describe your idea. Get a working interface.
 
-A full-stack application that generates functional React UI code from natural language prompts or uploaded documents, using a multi-agent AI pipeline. Built as a PFE (Projet de Fin d'Études) at **Talan**.
+A full-stack application that generates functional React UI code from natural language prompts or uploaded documents. Built as a PFE (Projet de Fin d'Études) at **Talan**.
 
 ---
 
@@ -23,11 +23,11 @@ Frontend (React)  →  Spring BFF (Java)  →  FastAPI AI (Python)
 ## Features
 
 ### Generation
-- **AI Code Generation** — Natural language prompt → working React + Tailwind app
-- **Document-to-UI** — Upload a PDF or image (wireframe, mockup, spec) → UI generated from its content via OCR
-- **Multi-LLM Support** — Gemini, Groq, OpenAI, Anthropic, OpenRouter, or local Ollama (air-gapped)
+- **Code Generation** — Natural language prompt → working React + Tailwind app
+- **Document-to-UI** — Upload a PDF or image (wireframe, mockup, spec) → UI generated from its content
+- **Multi-Provider Support** — Gemini, Groq, OpenAI, Anthropic, OpenRouter, or local Ollama (air-gapped)
 - **Live Preview** — Rendered app in real-time inside the browser (iframe, Vite build)
-- **AI Report** — Each generation includes a structured design report (colors, typography, components used)
+- **Quality Report** — Each generation includes a structured design report (colors, typography, components used)
 
 ### Editing
 - **Chat-Based Editing** — Describe a change in natural language → the right file is updated automatically
@@ -184,43 +184,43 @@ ANTHROPIC_CODER_MODEL=claude-sonnet-4-6
 
 ---
 
-## AI Pipeline
+## Generation Pipeline
 
-The generation goes through 7 specialized agents:
+The generation goes through 7 specialized processing stages:
 
 ```
 Input (prompt or document)
     │
     ▼
-OCR Agent          — Extracts text from images/PDFs (pytesseract + PIL)
+OCR Processing         — Extracts text from images/PDFs (pytesseract + PIL)
     │
     ▼
-DocExtract Agent   — Identifies UI sections from document content
+Document Processing    — Identifies UI sections from document content
     │
     ▼
-TextPrep Agent     — Normalizes and structures the input text
+Text Preparation       — Normalizes and structures the input text
     │
     ▼
-Planner Agent      — Produces a structured UI specification (JSON)
+Planning               — Produces a structured UI specification (JSON)
     │
     ▼
-DesignSystem Agent — Generates color palette, typography, component list
+Design System          — Generates color palette, typography, component list
     │
     ▼
-Codegen Agent      — Generates full React + Tailwind TSX code
+Code Generation        — Generates full React + Tailwind TSX code
     │
     ▼
-ImageAgent         — Handles image assets if any
+Image Processing       — Handles image assets if any
     │
     ▼
-Output: uiSpec + codeBundle + aiReport
+Output: uiSpec + codeBundle + qualityReport
 ```
 
-Each agent has a single responsibility and uses its own LLM call. The orchestrator handles inter-agent communication and error recovery.
+Each stage has a single responsibility. The orchestrator handles inter-stage communication and error recovery.
 
 ---
 
-## Chat Editing Pipeline
+## Interactive Editing Pipeline
 
 When the user sends a message in the editor:
 
@@ -232,9 +232,9 @@ _detect_new_page_intent()   — Is this asking to CREATE a new page?
     │ yes                        │ no
     ▼                            ▼
 _create_new_page()          _pick_file_to_edit()   — Which file to modify?
-  1. LLM generates               │
+  1. Generate                    │
      pages/XxxPage.tsx            ▼
-  2. LLM updates App.tsx     LLM edits the file
+  2. Update App.tsx          Edit the file
      (import + route)             │
     │                            │
     └──────────────┬─────────────┘
@@ -269,7 +269,7 @@ Every successful chat edit creates a new `CodeVersion` in MongoDB containing a s
 | | This project | Lovable / v0 |
 |--|--|--|
 | Hosting | Self-hosted (on-premise) | Cloud SaaS only |
-| LLM | Multi-provider + local Ollama | Single provider |
+| Providers | Multi-provider + local Ollama | Single provider |
 | Input | Prompt or document (PDF/image) | Prompt only |
 | Auth | Enterprise Keycloak (SSO/RBAC) | Basic OAuth |
 | Offline | Works air-gapped (Ollama) | No |

@@ -1,4 +1,4 @@
-# 🎯 AI UI Generator - Complete Structured Plan
+# 🎯 UI Generator - Complete Structured Plan
 
 ## 📚 Table of Contents
 1. [Project Overview](#project-overview)
@@ -14,17 +14,17 @@
 
 ## PROJECT OVERVIEW
 
-### What is AI UI Generator?
-A full-stack application that generates functional React UI code from natural language prompts or uploaded documents using a multi-agent AI pipeline.
+### What is UI Generator?
+A full-stack application that generates functional React UI code from natural language prompts or uploaded documents.
 
 ### From Wireframe to Code
 ```
-User Input                API Pipeline                Output
+User Input                Pipeline                Output
   ↓                          ↓                          ↓
-"Create a landing page" → [10 AI Agents] → Working React UI
-+ PDF specs                (orchestrator)    + HTML/CSS
-+ Images                                     + Color palette
-                                            + Design system
+"Create a landing page" → [10 Processing Stages] → Working React UI
++ PDF specs                   (orchestrator)         + HTML/CSS
++ Images                                            + Color palette
+                                                    + Design system
 ```
 
 ### Tech Stack
@@ -32,7 +32,7 @@ User Input                API Pipeline                Output
 |-------|-----------|
 | Frontend | React 18 + TypeScript + Vite |
 | Backend BFF | Spring Boot 3 (Java 17) |
-| AI Pipeline | FastAPI (Python 3.11) |
+| Processing Pipeline | FastAPI (Python 3.11) |
 | LLM | Google Gemini, OpenAI, Anthropic, Ollama |
 | Auth | Keycloak 25 (OAuth2/OIDC) |
 | Database | MongoDB 7 |
@@ -48,8 +48,8 @@ User Input                API Pipeline                Output
 **Phase 1-2: Foundation & Core Features**
 - ✅ Full Docker Compose infrastructure (6 services)
 - ✅ Keycloak OAuth2/OIDC authentication
-- ✅ 11 specialized AI agents (10-agent pipeline)
-- ✅ Multi-LLM provider support (Gemini, OpenAI, Claude, Ollama)
+- ✅ 11 specialized processing stages (10-stage pipeline)
+- ✅ Multi-provider LLM support (Gemini, OpenAI, Claude, Ollama)
 - ✅ Code generation (HTML/CSS/React)
 - ✅ Live preview with iframe
 - ✅ File explorer with syntax highlighting

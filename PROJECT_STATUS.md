@@ -1,4 +1,4 @@
-# AI UI Generator — PFE Project Status & Planning
+# UI Generator — PFE Project Status & Planning
 **Degree:** Engineer (Ingénieur) — WEB-2025-09
 **Title:** Génération automatique d'interfaces web à partir de descriptions textuelles
 **Duration:** 6 months (estimated Jan 2026 → Jun 2026)
@@ -47,15 +47,15 @@
 - [x] Custom email templates (HTML + plain text)
 - [x] Session expired / error pages
 
-### 3. AI Generation Pipeline (FastAPI)
-- [x] Multi-agent pipeline: OCR → DocExtract → TextPrep → Planner → Designer → Codegen → Validator
-- [x] Multi-provider LLM support: Gemini, OpenAI, Groq, Anthropic (Claude), OpenRouter, Ollama
+### 3. Generation Pipeline (FastAPI)
+- [x] Multi-stage pipeline: OCR → DocExtract → TextPrep → Planner → Designer → Codegen → Validator
+- [x] Multi-provider support: Gemini, OpenAI, Groq, Anthropic (Claude), OpenRouter, Ollama
 - [x] Per-role provider selection (PLANNER_PROVIDER / CODER_PROVIDER env vars)
 - [x] Document extraction (PDF, DOCX, TXT, Markdown)
 - [x] Image processing & OCR agent
 - [x] HTML/CSS/Vanilla JS generation
 - [x] React generation (partial)
-- [x] AI quality report (score, issues, LLM provider, durations, retry count)
+- [x] Quality report (score, issues, provider, durations, retry count)
 - [x] Configurable timeout (default 10 min)
 
 ### 4. Core Application (Frontend + BFF)
