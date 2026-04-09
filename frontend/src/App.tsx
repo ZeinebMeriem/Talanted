@@ -369,7 +369,7 @@ function LandingPage() {
 
             <p className="left-sub">
               Describe your interface or upload a document —
-              our AI pipeline generates production-ready React code instantly.
+              generate production-ready React code instantly.
             </p>
           </div>
 
@@ -379,7 +379,7 @@ function LandingPage() {
               { label: 'React + Tailwind production-ready code', color: '#8f9424' },
               { label: 'Live preview & version history', color: '#e04580' },
               { label: 'Document upload — PDF, image, wireframe', color: '#6b367d' },
-              { label: 'Multi-LLM: Gemini, Claude, GPT, Ollama', color: '#1d662e' },
+              { label: 'Multiple provider support', color: '#1d662e' },
             ].map(f => (
               <li key={f.label} className="feature-item">
                 <span className="feature-dot" style={{ background: f.color }} />
