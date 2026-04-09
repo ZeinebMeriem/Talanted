@@ -23,6 +23,7 @@ Frontend (React)  →  Spring BFF (Java)  →  FastAPI AI (Python)
 ## Features
 
 ### Generation
+
 - **Code Generation** — Natural language prompt → working React + Tailwind app
 - **Document-to-UI** — Upload a PDF or image (wireframe, mockup, spec) → UI generated from its content
 - **Multi-Provider Support** — Gemini, Groq, OpenAI, Anthropic, OpenRouter, or local Ollama (air-gapped)
@@ -30,17 +31,20 @@ Frontend (React)  →  Spring BFF (Java)  →  FastAPI AI (Python)
 - **Quality Report** — Each generation includes a structured design report (colors, typography, components used)
 
 ### Editing
+
 - **Chat-Based Editing** — Describe a change in natural language → the right file is updated automatically
 - **Auto File Detection** — The system picks which file to edit based on the instruction (no manual file selection)
 - **New Page Creation** — Asking to "add a statistics page" creates a separate `pages/StatistiquesPage.tsx` and updates routing automatically
 - **Code Viewer** — Browse all generated source files; always in sync with the live preview (reads from disk)
 
 ### Versioning
+
 - **Version History** — A new version is created after every successful chat edit
 - **Rollback** — Restore any previous version; preview and code viewer both update instantly
 - **Persistent Chat History** — Conversation is saved per project and reloaded on next open (like Lovable)
 
 ### User & Admin
+
 - **My Projects** — Card grid of all past generations with preview thumbnails
 - **User Profile** — Stats dashboard (total projects, tokens used, success rate)
 - **Admin Dashboard** — Per-user statistics, Keycloak user list, document management
@@ -54,22 +58,23 @@ Frontend (React)  →  Spring BFF (Java)  →  FastAPI AI (Python)
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + TypeScript + Vite + TailwindCSS |
-| Backend | Spring Boot 3 (Java 17) |
-| AI Pipeline | FastAPI (Python 3.11) |
-| LLM | Google Gemini 2.0 Flash (default) |
-| Auth | Keycloak 25 (OAuth2/OIDC) |
-| Database | MongoDB 7 |
-| File Storage | MinIO (S3-compatible) |
-| Deployment | Docker Compose |
+| Layer        | Technology                                 |
+| ------------ | ------------------------------------------ |
+| Frontend     | React 18 + TypeScript + Vite + TailwindCSS |
+| Backend      | Spring Boot 3 (Java 17)                    |
+| AI Pipeline  | FastAPI (Python 3.11)                      |
+| LLM          | Google Gemini 2.0 Flash (default)          |
+| Auth         | Keycloak 25 (OAuth2/OIDC)                  |
+| Database     | MongoDB 7                                  |
+| File Storage | MinIO (S3-compatible)                      |
+| Deployment   | Docker Compose                             |
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
+
 - Docker Desktop (running)
 - A free [Google Gemini API key](https://aistudio.google.com/app/apikey)
 
@@ -93,27 +98,27 @@ http://localhost:5173
 
 ### Default Credentials
 
-| Service | URL | Login |
-|---------|-----|-------|
-| App | http://localhost:5173 | `developpeur` / `developpeur` |
-| Keycloak Admin | http://localhost:8083 | `admin` / `admin` |
-| MinIO Console | http://localhost:9001 | `minioadmin` / `minioadmin` |
-| MongoDB Express | http://localhost:8082 | *(dev profile only)* |
+| Service         | URL                   | Login                         |
+| --------------- | --------------------- | ----------------------------- |
+| App             | http://localhost:5173 | `developpeur` / `developpeur` |
+| Keycloak Admin  | http://localhost:8083 | `admin` / `admin`             |
+| MinIO Console   | http://localhost:9001 | `minioadmin` / `minioadmin`   |
+| MongoDB Express | http://localhost:8082 | _(dev profile only)_          |
 
 ---
 
 ## Service URLs
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:5173 |
-| Spring BFF | http://localhost:8081 |
-| BFF Health | http://localhost:8081/actuator/health |
-| FastAPI | http://localhost:8000 |
-| FastAPI Health | http://localhost:8000/health |
-| Keycloak | http://localhost:8083 |
-| MinIO | http://localhost:9000 |
-| MinIO Console | http://localhost:9001 |
+| Service        | URL                                   |
+| -------------- | ------------------------------------- |
+| Frontend       | http://localhost:5173                 |
+| Spring BFF     | http://localhost:8081                 |
+| BFF Health     | http://localhost:8081/actuator/health |
+| FastAPI        | http://localhost:8000                 |
+| FastAPI Health | http://localhost:8000/health          |
+| Keycloak       | http://localhost:8083                 |
+| MinIO          | http://localhost:9000                 |
+| MinIO Console  | http://localhost:9001                 |
 
 ---
 
@@ -266,16 +271,16 @@ Every successful chat edit creates a new `CodeVersion` in MongoDB containing a s
 
 ## Why This Project Is Different from Lovable / v0.dev
 
-| | This project | Lovable / v0 |
-|--|--|--|
-| Hosting | Self-hosted (on-premise) | Cloud SaaS only |
-| Providers | Multi-provider + local Ollama | Single provider |
-| Input | Prompt or document (PDF/image) | Prompt only |
-| Auth | Enterprise Keycloak (SSO/RBAC) | Basic OAuth |
-| Offline | Works air-gapped (Ollama) | No |
-| Audit | Full audit trail | No |
-| Versioning | Built-in rollback (all plans) | Paid plans only |
-| Chat history | Persistent per project | Yes (paid) |
+|              | This project                   | Lovable / v0    |
+| ------------ | ------------------------------ | --------------- |
+| Hosting      | Self-hosted (on-premise)       | Cloud SaaS only |
+| Providers    | Multi-provider + local Ollama  | Single provider |
+| Input        | Prompt or document (PDF/image) | Prompt only     |
+| Auth         | Enterprise Keycloak (SSO/RBAC) | Basic OAuth     |
+| Offline      | Works air-gapped (Ollama)      | No              |
+| Audit        | Full audit trail               | No              |
+| Versioning   | Built-in rollback (all plans)  | Paid plans only |
+| Chat history | Persistent per project         | Yes (paid)      |
 
 ---
 

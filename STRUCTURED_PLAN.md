@@ -1,6 +1,7 @@
 # 🎯 UI Generator - Complete Structured Plan
 
 ## 📚 Table of Contents
+
 1. [Project Overview](#project-overview)
 2. [Current Status](#current-status)
 3. [Phase 4: Component Integration (Week 15-16)](#phase-4-component-integration)
@@ -15,9 +16,11 @@
 ## PROJECT OVERVIEW
 
 ### What is UI Generator?
+
 A full-stack application that generates functional React UI code from natural language prompts or uploaded documents.
 
 ### From Wireframe to Code
+
 ```
 User Input                Pipeline                Output
   ↓                          ↓                          ↓
@@ -28,16 +31,17 @@ User Input                Pipeline                Output
 ```
 
 ### Tech Stack
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + TypeScript + Vite |
-| Backend BFF | Spring Boot 3 (Java 17) |
-| Processing Pipeline | FastAPI (Python 3.11) |
-| LLM | Google Gemini, OpenAI, Anthropic, Ollama |
-| Auth | Keycloak 25 (OAuth2/OIDC) |
-| Database | MongoDB 7 |
-| Storage | MinIO (S3-compatible) |
-| Deployment | Docker Compose |
+
+| Layer               | Technology                               |
+| ------------------- | ---------------------------------------- |
+| Frontend            | React 18 + TypeScript + Vite             |
+| Backend BFF         | Spring Boot 3 (Java 17)                  |
+| Processing Pipeline | FastAPI (Python 3.11)                    |
+| LLM                 | Google Gemini, OpenAI, Anthropic, Ollama |
+| Auth                | Keycloak 25 (OAuth2/OIDC)                |
+| Database            | MongoDB 7                                |
+| Storage             | MinIO (S3-compatible)                    |
+| Deployment          | Docker Compose                           |
 
 ---
 
@@ -46,6 +50,7 @@ User Input                Pipeline                Output
 ### ✅ Completed (Weeks 1-14)
 
 **Phase 1-2: Foundation & Core Features**
+
 - ✅ Full Docker Compose infrastructure (6 services)
 - ✅ Keycloak OAuth2/OIDC authentication
 - ✅ 11 specialized processing stages (10-stage pipeline)
@@ -59,12 +64,14 @@ User Input                Pipeline                Output
 - ✅ Streaming SSE for progress updates
 
 **Phase 3: Added Value**
+
 - ✅ Streaming generation with progress events
 - ✅ Multi-domain support (8 domains: ecommerce, dashboard, medical, etc.)
 - ✅ Fork/duplicate projects
 - ✅ Comprehensive documentation
 
 **Phase 4: Quality & Tests (THIS WEEK - WEEK 14)**
+
 - ✅ 5 pytest tests for FastAPI agents
 - ✅ 3 JUnit tests for Spring BFF
 - ✅ 4 reusable React components extracted from monolith
@@ -72,15 +79,15 @@ User Input                Pipeline                Output
 
 ### 📊 Code Metrics
 
-| Metric | Value |
-|--------|-------|
-| Total Lines of Code | ~15,000+ |
-| FastAPI AI Pipeline | ~1,840 LOC |
-| Spring BFF Service | ~800 LOC |
-| React Frontend | ~3,000 LOC (after refactoring) |
-| Tests Created This Week | 15+ tests |
-| Components Extracted | 4 components |
-| Documentation | Comprehensive |
+| Metric                  | Value                          |
+| ----------------------- | ------------------------------ |
+| Total Lines of Code     | ~15,000+                       |
+| FastAPI AI Pipeline     | ~1,840 LOC                     |
+| Spring BFF Service      | ~800 LOC                       |
+| React Frontend          | ~3,000 LOC (after refactoring) |
+| Tests Created This Week | 15+ tests                      |
+| Components Extracted    | 4 components                   |
+| Documentation           | Comprehensive                  |
 
 ---
 
@@ -91,73 +98,86 @@ User Input                Pipeline                Output
 **Deliverable**: Modular, testable code with zero breaking changes
 
 ### Step 1: ChatPanel Integration
+
 **Time Estimate**: 2 hours
 **Difficulty**: Easy
 **Files Modified**: `frontend/src/AiEditor.tsx`
 
 #### What This Does
+
 Replaces inline chat UI (~110 lines) with ChatPanel component (~100 lines)
 
 #### Before Integration
+
 ```jsx
 // Lines 2546-2656 in AiEditor.tsx
-{rightTab === 'chat' ? (
-  <div className="flex flex-col flex-1 overflow-hidden">
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3">
-      {chatMessages.map((m, idx) => (
-        <div key={idx} className={`flex gap-2 ${isAI ? '' : 'flex-row-reverse'}`}>
-          {/* Inline message rendering... */}
-        </div>
-      ))}
+{
+  rightTab === "chat" ? (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-3">
+        {chatMessages.map((m, idx) => (
+          <div
+            key={idx}
+            className={`flex gap-2 ${isAI ? "" : "flex-row-reverse"}`}
+          >
+            {/* Inline message rendering... */}
+          </div>
+        ))}
+      </div>
+      <div className="shrink-0 p-4">{/* Text input, send button... */}</div>
     </div>
-    <div className="shrink-0 p-4">
-      {/* Text input, send button... */}
-    </div>
-  </div>
-) : null}
+  ) : null;
+}
 ```
 
 #### After Integration
+
 ```jsx
 // Same location, lines 2546-2560
-{rightTab === 'chat' ? (
-  <ChatPanel
-    chatMessages={chatMessages}
-    chatInput={chatInput}
-    setChatInput={setChatInput}
-    isChatLoading={isChatLoading}
-    selectedGenerationId={selectedGenerationId}
-    selectedZone={selectedZone}
-    diffVisible={diffVisible}
-    setDiffVisible={setDiffVisible}
-    diffEdits={diffEdits}
-    setDiffEdits={setDiffEdits}
-    accessToken={accessToken}
-    selectedModel={selectedModel}
-    onFileUpdated={(newMessages, edits) => {
-      setChatMessages(newMessages)
-      // Update preview after file edits
-    }}
-  />
-) : null}
+{
+  rightTab === "chat" ? (
+    <ChatPanel
+      chatMessages={chatMessages}
+      chatInput={chatInput}
+      setChatInput={setChatInput}
+      isChatLoading={isChatLoading}
+      selectedGenerationId={selectedGenerationId}
+      selectedZone={selectedZone}
+      diffVisible={diffVisible}
+      setDiffVisible={setDiffVisible}
+      diffEdits={diffEdits}
+      setDiffEdits={setDiffEdits}
+      accessToken={accessToken}
+      selectedModel={selectedModel}
+      onFileUpdated={(newMessages, edits) => {
+        setChatMessages(newMessages);
+        // Update preview after file edits
+      }}
+    />
+  ) : null;
+}
 ```
 
 #### Integration Steps
 
 1. **Import the component** (add to top of AiEditor.tsx):
+
 ```jsx
-import { ChatPanel } from './components'
+import { ChatPanel } from "./components";
 ```
 
 2. **Find the old code** (search for `rightTab === 'chat'`):
+
 - Located around line 2546
 - Look for the large JSX block with chat messages
 
 3. **Replace with component**:
+
 - Delete lines 2546-2656 (old inline code)
 - Replace with the component JSX above
 
 4. **Test**:
+
 ```bash
 # Open browser, navigate to app
 # Click "Chat" tab
@@ -170,6 +190,7 @@ import { ChatPanel } from './components'
 ```
 
 5. **Verify no errors**:
+
 - Open browser console (F12)
 - Run `/api/generations` to load a project
 - Click chat tab and send a message
@@ -178,62 +199,94 @@ import { ChatPanel } from './components'
 ---
 
 ### Step 2: CodeViewer Integration
+
 **Time Estimate**: 1.5 hours
 **Difficulty**: Easy
 **Files Modified**: `frontend/src/AiEditor.tsx`
 
 #### What This Does
+
 Replaces inline code viewer (~14 lines) with CodeViewer component (~120 lines)
 
 #### Before Integration
+
 ```jsx
 // Lines 2472-2486 in AiEditor.tsx
-{centerTab === 'code' ? (
-  <div className="h-full flex flex-col">
-    <div style={{ padding: '8px 20px', borderBottom: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' }}>
-      <span className="mono" style={{ fontSize: 12, color: '#5480ba', fontWeight: 600 }}>
-        {activeFileName}
-      </span>
+{
+  centerTab === "code" ? (
+    <div className="h-full flex flex-col">
+      <div
+        style={{
+          padding: "8px 20px",
+          borderBottom: "1px solid #e2e8f0",
+          background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+        }}
+      >
+        <span
+          className="mono"
+          style={{ fontSize: 12, color: "#5480ba", fontWeight: 600 }}
+        >
+          {activeFileName}
+        </span>
+      </div>
+      <div
+        className="flex-1 overflow-auto custom-scrollbar"
+        style={{ background: "#ffffff" }}
+      >
+        <pre
+          className="mono leading-relaxed"
+          style={{
+            fontSize: 13,
+            color: "#334155",
+            padding: "20px 24px",
+            margin: 0,
+          }}
+        >
+          <code>{activeCode}</code>
+        </pre>
+      </div>
     </div>
-    <div className="flex-1 overflow-auto custom-scrollbar" style={{ background: '#ffffff' }}>
-      <pre className="mono leading-relaxed" style={{ fontSize: 13, color: '#334155', padding: '20px 24px', margin: 0 }}>
-        <code>{activeCode}</code>
-      </pre>
-    </div>
-  </div>
-) : null}
+  ) : null;
+}
 ```
 
 #### After Integration
+
 ```jsx
 // Same location, lines 2472-2486
-{centerTab === 'code' ? (
-  <CodeViewer
-    tree={tree}
-    setTree={setTree}
-    activeFileId={activeFileId}
-    setActiveFileId={setActiveFileId}
-    effectiveFileContents={effectiveFileContents}
-  />
-) : null}
+{
+  centerTab === "code" ? (
+    <CodeViewer
+      tree={tree}
+      setTree={setTree}
+      activeFileId={activeFileId}
+      setActiveFileId={setActiveFileId}
+      effectiveFileContents={effectiveFileContents}
+    />
+  ) : null;
+}
 ```
 
 #### Integration Steps
 
 1. **Import the component** (add to top of AiEditor.tsx):
+
 ```jsx
-import { ChatPanel, CodeViewer } from './components'
+import { ChatPanel, CodeViewer } from "./components";
 ```
 
 2. **Find the old code** (search for `centerTab === 'code'`):
+
 - Located around line 2472
 - Look for the div with code display
 
 3. **Replace with component**:
+
 - Delete lines 2472-2486 (old inline code)
 - Replace with CodeViewer component JSX
 
 4. **Test**:
+
 ```bash
 # In browser:
 # Click "Code" tab
@@ -247,6 +300,7 @@ import { ChatPanel, CodeViewer } from './components'
 ```
 
 5. **Verify interactions**:
+
 - Load a project
 - Switch to Code tab
 - Click different files in tree
@@ -255,62 +309,74 @@ import { ChatPanel, CodeViewer } from './components'
 ---
 
 ### Step 3: Preview Integration
+
 **Time Estimate**: 2 hours
 **Difficulty**: Medium (largest component)
 **Files Modified**: `frontend/src/AiEditor.tsx`
 
 #### What This Does
+
 Replaces inline preview code (~200 lines) with Preview component (~130 lines)
 
 #### Before Integration
+
 ```jsx
 // Lines 2271-2471 in AiEditor.tsx
-{centerTab === 'preview' ? (
-  <div className="h-full flex flex-col">
-    {/* 200 lines of preview UI, device modes, inspect overlay */}
-  </div>
-) : null}
+{
+  centerTab === "preview" ? (
+    <div className="h-full flex flex-col">
+      {/* 200 lines of preview UI, device modes, inspect overlay */}
+    </div>
+  ) : null;
+}
 ```
 
 #### After Integration
+
 ```jsx
 // Same location, lines 2271-2290
-{centerTab === 'preview' ? (
-  <Preview
-    deviceMode={deviceMode}
-    setDeviceMode={setDeviceMode}
-    previewScale={previewScale}
-    setPreviewScale={setPreviewScale}
-    previewSrcDoc={previewSrcDoc}
-    buildPct={buildPct}
-    isBuilding={isBuilding}
-    buildMsg={buildMsg}
-    buildError={buildError}
-    inspectMode={inspectMode}
-    setInspectMode={setInspectMode}
-    selectedZone={selectedZone}
-    hoverZoneBox={hoverZoneBox}
-    previewReloadCount={previewReloadCount}
-  />
-) : null}
+{
+  centerTab === "preview" ? (
+    <Preview
+      deviceMode={deviceMode}
+      setDeviceMode={setDeviceMode}
+      previewScale={previewScale}
+      setPreviewScale={setPreviewScale}
+      previewSrcDoc={previewSrcDoc}
+      buildPct={buildPct}
+      isBuilding={isBuilding}
+      buildMsg={buildMsg}
+      buildError={buildError}
+      inspectMode={inspectMode}
+      setInspectMode={setInspectMode}
+      selectedZone={selectedZone}
+      hoverZoneBox={hoverZoneBox}
+      previewReloadCount={previewReloadCount}
+    />
+  ) : null;
+}
 ```
 
 #### Integration Steps
 
 1. **Import the component** (add to top of AiEditor.tsx):
+
 ```jsx
-import { ChatPanel, CodeViewer, Preview } from './components'
+import { ChatPanel, CodeViewer, Preview } from "./components";
 ```
 
 2. **Find the old code** (search for `centerTab === 'preview'`):
+
 - Located around line 2271
 - Look for the large preview section with iframe
 
 3. **Replace with component**:
+
 - Delete lines 2271-2471 (old inline code)
 - Replace with Preview component JSX
 
 4. **Test**:
+
 ```bash
 # In browser:
 # Click "Preview" tab
@@ -325,12 +391,14 @@ import { ChatPanel, CodeViewer, Preview } from './components'
 ```
 
 5. **Test device modes**:
+
 - Click each device button
 - Verify preview size changes
 - Verify layout adapts
 - Check responsive design
 
 6. **Test inspect mode**:
+
 - Click "Inspect" button
 - Hover over elements in preview
 - Verify blue highlight box appears
@@ -340,29 +408,35 @@ import { ChatPanel, CodeViewer, Preview } from './components'
 ---
 
 ### Step 4: VersionHistory Integration
+
 **Time Estimate**: 1.5 hours
 **Difficulty**: Easy (new feature, not replacement)
 **Files Modified**: `frontend/src/AiEditor.tsx`
 
 #### What This Does
+
 Adds VersionHistory component as new sidebar panel (currently no version UI)
 
 #### Where to Add
+
 ```jsx
 // Add after the right sidebar chat panel (around line 2880)
-{rightTab === 'versions' && (
-  <VersionHistory
-    versions={versions}
-    versionsLoading={versionsLoading}
-    versionsError={versionsError}
-    selectedGenerationId={selectedGenerationId}
-    onRollback={doRollback}
-    onClose={() => setRightTab('chat')}
-  />
-)}
+{
+  rightTab === "versions" && (
+    <VersionHistory
+      versions={versions}
+      versionsLoading={versionsLoading}
+      versionsError={versionsError}
+      selectedGenerationId={selectedGenerationId}
+      onRollback={doRollback}
+      onClose={() => setRightTab("chat")}
+    />
+  );
+}
 ```
 
 #### Also Update Tab Navigation
+
 ```jsx
 // Around line 2518, update the tab list:
 {([
@@ -378,28 +452,34 @@ Adds VersionHistory component as new sidebar panel (currently no version UI)
 #### Integration Steps
 
 1. **Import the component** (add to top of AiEditor.tsx):
+
 ```jsx
-import { ChatPanel, CodeViewer, Preview, VersionHistory } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory } from "./components";
 ```
 
 2. **Add the component** at line 2880:
+
 ```jsx
-{rightTab === 'versions' && (
-  <VersionHistory
-    versions={versions}
-    versionsLoading={versionsLoading}
-    versionsError={versionsError}
-    selectedGenerationId={selectedGenerationId}
-    onRollback={doRollback}
-    onClose={() => setRightTab('chat')}
-  />
-)}
+{
+  rightTab === "versions" && (
+    <VersionHistory
+      versions={versions}
+      versionsLoading={versionsLoading}
+      versionsError={versionsError}
+      selectedGenerationId={selectedGenerationId}
+      onRollback={doRollback}
+      onClose={() => setRightTab("chat")}
+    />
+  );
+}
 ```
 
 3. **Update tab navigation** (around line 2518):
+
 - Add `{ id: 'versions', label: 'Versions' }` to the tab list
 
 4. **Test**:
+
 ```bash
 # In browser:
 # Generate a project
@@ -422,6 +502,7 @@ import { ChatPanel, CodeViewer, Preview, VersionHistory } from './components'
 After completing all 4 integrations:
 
 **Functional Tests**
+
 - [ ] Preview tab works (device modes, zoom, inspect)
 - [ ] Code tab works (file tree, syntax highlighting)
 - [ ] Chat tab works (messages, sending, diffs)
@@ -430,6 +511,7 @@ After completing all 4 integrations:
 - [ ] Console has no errors (F12)
 
 **Cross-Component Tests**
+
 - [ ] Edit in chat → Code viewer updates
 - [ ] Edit in chat → Preview refreshes
 - [ ] Edit in chat → New version created
@@ -437,11 +519,13 @@ After completing all 4 integrations:
 - [ ] All state stays in sync
 
 **Browser Compatibility**
+
 - [ ] Chrome/Edge (latest)
 - [ ] Firefox (latest)
 - [ ] Safari (if available)
 
 **Responsive Design**
+
 - [ ] Works on 1920px (desktop)
 - [ ] Works on 1440px (laptop)
 - [ ] Works on 1024px (tablet)
@@ -457,6 +541,7 @@ After completing all 4 integrations:
 ### Step 1: Run Test Suite
 
 **FastAPI Tests**
+
 ```bash
 cd fastapi-ai
 pip install -r requirements.txt
@@ -470,6 +555,7 @@ pytest tests/ -v
 ```
 
 **Spring BFF Tests**
+
 ```bash
 cd spring-bff
 mvn clean test
@@ -480,6 +566,7 @@ mvn clean test
 ```
 
 **Frontend Tests** (Manual E2E)
+
 ```bash
 cd frontend
 npm run dev
@@ -499,12 +586,12 @@ npm run dev
 
 **If Tests Fail**
 
-| Error | Solution |
-|-------|----------|
-| Component not rendering | Check props are passed correctly |
-| State not updating | Verify callback is called |
-| Styling issues | Use browser DevTools to inspect CSS |
-| API errors | Check network tab, verify backend running |
+| Error                   | Solution                                  |
+| ----------------------- | ----------------------------------------- |
+| Component not rendering | Check props are passed correctly          |
+| State not updating      | Verify callback is called                 |
+| Styling issues          | Use browser DevTools to inspect CSS       |
+| API errors              | Check network tab, verify backend running |
 
 **Performance Optimization**
 
@@ -516,13 +603,14 @@ export const ChatPanel = React.memo(function ChatPanel(props) {
 ```
 
 **Add Error Boundaries** (optional)
+
 ```jsx
 class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
-      return <p>Component error. Check console.</p>
+      return <p>Component error. Check console.</p>;
     }
-    return this.props.children
+    return this.props.children;
   }
 }
 ```
@@ -543,37 +631,42 @@ Create 10 standard prompts to test:
 const BENCHMARK_PROMPTS = [
   {
     name: "Landing Page",
-    prompt: "Create a modern landing page for a SaaS product with hero section, features, pricing, and CTA",
+    prompt:
+      "Create a modern landing page for a SaaS product with hero section, features, pricing, and CTA",
     domain: "landing",
     expectedTime: "60-90 seconds",
-    qualityMetrics: ["hero_section", "pricing_table", "cta_button"]
+    qualityMetrics: ["hero_section", "pricing_table", "cta_button"],
   },
   {
     name: "Dashboard",
-    prompt: "Build an analytics dashboard with charts, KPI cards, data tables, and user management",
+    prompt:
+      "Build an analytics dashboard with charts, KPI cards, data tables, and user management",
     domain: "dashboard",
     expectedTime: "90-120 seconds",
-    qualityMetrics: ["chart_renders", "kpi_cards", "data_table"]
+    qualityMetrics: ["chart_renders", "kpi_cards", "data_table"],
   },
   {
     name: "E-commerce Store",
-    prompt: "Create an e-commerce site with product grid, filters, shopping cart, and checkout",
+    prompt:
+      "Create an e-commerce site with product grid, filters, shopping cart, and checkout",
     domain: "ecommerce",
     expectedTime: "120-180 seconds",
-    qualityMetrics: ["product_grid", "filters", "cart_functionality"]
+    qualityMetrics: ["product_grid", "filters", "cart_functionality"],
   },
   // ... 7 more prompts
-]
+];
 ```
 
 ### Measurement Framework
 
 **Time Metrics**
+
 - Generation time (seconds)
 - Per-agent timing breakdown
 - Frontend rendering time
 
 **Quality Metrics**
+
 - HTML validity (w3c validator)
 - CSS validity
 - JavaScript errors (0 expected)
@@ -581,6 +674,7 @@ const BENCHMARK_PROMPTS = [
 - Visual similarity to human design
 
 **User Experience**
+
 - Can user easily understand the UI?
 - Does generated code follow best practices?
 - Is component reusability high?
@@ -590,17 +684,17 @@ const BENCHMARK_PROMPTS = [
 
 Create a feature matrix comparing:
 
-| Feature | Your Project | Lovable | v0.dev |
-|---------|-------------|--------|--------|
-| Self-hosted | ✅ Yes | ❌ No | ❌ No |
-| Document input | ✅ PDF/Image | ❌ No | ❌ No |
-| Multi-LLM support | ✅ 7 providers | ❌ No | ❌ No |
-| Offline mode | ✅ Ollama | ❌ No | ❌ No |
-| Cost | ✅ Free | ❌ $20/mo | ❌ Paid |
-| Versioning | ✅ Rollback | ⚠️ Paid users | ✅ Yes |
-| Code export | ✅ ZIP | ✅ Yes | ✅ Yes |
-| Admin controls | ✅ Full | ❌ No | ❌ No |
-| Audit logs | ✅ Yes | ❌ No | ❌ No |
+| Feature           | Your Project   | Lovable       | v0.dev  |
+| ----------------- | -------------- | ------------- | ------- |
+| Self-hosted       | ✅ Yes         | ❌ No         | ❌ No   |
+| Document input    | ✅ PDF/Image   | ❌ No         | ❌ No   |
+| Multi-LLM support | ✅ 7 providers | ❌ No         | ❌ No   |
+| Offline mode      | ✅ Ollama      | ❌ No         | ❌ No   |
+| Cost              | ✅ Free        | ❌ $20/mo     | ❌ Paid |
+| Versioning        | ✅ Rollback    | ⚠️ Paid users | ✅ Yes  |
+| Code export       | ✅ ZIP         | ✅ Yes        | ✅ Yes  |
+| Admin controls    | ✅ Full        | ❌ No         | ❌ No   |
+| Audit logs        | ✅ Yes         | ❌ No         | ❌ No   |
 
 ---
 
@@ -647,6 +741,7 @@ docker compose ps
 **Option B: Deploy on University Server**
 
 Contact your university IT to:
+
 - Allocate server space
 - Configure domain name (optional)
 - Set up SSL certificate (https://)
@@ -699,6 +794,7 @@ Contact your university IT to:
 ### Step 3: Create Defense Presentation (Week 23)
 
 **Slides**
+
 - 15-20 slides maximum
 - Slide 1: Title + team
 - Slide 2: Problem & motivation
@@ -709,6 +805,7 @@ Contact your university IT to:
 - Slide 16: Questions?
 
 **Demo Video** (3-5 minutes)
+
 - Show landing page
 - Create a project with a prompt
 - Show live preview updating
@@ -719,12 +816,14 @@ Contact your university IT to:
 ### Step 4: Final Polish (Week 24)
 
 **Code Quality**
+
 - [ ] All tests pass (`pytest tests/`, `mvn test`)
 - [ ] No console errors or warnings
 - [ ] All components documented
 - [ ] Code follows style guide
 
 **Documentation**
+
 - [ ] README.md complete and clear
 - [ ] API documentation (Swagger/OpenAPI)
 - [ ] Component documentation (Storybook optional)
@@ -732,6 +831,7 @@ Contact your university IT to:
 - [ ] Configuration guide
 
 **Performance**
+
 - [ ] Frontend loads in < 3 seconds
 - [ ] Generation completes in < 5 minutes
 - [ ] No memory leaks
@@ -743,18 +843,19 @@ Contact your university IT to:
 
 ### Known Risks & Mitigation
 
-| Risk | Impact | Probability | Mitigation |
-|------|--------|-------------|-----------|
-| Component integration breaks UI | High | Medium | Test each component separately first |
-| LLM API quota exceeded | High | Low | Use local Ollama as fallback |
-| Database migration issues | High | Low | Regular backups, test migrations |
-| Deployment fails | Medium | Low | Use Docker, test locally first |
-| Performance bottleneck in generation | Medium | Medium | Monitor agent timings, optimize LLM calls |
-| Streaming SSE compatibility | Low | Low | Already implemented, tested |
+| Risk                                 | Impact | Probability | Mitigation                                |
+| ------------------------------------ | ------ | ----------- | ----------------------------------------- |
+| Component integration breaks UI      | High   | Medium      | Test each component separately first      |
+| LLM API quota exceeded               | High   | Low         | Use local Ollama as fallback              |
+| Database migration issues            | High   | Low         | Regular backups, test migrations          |
+| Deployment fails                     | Medium | Low         | Use Docker, test locally first            |
+| Performance bottleneck in generation | Medium | Medium      | Monitor agent timings, optimize LLM calls |
+| Streaming SSE compatibility          | Low    | Low         | Already implemented, tested               |
 
 ### Rollback Plan
 
 **If something breaks**:
+
 1. Identify which component caused the issue
 2. Revert to previous Git commit
 3. Fix the issue locally
@@ -774,6 +875,7 @@ git commit -m "fix: resolve component integration issue"
 ## SUCCESS CRITERIA
 
 ### Phase 4 Success (Component Integration)
+
 ✅ All 4 components integrated into AiEditor
 ✅ Zero breaking changes to existing functionality
 ✅ All tabs work (preview, code, chat, versions, console, logs)
@@ -783,6 +885,7 @@ git commit -m "fix: resolve component integration issue"
 ✅ Can handle complex projects without crashes
 
 ### Phase 4 Success (Benchmarking)
+
 ✅ 10 benchmark prompts tested
 ✅ Average generation time measured
 ✅ Quality metrics documented
@@ -790,6 +893,7 @@ git commit -m "fix: resolve component integration issue"
 ✅ Report draft written
 
 ### Phase 5 Success (Deployment)
+
 ✅ Application deployed and accessible
 ✅ All services online (Frontend, BFF, FastAPI, DB, etc.)
 ✅ HTTPS certificate installed (bonus)
@@ -799,6 +903,7 @@ git commit -m "fix: resolve component integration issue"
 ✅ Demo video recorded
 
 ### PFE Evaluation Success
+
 ✅ Solves real problem (AI code generation)
 ✅ Significant technical complexity (multi-agent, LLM, DevOps)
 ✅ Professional implementation (tests, documentation, deployment)
@@ -858,6 +963,7 @@ Week 21-24: 📦 Deployment & Report
 ## QUESTIONS?
 
 If you're stuck, check:
+
 1. **COMPONENT_INTEGRATION.md** — Detailed integration guide
 2. **MEMORY.md** — Project context & history
 3. **Chrome DevTools** — Check console for errors (F12)
