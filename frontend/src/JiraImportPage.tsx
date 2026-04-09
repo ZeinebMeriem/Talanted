@@ -38,7 +38,6 @@ export function JiraImportPage({
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ stage?: string; message?: string; progress?: number } | null>(null)
-  const [includeAll, setIncludeAll] = useState(false)
 
   const doFetch = async () => {
     setError(null)
@@ -56,14 +55,12 @@ export function JiraImportPage({
         return
       }
 
-      // Not an issue URL — treat input as a project/board URL and list tasks
-      const list = await listJiraFrontendTasks(jiraInput, accessToken, { includeAll })
+      // Not an issue URL — treat input as a project/board URL and list frontend tasks
+      const list = await listJiraFrontendTasks(jiraInput, accessToken)
       setTaskList(list)
       if (!list.length) {
         setError(
-          includeAll
-            ? 'No tasks found for this URL even with includeAll enabled. This usually means the Jira API user has no Browse permission on the project, or the project truly has no open issues.'
-            : 'No frontend tasks found for this URL (label filter). Check JIRA_FRONTEND_LABELS (default: ui,interface,ux), or enable "Show all open issues" to verify the Jira connection.'
+          'No frontend tasks found for this URL. Ensure tasks are labeled with: ui, interface, or ux (see JIRA_FRONTEND_LABELS config)'
         )
       }
     } catch (e: any) {
@@ -133,10 +130,6 @@ export function JiraImportPage({
                 fontSize: 14,
               }}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#333' }}>
-              <input type='checkbox' checked={includeAll} onChange={(e) => setIncludeAll(e.target.checked)} />
-              Show all open issues (debug)
-            </label>
             <button
               onClick={() => void doFetch()}
               disabled={fetching}

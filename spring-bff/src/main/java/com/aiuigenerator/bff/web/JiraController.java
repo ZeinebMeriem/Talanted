@@ -29,19 +29,18 @@ public class JiraController {
     }
 
     /**
-     * Given a Jira URL (board/project) or a project key, return a list of tasks.
+     * Given a Jira URL (board/project) or a project key, return a list of FRONTEND TASKS ONLY.
      *
-     * Default behavior is strict: only issues matching labels configured in JIRA_FRONTEND_LABELS (default: ui,interface,ux).
-     * For debugging you can set includeAll=true to list all open issues in the project (ignores labels).
+     * Strict filtering: only issues matching labels configured in JIRA_FRONTEND_LABELS (default: ui,interface,ux).
+     * This ensures only UI/frontend tasks can be selected for code generation.
      */
     @GetMapping("/frontend-tasks")
     public ResponseEntity<List<JiraIssueListItemDTO>> listFrontendTasks(
             @RequestParam(name = "url", required = false) String url,
-            @RequestParam(name = "projectKey", required = false) String projectKey,
-            @RequestParam(name = "includeAll", required = false, defaultValue = "false") boolean includeAll) {
+            @RequestParam(name = "projectKey", required = false) String projectKey) {
         String input = (url != null && !url.isBlank()) ? url : projectKey;
-        logger.info("Listing Jira tasks for input={} includeAll={}", input, includeAll);
-        List<JiraIssueListItemDTO> issues = jiraService.listFrontendTasks(input, includeAll);
+        logger.info("Listing Jira frontend tasks for input={}", input);
+        List<JiraIssueListItemDTO> issues = jiraService.listFrontendTasks(input, false);
         return ResponseEntity.ok(issues);
     }
 }

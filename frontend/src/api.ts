@@ -104,11 +104,9 @@ export async function getJiraIssue(issueKey: string, accessToken?: string): Prom
 export async function listJiraFrontendTasks(
   urlOrProjectKey: string,
   accessToken?: string,
-  opts?: { includeAll?: boolean },
 ): Promise<JiraIssueListItem[]> {
-  const includeAll = opts?.includeAll ? '&includeAll=true' : ''
   const res = await fetch(
-    `${BFF_BASE_URL}/api/jira/frontend-tasks?url=${encodeURIComponent(urlOrProjectKey)}${includeAll}`,
+    `${BFF_BASE_URL}/api/jira/frontend-tasks?url=${encodeURIComponent(urlOrProjectKey)}`,
     {
       headers: authHeaders(accessToken),
     },
