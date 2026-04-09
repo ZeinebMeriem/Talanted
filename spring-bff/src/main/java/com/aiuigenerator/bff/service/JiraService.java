@@ -268,8 +268,11 @@ public class JiraService {
         if (includeAll) {
             jql = "project = \"" + projectKey + "\" AND statusCategory != Done ORDER BY updated DESC";
         } else {
+            // Strict filtering: require BOTH labels AND summary keywords for UI/frontend tasks
             String labelsJql = String.join(",", labels.stream().map(l -> "\"" + l + "\"").toList());
-            jql = "project = \"" + projectKey + "\" AND labels in (" + labelsJql + ") AND statusCategory != Done ORDER BY updated DESC";
+            String keywordPattern = String.join(" OR summary ~ ",
+                labels.stream().map(l -> "\"" + l + "\"").toList());
+            jql = "project = \"" + projectKey + "\" AND (labels in (" + labelsJql + ") OR summary ~ " + keywordPattern + ") AND statusCategory != Done ORDER BY updated DESC";
         }
 
         try {
@@ -330,6 +333,9 @@ public class JiraService {
             }
 
             List<JiraIssueListItemDTO> out = new ArrayList<>();
+            List<String> uiFrontendKeywords = List.of("ui", "interface", "ux", "design", "frontend", "component", "page", "screen", "layout");
+            final List<String> frontendLabels = labels; // Make effectively final for lambda
+
             for (JsonNode issue : issues) {
                 String key = issue.path("key").asText();
                 JsonNode fieldsNode = issue.path("fields");
@@ -345,6 +351,19 @@ public class JiraService {
                     for (JsonNode l : labelsNode) {
                         String s = l.asText();
                         if (s != null && !s.isBlank()) issueLabels.add(s);
+                    }
+                }
+
+                // Strict filter: must have UI-related keyword in summary OR label, not backend tasks
+                if (!includeAll) {
+                    boolean hasUiLabel = issueLabels.stream()
+                            .anyMatch(lbl -> frontendLabels.stream().anyMatch(l -> lbl.equalsIgnoreCase(l)));
+                    boolean hasUiKeywordInSummary = uiFrontendKeywords.stream()
+                            .anyMatch(kw -> summary.toLowerCase().contains(kw.toLowerCase()));
+
+                    if (!hasUiLabel && !hasUiKeywordInSummary) {
+                        logger.debug("Filtering out non-frontend task: {} - {}", key, summary);
+                        continue;
                     }
                 }
 
