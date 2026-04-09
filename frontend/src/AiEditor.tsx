@@ -129,7 +129,7 @@ function findNode(nodes: FileNode[], id: string): FileNode | null {
   return null
 }
 
-export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, roles = [], onLogout, initialGenerationId }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; roles?: string[]; onLogout?: () => void; initialGenerationId?: string | null }) {
+export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, roles = [], onLogout, initialGenerationId, initialHomeTab }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; roles?: string[]; onLogout?: () => void; initialGenerationId?: string | null; initialHomeTab?: 'create' | 'projects' | 'profile' | 'admin' }) {
   const [selectedFw, setSelectedFw] = useState<Framework | null>(null)
   const [projectName, setProjectName] = useState('my-awesome-app')
   const [customPrompt, setCustomPrompt] = useState('')
@@ -176,7 +176,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const isAdmin = roles.includes('admin')
 
   // Navigation — admin lands directly on admin dashboard
-  const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>(isAdmin ? 'admin' : 'create')
+  const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>(initialHomeTab || (isAdmin ? 'admin' : 'create'))
+  const [createMode, setCreateMode] = useState<'scratch' | 'jira'>('scratch')
 
   // User profile
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -1296,7 +1297,7 @@ document.addEventListener('click', function(e) {
         <main style={{ marginLeft: 260, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4 }}>
 
           {/* ── NEW PROJECT ── */}
-          {homeTab === 'create' && (
+          {homeTab === 'create' && createMode === 'scratch' && (
             <div className="home-container"
               onMouseMove={e => {
                 const el = e.currentTarget as HTMLElement
@@ -1306,6 +1307,42 @@ document.addEventListener('click', function(e) {
                 el.style.setProperty('--mx', `${x}%`)
                 el.style.setProperty('--my', `${y}%`)
               }}>
+
+              {/* ── MODE TOGGLE: Scratch vs Jira ── */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+                <div style={{ display: 'inline-flex', gap: 2, background: 'rgba(255,255,255,.5)', borderRadius: 12, padding: 4, backdropFilter: 'blur(8px)', border: '1px solid rgba(84,128,186,.15)' }}>
+                  {[
+                    { value: 'scratch' as const, label: '✨ Create from Scratch', emoji: '✨' },
+                    { value: 'jira' as const, label: '📋 Import from Jira', emoji: '📋' },
+                  ].map(mode => (
+                    <button
+                      key={mode.value}
+                      onClick={() => {
+                        if (mode.value === 'jira') {
+                          window.location.href = '/jira'
+                        } else {
+                          setCreateMode('scratch')
+                        }
+                      }}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: 10,
+                        border: 'none',
+                        background: createMode === mode.value ? 'linear-gradient(135deg, #5480ba 0%, #3d6494 100%)' : 'transparent',
+                        color: createMode === mode.value ? '#fff' : '#5480ba',
+                        fontWeight: 700,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        boxShadow: createMode === mode.value ? '0 4px 15px -3px rgba(84,128,186,.4)' : 'none',
+                      }}
+                      title={mode.label}
+                    >
+                      {mode.emoji} {mode.label.split(' ').slice(1).join(' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* ── Hero — compact ── */}
               <div className="home-hero">

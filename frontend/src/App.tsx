@@ -511,8 +511,10 @@ export default function App() {
   }
 
   // Extract ?gen=... parameter if present (for loading forked projects)
+  // Also extract ?mode=... parameter (for returning from Jira import)
   const params = new URLSearchParams(window.location.search)
   const generationIdFromUrl = params.get('gen')
+  const initialHomeTab = params.get('mode') as 'create' | 'projects' | 'profile' | 'admin' | null
 
   return (
     <AiEditor
@@ -525,6 +527,7 @@ export default function App() {
       roles={roles}
       onLogout={doLogout}
       initialGenerationId={generationIdFromUrl}
+      initialHomeTab={initialHomeTab || undefined}
     />
   )
 }
