@@ -55,13 +55,32 @@ public class UploadValidator {
         return name.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 
-    public String computeSha256(MultipartFile file) {
+    public void validateBytes(String mimeType, long sizeBytes, String originalName) {
+        if (mimeType == null || !allowedMime.contains(mimeType)) {
+            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Unsupported MIME type: " + mimeType);
+        }
+        if (sizeBytes > maxBytes) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
+                    "File too large: " + (originalName == null ? "file" : originalName));
+        }
+    }
+
+    public String computeSha256(byte[] bytes) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = file.getBytes();
             byte[] hash = digest.digest(bytes);
             return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException | IOException e) {
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("Unable to compute sha256", e);
+        }
+    }
+
+    public String computeSha256(MultipartFile file) {
+        try {
+            byte[] bytes = file.getBytes();
+            return computeSha256(bytes);
+        } catch (IOException e) {
             throw new IllegalStateException("Unable to compute sha256", e);
         }
     }

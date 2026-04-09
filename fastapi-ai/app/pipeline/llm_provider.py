@@ -11,12 +11,27 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
+import re
+import threading
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+_REDACT_API_KEY_RE = re.compile(r"(key=)[^&\s]+")
+
+
+def _redact_secrets(text: str) -> str:
+    # Prevent leaking Gemini API keys in exceptions/logs.
+    return _REDACT_API_KEY_RE.sub(r"\1REDACTED", text or "")
+
+
+_GEMINI_RATE_LOCK = threading.Lock()
+_GEMINI_NEXT_ALLOWED_AT = 0.0
 
 
 class LlmProvider(ABC):
@@ -88,29 +103,96 @@ class GeminiProvider(LlmProvider):
         )
         timeout = httpx.Timeout(timeout=self.timeout_s, connect=10.0, read=120.0, write=30.0, pool=30.0)
 
-        collected: list[str] = []
-        with httpx.Client(timeout=timeout) as client:
-            with client.stream("POST", url, json=payload) as resp:
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        candidates = chunk.get("candidates") or []
-                        if candidates:
-                            parts = (candidates[0].get("content") or {}).get("parts") or []
-                            for part in parts:
-                                text = part.get("text") or ""
-                                if text:
-                                    collected.append(text)
-                    except (json.JSONDecodeError, IndexError, KeyError):
-                        continue
+        # Gemini free tier is easy to hit with multi-file generation.
+        # Mitigate by throttling + exponential backoff on 429/5xx.
+        rpm = int(os.getenv("GEMINI_RPM", "12"))
+        max_retries = int(os.getenv("GEMINI_MAX_RETRIES", "6"))
+        max_wait_s = float(os.getenv("GEMINI_RETRY_MAX_WAIT_S", "300"))
 
-        return "".join(collected)
+        def _throttle() -> None:
+            global _GEMINI_NEXT_ALLOWED_AT
+            if rpm <= 0:
+                return
+            spacing = 60.0 / float(rpm)
+            with _GEMINI_RATE_LOCK:
+                now = time.monotonic()
+                wait = max(0.0, _GEMINI_NEXT_ALLOWED_AT - now)
+                if wait > 0:
+                    time.sleep(wait)
+                _GEMINI_NEXT_ALLOWED_AT = time.monotonic() + spacing
+
+        def _compute_wait(e: httpx.HTTPStatusError, attempt: int) -> float:
+            retry_after = e.response.headers.get("Retry-After")
+            try:
+                ra = float(retry_after) if retry_after else 0.0
+            except ValueError:
+                ra = 0.0
+            base = min(max_wait_s, 10.0 * (2**attempt))
+            jitter = random.uniform(0.0, 1.5)
+            return min(max_wait_s, max(ra, base + jitter))
+
+        last_exc: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                _throttle()
+                collected: list[str] = []
+                with httpx.Client(timeout=timeout) as client:
+                    with client.stream("POST", url, json=payload) as resp:
+                        if resp.status_code in (429, 500, 503) and attempt < max_retries:
+                            # Consume body so connection can be reused.
+                            _ = resp.read()
+                            raise httpx.HTTPStatusError(
+                                f"Transient Gemini error HTTP {resp.status_code}",
+                                request=resp.request,
+                                response=resp,
+                            )
+                        resp.raise_for_status()
+                        for line in resp.iter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                candidates = chunk.get("candidates") or []
+                                if candidates:
+                                    parts = (candidates[0].get("content") or {}).get("parts") or []
+                                    for part in parts:
+                                        text = part.get("text") or ""
+                                        if text:
+                                            collected.append(text)
+                            except (json.JSONDecodeError, IndexError, KeyError):
+                                continue
+
+                return "".join(collected)
+            except httpx.HTTPStatusError as e:
+                last_exc = e
+                status = e.response.status_code if e.response is not None else None
+                if status in (429, 500, 503) and attempt < max_retries:
+                    wait = _compute_wait(e, attempt)
+                    logger.warning(
+                        "Gemini rate-limited/transient error (HTTP %s). Retrying in %.1fs (attempt %d/%d)",
+                        status,
+                        wait,
+                        attempt + 1,
+                        max_retries,
+                    )
+                    time.sleep(wait)
+                    continue
+                # Redact API key from any propagated error text
+                raise httpx.HTTPStatusError(
+                    _redact_secrets(str(e)),
+                    request=e.request,
+                    response=e.response,
+                )
+            except Exception as e:  # noqa: BLE001
+                last_exc = e
+                break
+
+        if last_exc:
+            raise last_exc
+        return ""
 
     def chat_json(self, system: str, user: str, schema: dict | None = None, **opts: Any) -> dict:
         opts["json_mode"] = True
@@ -671,9 +753,16 @@ def _build_fallback_chain(role: str, max_tokens: int, temperature: float) -> lis
 
     Order: explicit primary → Gemini → Groq → Mistral → OpenRouter → Anthropic → Ollama
     Skips providers without API keys.
+
+    If NO_LOCAL_MODEL=true (or DISABLE_OLLAMA_FALLBACK=true), Ollama is NOT added.
     """
     providers: list[LlmProvider] = []
     tried: set[str] = set()
+
+    def _env_true(name: str) -> bool:
+        return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+    no_local = _env_true("NO_LOCAL_MODEL") or _env_true("DISABLE_OLLAMA_FALLBACK")
 
     def _try_add(name: str, builder_fn):
         if name in tried:
@@ -702,8 +791,12 @@ def _build_fallback_chain(role: str, max_tokens: int, temperature: float) -> lis
     # Then Cohere
     if os.getenv("COHERE_API_KEY", "").strip():
         _try_add("cohere", _build_cohere_provider)
-    # Fallback to Ollama
-    _try_add("ollama", _build_ollama_provider)
+
+    # Local fallback (Ollama) — optional
+    if not no_local:
+        _try_add("ollama", _build_ollama_provider)
+    else:
+        logger.info("Fallback chain: NO_LOCAL_MODEL enabled — skipping Ollama")
 
     return providers
 
@@ -726,6 +819,13 @@ def create_planner_provider() -> LlmProvider:
             pass
 
     if not chain:
+        no_local = os.getenv("NO_LOCAL_MODEL", "").strip().lower() in ("1", "true", "yes", "on") or \
+                os.getenv("DISABLE_OLLAMA_FALLBACK", "").strip().lower() in ("1", "true", "yes", "on")
+        if no_local:
+            raise ValueError(
+                "NO_LOCAL_MODEL is enabled but no remote LLM provider is configured. "
+                "Set GEMINI_API_KEY (recommended) or another provider API key."
+            )
         return _build_ollama_provider(role="planner", max_tokens=max_tokens, temperature=0)
 
     if len(chain) == 1:
@@ -751,6 +851,13 @@ def create_coder_provider() -> LlmProvider:
             pass
 
     if not chain:
+        no_local = os.getenv("NO_LOCAL_MODEL", "").strip().lower() in ("1", "true", "yes", "on") or \
+                os.getenv("DISABLE_OLLAMA_FALLBACK", "").strip().lower() in ("1", "true", "yes", "on")
+        if no_local:
+            raise ValueError(
+                "NO_LOCAL_MODEL is enabled but no remote LLM provider is configured. "
+                "Set GEMINI_API_KEY (recommended) or another provider API key."
+            )
         return _build_ollama_provider(role="coder", max_tokens=max_tokens, temperature=0.1)
 
     if len(chain) == 1:

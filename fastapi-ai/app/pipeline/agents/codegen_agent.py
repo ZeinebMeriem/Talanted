@@ -1361,18 +1361,28 @@ class LlmCodegenAgent:
                 except Exception as e:  # noqa: BLE001
                     is_rate_limit = "429" in str(e)
                     if is_rate_limit and attempt < max_retries:
-                        wait = 5 * (2 ** attempt)  # 5s, 10s, 20s, 40s
+                        retry_after = None
+                        if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
+                            retry_after = e.response.headers.get("Retry-After")
+                        try:
+                            ra = float(retry_after) if retry_after else 0.0
+                        except ValueError:
+                            ra = 0.0
+                        # Give Gemini enough time to exit the RPM window.
+                        wait = max(ra, min(300, 30 * (2 ** attempt)))  # 30s, 60s, 120s, 240s (cap 5m)
                         logger.warning(
                             "Rate limit hit for %s, retrying in %ds (attempt %d/%d)",
                             path, wait, attempt + 1, max_retries,
                         )
                         _time.sleep(wait)
                         continue
-                    err_msg = f"{path}: {type(e).__name__}: {e}"
+                    # Redact API keys from error strings (httpx includes request URL in HTTPStatusError).
+                    _raw_err = str(e)
+                    _raw_err = _re.sub(r"(key=)[^&\s]+", r"\1REDACTED", _raw_err)
+                    err_msg = f"{path}: {type(e).__name__}: {_raw_err}"
                     errors.append(err_msg)
-                    logger.exception("LlmCodegenAgent: failed to generate %s", path)
-                    # Build a human-readable error detail
-                    if isinstance(e, httpx.HTTPStatusError):
+                    # Avoid leaking request URLs (may contain API keys) via exception tracebacks.
+                    if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
                         status = e.response.status_code
                         _hints = {
                             401: "Invalid or missing API key — check your .env file",
@@ -1381,8 +1391,10 @@ class LlmCodegenAgent:
                             400: "Bad request — the model may have rejected the prompt",
                         }
                         err_detail = f"HTTP {status}: {_hints.get(status, e.response.reason_phrase)}"
+                        logger.error("LlmCodegenAgent: failed to generate %s (%s)", path, err_detail)
                     else:
                         err_detail = f"{type(e).__name__}: {str(e)[:300]}"
+                        logger.exception("LlmCodegenAgent: failed to generate %s", path)
                     if path.endswith((".html", ".htm")):
                         generated.append({
                             "path": path,

@@ -41,6 +41,20 @@ public class FileStorageService {
         }
     }
 
+    public String putBytesToMinio(String objectKey, byte[] bytes, String mimeType, String originalName) {
+        String contentType = normalizeContentType(mimeType, originalName);
+
+        PutObjectRequest req = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(objectKey)
+                .contentType(contentType)
+                .contentDisposition(buildInlineContentDisposition(originalName))
+                .build();
+
+        s3.putObject(req, RequestBody.fromBytes(bytes));
+        return objectKey;
+    }
+
     private static String normalizeContentType(String provided, String originalName) {
         String ct = (provided == null ? "" : provided.trim()).toLowerCase(Locale.ROOT);
         if (ct.isEmpty() || ct.equals("application/octet-stream")) {

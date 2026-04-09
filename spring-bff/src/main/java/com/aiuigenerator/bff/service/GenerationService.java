@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import java.io.PrintWriter;
+import java.util.Base64;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -43,6 +44,7 @@ import com.aiuigenerator.bff.dto.FastApiGenerateResponse;
 import com.aiuigenerator.bff.dto.GenerationCreateResponse;
 import com.aiuigenerator.bff.dto.GenerationRollbackResponse;
 import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
+import com.aiuigenerator.bff.dto.JiraIssueDTO;
 import com.aiuigenerator.bff.dto.RestoreRequest;
 import com.aiuigenerator.bff.dto.CodeFileDto;
 import com.aiuigenerator.bff.repo.AiReportRepository;
@@ -67,6 +69,7 @@ public class GenerationService {
     private final FileStorageService fileStorage;
     private final FastApiClient fastApi;
     private final AuditService audit;
+    private final JiraService jiraService;
 
     private final GenerationRepository generationRepo;
     private final GenerationFileRepository fileRepo;
@@ -80,6 +83,7 @@ public class GenerationService {
             FileStorageService fileStorage,
             FastApiClient fastApi,
             AuditService audit,
+            JiraService jiraService,
             GenerationRepository generationRepo,
             GenerationFileRepository fileRepo,
             UiSpecVersionRepository uiSpecRepo,
@@ -90,6 +94,7 @@ public class GenerationService {
         this.fileStorage = fileStorage;
         this.fastApi = fastApi;
         this.audit = audit;
+        this.jiraService = jiraService;
         this.generationRepo = generationRepo;
         this.fileRepo = fileRepo;
         this.uiSpecRepo = uiSpecRepo;
@@ -514,6 +519,1035 @@ public class GenerationService {
             } catch (Exception ignored) {
                 /* response may already be closed */ }
         }
+    }
+
+    public GenerationCreateResponse createGenerationFromJira(
+            String userId,
+            String jiraIssueKey,
+            String additionalPrompt,
+            List<MultipartFile> extraFiles,
+            String domain) {
+
+        JiraIssueDTO issue = jiraService.getIssue(jiraIssueKey);
+        String prompt = buildJiraPrompt(issue, additionalPrompt);
+        validator.validatePrompt(prompt);
+
+        // Reuse existing flow by creating a fresh Generation and uploading Jira attachments
+        long started = System.currentTimeMillis();
+
+        String generationId = ulid.nextULID();
+        String sessionId = ulid.nextULID();
+
+        Generation g = new Generation();
+        g.setGenerationId(generationId);
+        g.setSessionId(sessionId);
+        g.setPrompt(prompt);
+        g.setJiraIssueKey(jiraIssueKey);
+        g.setActiveVersion(1);
+        g.setStatus(GenerationStatus.PENDING);
+        g.setCreatedAt(Instant.now());
+        g.setUpdatedAt(Instant.now());
+        g.setUserId(userId);
+        generationRepo.save(g);
+
+        audit.recordEvent("GENERATION_REQUESTED", generationId, sessionId, 0,
+                Map.of("hasFiles", true, "streaming", false, "source", "jira", "jiraIssueKey", jiraIssueKey));
+
+        List<FileRefDto> fileRefs = new ArrayList<>();
+
+        // Upload Jira attachments
+        if (issue.attachments() != null) {
+            for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
+                if (a == null || a.content() == null || a.content().isBlank()) continue;
+
+                byte[] bytes;
+                try {
+                    bytes = Base64.getDecoder().decode(a.content());
+                } catch (IllegalArgumentException e) {
+                    continue;
+                }
+
+                String mimeType = a.mimeType();
+                String originalName = a.filename();
+                long sizeBytes = bytes.length;
+
+                validator.validateBytes(mimeType, sizeBytes, originalName);
+
+                String sha256 = validator.computeSha256(bytes);
+                String safeName = validator.sanitizeFilename(originalName);
+                String objectKey = generationId + "/" + sha256 + "_" + safeName;
+                String minioPath = fileStorage.putBytesToMinio(objectKey, bytes, mimeType, originalName);
+
+                GenerationFile meta = new GenerationFile();
+                meta.setFileId(ulid.nextULID());
+                meta.setGenerationId(generationId);
+                meta.setOriginalName(originalName);
+                meta.setMimeType(mimeType);
+                meta.setSizeBytes(sizeBytes);
+                meta.setSha256(sha256);
+                meta.setMinioPath(minioPath);
+                meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                fileRepo.save(meta);
+
+                FileRefDto ref = new FileRefDto();
+                ref.minioPath = minioPath;
+                ref.mimeType = mimeType;
+                ref.originalName = originalName;
+                ref.sha256 = sha256;
+                ref.sizeBytes = sizeBytes;
+                fileRefs.add(ref);
+            }
+        }
+
+        // Upload any extra user files
+        if (extraFiles != null) {
+            for (MultipartFile f : extraFiles) {
+                if (f == null || f.isEmpty()) continue;
+                validator.validateFile(f);
+
+                String sha256 = validator.computeSha256(f);
+                String safeName = validator.sanitizeFilename(f.getOriginalFilename());
+                String objectKey = generationId + "/" + sha256 + "_" + safeName;
+                String minioPath = fileStorage.putToMinio(objectKey, f);
+
+                GenerationFile meta = new GenerationFile();
+                meta.setFileId(ulid.nextULID());
+                meta.setGenerationId(generationId);
+                meta.setOriginalName(f.getOriginalFilename());
+                meta.setMimeType(f.getContentType());
+                meta.setSizeBytes(f.getSize());
+                meta.setSha256(sha256);
+                meta.setMinioPath(minioPath);
+                meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                fileRepo.save(meta);
+
+                FileRefDto ref = new FileRefDto();
+                ref.minioPath = minioPath;
+                ref.mimeType = f.getContentType();
+                ref.originalName = f.getOriginalFilename();
+                ref.sha256 = sha256;
+                ref.sizeBytes = f.getSize();
+                fileRefs.add(ref);
+            }
+        }
+
+        g.setStatus(GenerationStatus.PROCESSING);
+        g.setUpdatedAt(Instant.now());
+        generationRepo.save(g);
+
+        FastApiGenerateRequest req = new FastApiGenerateRequest();
+        req.generationId = generationId;
+        req.prompt = prompt;
+        req.mode = "full";
+        req.fileRefs = fileRefs;
+        req.domain = (domain != null && !domain.isBlank()) ? domain : null;
+
+        FastApiGenerateResponse fastResp = fastApi.generate(req);
+
+        UiSpecVersion spec = new UiSpecVersion();
+        spec.setSpecVersionId(ulid.nextULID());
+        spec.setGenerationId(generationId);
+        spec.setVersion(1);
+        spec.setUiSpec(fastResp.uiSpec);
+        spec.setType(UiSpecVersion.Type.INITIAL);
+        spec.setCreatedAt(Instant.now());
+        uiSpecRepo.save(spec);
+
+        CodeVersion cv = new CodeVersion();
+        cv.setCodeVersionId(ulid.nextULID());
+        cv.setGenerationId(generationId);
+        cv.setVersion(1);
+        cv.setCreatedAt(Instant.now());
+
+        List<FileEntry> entries = new ArrayList<>();
+        if (fastResp.codeBundle != null && fastResp.codeBundle.files != null) {
+            fastResp.codeBundle.files.forEach(f -> entries.add(new FileEntry(f.path, f.content)));
+        }
+        cv.setFiles(entries);
+        codeRepo.save(cv);
+
+        AiReport report = new AiReport();
+        report.setReportId(ulid.nextULID());
+        report.setGenerationId(generationId);
+        report.setVersion(1);
+        report.setCreatedAt(Instant.now());
+
+        if (fastResp.aiReport != null) {
+            report.setScore(fastResp.aiReport.score);
+            report.setIssues(fastResp.aiReport.issues);
+            report.setSourcesUsed(fastResp.aiReport.sources_used);
+            report.setLlmProvider(fastResp.aiReport.llm_provider);
+            report.setDurations(fastResp.aiReport.durations);
+            report.setRetriesCount(fastResp.aiReport.retries_count);
+            report.setBuildRetries(fastResp.aiReport.build_retries);
+            report.setUiEvaluation(fastResp.aiReport.ui_evaluation);
+        } else {
+            report.setScore(0);
+            report.setIssues(List.of());
+            report.setSourcesUsed(List.of());
+            report.setLlmProvider("unknown");
+            report.setDurations(Map.of());
+            report.setRetriesCount(0);
+        }
+
+        reportRepo.save(report);
+
+        g.setStatus(GenerationStatus.COMPLETED);
+        g.setUpdatedAt(Instant.now());
+        generationRepo.save(g);
+
+        long durationMs = System.currentTimeMillis() - started;
+        audit.recordEvent("GENERATION_COMPLETED", generationId, sessionId, durationMs,
+                Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", false, "source", "jira"));
+
+        GenerationCreateResponse out = new GenerationCreateResponse();
+        out.generationId = generationId;
+        out.sessionId = sessionId;
+        out.status = g.getStatus();
+        out.activeVersion = g.getActiveVersion();
+        out.uiSpec = fastResp.uiSpec;
+        out.codeBundle = fastResp.codeBundle;
+        out.aiReport = fastResp.aiReport;
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void createGenerationStreamFromJira(
+            String userId,
+            String jiraIssueKey,
+            String additionalPrompt,
+            List<MultipartFile> extraFiles,
+            String domain,
+            String model,
+            PrintWriter writer) {
+
+        JiraIssueDTO issue = jiraService.getIssue(jiraIssueKey);
+        String prompt = buildJiraPrompt(issue, additionalPrompt);
+
+        final ObjectMapper mapper = new ObjectMapper();
+        String generationId = null;
+        String sessionId = null;
+
+        try {
+            validator.validatePrompt(prompt);
+
+            generationId = ulid.nextULID();
+            sessionId = ulid.nextULID();
+            final String gId = generationId;
+            final String sId = sessionId;
+
+            Generation g = new Generation();
+            g.setGenerationId(gId);
+            g.setSessionId(sId);
+            g.setPrompt(prompt);
+            g.setJiraIssueKey(jiraIssueKey);
+            g.setActiveVersion(1);
+            g.setStatus(GenerationStatus.PENDING);
+            g.setCreatedAt(Instant.now());
+            g.setUpdatedAt(Instant.now());
+            g.setUserId(userId);
+            generationRepo.save(g);
+
+            audit.recordEvent("GENERATION_REQUESTED", gId, sId, 0,
+                    Map.of("hasFiles", true, "streaming", true, "model", model != null ? model : "default",
+                            "source", "jira", "jiraIssueKey", jiraIssueKey));
+
+            // ── Upload Jira attachments + extraFiles to MinIO ─────────────────
+            List<FileRefDto> fileRefs = new ArrayList<>();
+
+            if (issue.attachments() != null) {
+                for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
+                    if (a == null || a.content() == null || a.content().isBlank()) continue;
+
+                    byte[] bytes;
+                    try {
+                        bytes = Base64.getDecoder().decode(a.content());
+                    } catch (IllegalArgumentException e) {
+                        continue;
+                    }
+
+                    String mimeType = a.mimeType();
+                    String originalName = a.filename();
+                    long sizeBytes = bytes.length;
+
+                    validator.validateBytes(mimeType, sizeBytes, originalName);
+
+                    String sha256 = validator.computeSha256(bytes);
+                    String safeName = validator.sanitizeFilename(originalName);
+                    String objectKey = gId + "/" + sha256 + "_" + safeName;
+                    String minioPath = fileStorage.putBytesToMinio(objectKey, bytes, mimeType, originalName);
+
+                    GenerationFile meta = new GenerationFile();
+                    meta.setFileId(ulid.nextULID());
+                    meta.setGenerationId(gId);
+                    meta.setOriginalName(originalName);
+                    meta.setMimeType(mimeType);
+                    meta.setSizeBytes(sizeBytes);
+                    meta.setSha256(sha256);
+                    meta.setMinioPath(minioPath);
+                    meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                    fileRepo.save(meta);
+
+                    FileRefDto ref = new FileRefDto();
+                    ref.minioPath = minioPath;
+                    ref.mimeType = mimeType;
+                    ref.originalName = originalName;
+                    ref.sha256 = sha256;
+                    ref.sizeBytes = sizeBytes;
+                    fileRefs.add(ref);
+                }
+            }
+
+            if (extraFiles != null) {
+                for (MultipartFile f : extraFiles) {
+                    if (f == null || f.isEmpty()) continue;
+                    validator.validateFile(f);
+
+                    String sha256 = validator.computeSha256(f);
+                    String safeName = validator.sanitizeFilename(f.getOriginalFilename());
+                    String objectKey = gId + "/" + sha256 + "_" + safeName;
+                    String minioPath = fileStorage.putToMinio(objectKey, f);
+
+                    GenerationFile meta = new GenerationFile();
+                    meta.setFileId(ulid.nextULID());
+                    meta.setGenerationId(gId);
+                    meta.setOriginalName(f.getOriginalFilename());
+                    meta.setMimeType(f.getContentType());
+                    meta.setSizeBytes(f.getSize());
+                    meta.setSha256(sha256);
+                    meta.setMinioPath(minioPath);
+                    meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                    fileRepo.save(meta);
+
+                    FileRefDto ref = new FileRefDto();
+                    ref.minioPath = minioPath;
+                    ref.mimeType = f.getContentType();
+                    ref.originalName = f.getOriginalFilename();
+                    ref.sha256 = sha256;
+                    ref.sizeBytes = f.getSize();
+                    fileRefs.add(ref);
+                }
+            }
+
+            g.setStatus(GenerationStatus.PROCESSING);
+            g.setUpdatedAt(Instant.now());
+            generationRepo.save(g);
+
+            FastApiGenerateRequest req = new FastApiGenerateRequest();
+            req.generationId = gId;
+            req.prompt = prompt;
+            req.mode = "full";
+            req.fileRefs = fileRefs;
+            req.domain = (domain != null && !domain.isBlank()) ? domain : null;
+            req.model = (model != null && !model.isBlank()) ? model : null;
+
+            final long started = System.currentTimeMillis();
+            final String[] completedResultHolder = { null };
+
+            String fastapiUrl = fastApiBaseUrl + "/internal/generate/stream";
+            String reqJson = mapper.writeValueAsString(req);
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(fastapiUrl).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "text/event-stream");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(30_000);
+            conn.setReadTimeout(660_000);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(reqJson.getBytes(StandardCharsets.UTF_8));
+            }
+
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data: "))
+                        continue;
+                    String json = line.substring(6).trim();
+                    if (json.isEmpty())
+                        continue;
+                    if (json.contains("\"type\":\"complete\"")) {
+                        try {
+                            Map<String, Object> eventMap = mapper.readValue(json, Map.class);
+                            Object resultObj = eventMap.get("result");
+                            if (resultObj instanceof Map) {
+                                Map<String, Object> resultMap = (Map<String, Object>) resultObj;
+                                resultMap.put("generationId", gId);
+                            }
+                            json = mapper.writeValueAsString(eventMap);
+                        } catch (Exception ignored) {
+                        }
+                        completedResultHolder[0] = json;
+                    }
+                    writer.print("data: " + json + "\n\n");
+                    writer.flush();
+                }
+            } finally {
+                conn.disconnect();
+            }
+
+            if (completedResultHolder[0] != null) {
+                try {
+                    Map<String, Object> wrapper = mapper.readValue(completedResultHolder[0], Map.class);
+                    Map<String, Object> result = (Map<String, Object>) wrapper.get("result");
+
+                    Object uiSpecRaw = result != null ? result.get("uiSpec") : null;
+                    Object codeBundleRaw = result != null ? result.get("codeBundle") : null;
+                    Object aiReportRaw = result != null ? result.get("aiReport") : null;
+
+                    UiSpecVersion spec = new UiSpecVersion();
+                    spec.setSpecVersionId(ulid.nextULID());
+                    spec.setGenerationId(gId);
+                    spec.setVersion(1);
+                    Map<String, Object> uiSpecMap = uiSpecRaw instanceof Map ? (Map<String, Object>) uiSpecRaw : Map.of();
+                    spec.setUiSpec(uiSpecMap);
+                    spec.setType(UiSpecVersion.Type.INITIAL);
+                    spec.setCreatedAt(Instant.now());
+                    uiSpecRepo.save(spec);
+
+                    CodeVersion cv = new CodeVersion();
+                    cv.setCodeVersionId(ulid.nextULID());
+                    cv.setGenerationId(gId);
+                    cv.setVersion(1);
+                    cv.setCreatedAt(Instant.now());
+                    List<FileEntry> entries = new ArrayList<>();
+                    if (codeBundleRaw instanceof Map) {
+                        Object filesObj = ((Map<?, ?>) codeBundleRaw).get("files");
+                        if (filesObj instanceof List) {
+                            for (Object fObj : (List<?>) filesObj) {
+                                if (fObj instanceof Map) {
+                                    Map<?, ?> fm = (Map<?, ?>) fObj;
+                                    entries.add(new FileEntry(
+                                            String.valueOf(fm.get("path")),
+                                            String.valueOf(fm.get("content"))));
+                                }
+                            }
+                        }
+                    }
+                    cv.setFiles(entries);
+                    codeRepo.save(cv);
+
+                    AiReport report = new AiReport();
+                    report.setReportId(ulid.nextULID());
+                    report.setGenerationId(gId);
+                    report.setVersion(1);
+                    report.setCreatedAt(Instant.now());
+                    if (aiReportRaw instanceof Map) {
+                        Map<?, ?> rmap = (Map<?, ?>) aiReportRaw;
+                        report.setScore(rmap.get("score") instanceof Number ? ((Number) rmap.get("score")).intValue() : 0);
+                        Object llmProviderObj = rmap.get("llm_provider");
+                        report.setLlmProvider(llmProviderObj != null ? String.valueOf(llmProviderObj) : "unknown");
+                        report.setRetriesCount(rmap.get("retries_count") instanceof Number ? ((Number) rmap.get("retries_count")).intValue() : 0);
+                        report.setBuildRetries(rmap.get("build_retries") instanceof Number ? ((Number) rmap.get("build_retries")).intValue() : 0);
+                        List<Map<String, Object>> issues = rmap.get("issues") instanceof List ? (List<Map<String, Object>>) rmap.get("issues") : List.of();
+                        report.setIssues(issues);
+                        List<String> sourcesUsed = rmap.get("sources_used") instanceof List ? (List<String>) rmap.get("sources_used") : List.of();
+                        report.setSourcesUsed(sourcesUsed);
+                        Map<String, Object> durations = rmap.get("durations") instanceof Map ? (Map<String, Object>) rmap.get("durations") : Map.of();
+                        report.setDurations(durations);
+                    } else {
+                        report.setScore(0);
+                        report.setIssues(List.of());
+                        report.setSourcesUsed(List.of());
+                        report.setLlmProvider("unknown");
+                        report.setDurations(Map.of());
+                        report.setRetriesCount(0);
+                    }
+                    reportRepo.save(report);
+
+                    g.setStatus(GenerationStatus.COMPLETED);
+                    g.setUpdatedAt(Instant.now());
+                    generationRepo.save(g);
+
+                    long durationMs = System.currentTimeMillis() - started;
+                    audit.recordEvent("GENERATION_COMPLETED", gId, sId, durationMs,
+                            Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", true, "source", "jira"));
+                } catch (Exception ignored) {
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("createGenerationStreamFromJira failed for generationId={}: {}", generationId, e.getMessage(), e);
+            if (generationId != null) {
+                try {
+                    Generation failed = generationRepo.findById(generationId).orElse(null);
+                    if (failed != null) {
+                        failed.setStatus(GenerationStatus.FAILED);
+                        failed.setUpdatedAt(Instant.now());
+                        generationRepo.save(failed);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            try {
+                writer.print("data: {\"type\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}\n\n");
+                writer.flush();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    public GenerationCreateResponse createGenerationFromJiraMulti(
+            String userId,
+            List<String> jiraIssueKeys,
+            String additionalPrompt,
+            List<MultipartFile> extraFiles,
+            String domain) {
+
+        List<String> keys = (jiraIssueKeys == null) ? List.of() : jiraIssueKeys.stream()
+                .filter(k -> k != null && !k.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+
+        if (keys.isEmpty()) {
+            throw new IllegalArgumentException("jiraIssueKeys must not be empty");
+        }
+
+        List<JiraIssueDTO> issues = new ArrayList<>();
+        for (String key : keys) {
+            issues.add(jiraService.getIssue(key));
+        }
+
+        String prompt = buildJiraPromptMulti(issues, additionalPrompt);
+        validator.validatePrompt(prompt);
+
+        long started = System.currentTimeMillis();
+
+        String generationId = ulid.nextULID();
+        String sessionId = ulid.nextULID();
+
+        Generation g = new Generation();
+        g.setGenerationId(generationId);
+        g.setSessionId(sessionId);
+        g.setPrompt(prompt);
+        g.setJiraIssueKey(keys.get(0));
+        g.setJiraIssueKeys(keys);
+        g.setActiveVersion(1);
+        g.setStatus(GenerationStatus.PENDING);
+        g.setCreatedAt(Instant.now());
+        g.setUpdatedAt(Instant.now());
+        g.setUserId(userId);
+        generationRepo.save(g);
+
+        audit.recordEvent("GENERATION_REQUESTED", generationId, sessionId, 0,
+                Map.of("hasFiles", true, "streaming", false, "source", "jira", "jiraIssueKeys", keys));
+
+        List<FileRefDto> fileRefs = new ArrayList<>();
+
+        // Upload attachments from all selected Jira tickets
+        long totalAttachmentBytes = 0;
+        final long totalCapBytes = 20L * 1024 * 1024; // 20MB safety cap
+
+        for (JiraIssueDTO issue : issues) {
+            if (issue.attachments() == null) continue;
+            for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
+                if (a == null || a.content() == null || a.content().isBlank()) continue;
+
+                byte[] bytes;
+                try {
+                    bytes = Base64.getDecoder().decode(a.content());
+                } catch (IllegalArgumentException e) {
+                    continue;
+                }
+
+                if (totalAttachmentBytes + bytes.length > totalCapBytes) {
+                    log.warn("Skipping Jira attachments beyond total cap ({} bytes)", totalCapBytes);
+                    break;
+                }
+
+                String mimeType = a.mimeType();
+                String originalName = a.filename();
+                long sizeBytes = bytes.length;
+
+                validator.validateBytes(mimeType, sizeBytes, originalName);
+
+                String sha256 = validator.computeSha256(bytes);
+                String safeName = validator.sanitizeFilename(originalName);
+                String objectKey = generationId + "/" + sha256 + "_" + safeName;
+                String minioPath = fileStorage.putBytesToMinio(objectKey, bytes, mimeType, originalName);
+
+                GenerationFile meta = new GenerationFile();
+                meta.setFileId(ulid.nextULID());
+                meta.setGenerationId(generationId);
+                meta.setOriginalName(originalName);
+                meta.setMimeType(mimeType);
+                meta.setSizeBytes(sizeBytes);
+                meta.setSha256(sha256);
+                meta.setMinioPath(minioPath);
+                meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                fileRepo.save(meta);
+
+                FileRefDto ref = new FileRefDto();
+                ref.minioPath = minioPath;
+                ref.mimeType = mimeType;
+                ref.originalName = originalName;
+                ref.sha256 = sha256;
+                ref.sizeBytes = sizeBytes;
+                fileRefs.add(ref);
+
+                totalAttachmentBytes += sizeBytes;
+            }
+        }
+
+        // Upload any extra user files
+        if (extraFiles != null) {
+            for (MultipartFile f : extraFiles) {
+                if (f == null || f.isEmpty()) continue;
+                validator.validateFile(f);
+
+                String sha256 = validator.computeSha256(f);
+                String safeName = validator.sanitizeFilename(f.getOriginalFilename());
+                String objectKey = generationId + "/" + sha256 + "_" + safeName;
+                String minioPath = fileStorage.putToMinio(objectKey, f);
+
+                GenerationFile meta = new GenerationFile();
+                meta.setFileId(ulid.nextULID());
+                meta.setGenerationId(generationId);
+                meta.setOriginalName(f.getOriginalFilename());
+                meta.setMimeType(f.getContentType());
+                meta.setSizeBytes(f.getSize());
+                meta.setSha256(sha256);
+                meta.setMinioPath(minioPath);
+                meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                fileRepo.save(meta);
+
+                FileRefDto ref = new FileRefDto();
+                ref.minioPath = minioPath;
+                ref.mimeType = f.getContentType();
+                ref.originalName = f.getOriginalFilename();
+                ref.sha256 = sha256;
+                ref.sizeBytes = f.getSize();
+                fileRefs.add(ref);
+            }
+        }
+
+        g.setStatus(GenerationStatus.PROCESSING);
+        g.setUpdatedAt(Instant.now());
+        generationRepo.save(g);
+
+        FastApiGenerateRequest req = new FastApiGenerateRequest();
+        req.generationId = generationId;
+        req.prompt = prompt;
+        req.mode = "full";
+        req.fileRefs = fileRefs;
+        req.domain = (domain != null && !domain.isBlank()) ? domain : null;
+
+        FastApiGenerateResponse fastResp = fastApi.generate(req);
+
+        UiSpecVersion spec = new UiSpecVersion();
+        spec.setSpecVersionId(ulid.nextULID());
+        spec.setGenerationId(generationId);
+        spec.setVersion(1);
+        spec.setUiSpec(fastResp.uiSpec);
+        spec.setType(UiSpecVersion.Type.INITIAL);
+        spec.setCreatedAt(Instant.now());
+        uiSpecRepo.save(spec);
+
+        CodeVersion cv = new CodeVersion();
+        cv.setCodeVersionId(ulid.nextULID());
+        cv.setGenerationId(generationId);
+        cv.setVersion(1);
+        cv.setCreatedAt(Instant.now());
+
+        List<FileEntry> entries = new ArrayList<>();
+        if (fastResp.codeBundle != null && fastResp.codeBundle.files != null) {
+            fastResp.codeBundle.files.forEach(f -> entries.add(new FileEntry(f.path, f.content)));
+        }
+        cv.setFiles(entries);
+        codeRepo.save(cv);
+
+        AiReport report = new AiReport();
+        report.setReportId(ulid.nextULID());
+        report.setGenerationId(generationId);
+        report.setVersion(1);
+        report.setCreatedAt(Instant.now());
+
+        if (fastResp.aiReport != null) {
+            report.setScore(fastResp.aiReport.score);
+            report.setIssues(fastResp.aiReport.issues);
+            report.setSourcesUsed(fastResp.aiReport.sources_used);
+            report.setLlmProvider(fastResp.aiReport.llm_provider);
+            report.setDurations(fastResp.aiReport.durations);
+            report.setRetriesCount(fastResp.aiReport.retries_count);
+            report.setBuildRetries(fastResp.aiReport.build_retries);
+            report.setUiEvaluation(fastResp.aiReport.ui_evaluation);
+        } else {
+            report.setScore(0);
+            report.setIssues(List.of());
+            report.setSourcesUsed(List.of());
+            report.setLlmProvider("unknown");
+            report.setDurations(Map.of());
+            report.setRetriesCount(0);
+        }
+        reportRepo.save(report);
+
+        g.setStatus(GenerationStatus.COMPLETED);
+        g.setUpdatedAt(Instant.now());
+        generationRepo.save(g);
+
+        long durationMs = System.currentTimeMillis() - started;
+        audit.recordEvent("GENERATION_COMPLETED", generationId, sessionId, durationMs,
+                Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", false, "source", "jira", "jiraIssueKeys", keys));
+
+        GenerationCreateResponse out = new GenerationCreateResponse();
+        out.generationId = generationId;
+        out.sessionId = sessionId;
+        out.status = g.getStatus();
+        out.activeVersion = g.getActiveVersion();
+        out.uiSpec = fastResp.uiSpec;
+        out.codeBundle = fastResp.codeBundle;
+        out.aiReport = fastResp.aiReport;
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void createGenerationStreamFromJiraMulti(
+            String userId,
+            List<String> jiraIssueKeys,
+            String additionalPrompt,
+            List<MultipartFile> extraFiles,
+            String domain,
+            String model,
+            PrintWriter writer) {
+
+        List<String> keys = (jiraIssueKeys == null) ? List.of() : jiraIssueKeys.stream()
+                .filter(k -> k != null && !k.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+
+        if (keys.isEmpty()) {
+            throw new IllegalArgumentException("jiraIssueKeys must not be empty");
+        }
+
+        List<JiraIssueDTO> issues = new ArrayList<>();
+        for (String key : keys) {
+            issues.add(jiraService.getIssue(key));
+        }
+
+        String prompt = buildJiraPromptMulti(issues, additionalPrompt);
+
+        final ObjectMapper mapper = new ObjectMapper();
+        String generationId = null;
+        String sessionId = null;
+
+        try {
+            validator.validatePrompt(prompt);
+
+            generationId = ulid.nextULID();
+            sessionId = ulid.nextULID();
+            final String gId = generationId;
+            final String sId = sessionId;
+
+            Generation g = new Generation();
+            g.setGenerationId(gId);
+            g.setSessionId(sId);
+            g.setPrompt(prompt);
+            g.setJiraIssueKey(keys.get(0));
+            g.setJiraIssueKeys(keys);
+            g.setActiveVersion(1);
+            g.setStatus(GenerationStatus.PENDING);
+            g.setCreatedAt(Instant.now());
+            g.setUpdatedAt(Instant.now());
+            g.setUserId(userId);
+            generationRepo.save(g);
+
+            audit.recordEvent("GENERATION_REQUESTED", gId, sId, 0,
+                    Map.of("hasFiles", true, "streaming", true, "model", model != null ? model : "default",
+                            "source", "jira", "jiraIssueKeys", keys));
+
+            // ── Upload Jira attachments + extraFiles to MinIO ─────────────────
+            List<FileRefDto> fileRefs = new ArrayList<>();
+
+            long totalAttachmentBytes = 0;
+            final long totalCapBytes = 20L * 1024 * 1024; // 20MB safety cap
+
+            for (JiraIssueDTO issue : issues) {
+                if (issue.attachments() == null) continue;
+                for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
+                    if (a == null || a.content() == null || a.content().isBlank()) continue;
+
+                    byte[] bytes;
+                    try {
+                        bytes = Base64.getDecoder().decode(a.content());
+                    } catch (IllegalArgumentException e) {
+                        continue;
+                    }
+
+                    if (totalAttachmentBytes + bytes.length > totalCapBytes) {
+                        log.warn("Skipping Jira attachments beyond total cap ({} bytes)", totalCapBytes);
+                        break;
+                    }
+
+                    String mimeType = a.mimeType();
+                    String originalName = a.filename();
+                    long sizeBytes = bytes.length;
+
+                    validator.validateBytes(mimeType, sizeBytes, originalName);
+
+                    String sha256 = validator.computeSha256(bytes);
+                    String safeName = validator.sanitizeFilename(originalName);
+                    String objectKey = gId + "/" + sha256 + "_" + safeName;
+                    String minioPath = fileStorage.putBytesToMinio(objectKey, bytes, mimeType, originalName);
+
+                    GenerationFile meta = new GenerationFile();
+                    meta.setFileId(ulid.nextULID());
+                    meta.setGenerationId(gId);
+                    meta.setOriginalName(originalName);
+                    meta.setMimeType(mimeType);
+                    meta.setSizeBytes(sizeBytes);
+                    meta.setSha256(sha256);
+                    meta.setMinioPath(minioPath);
+                    meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                    fileRepo.save(meta);
+
+                    FileRefDto ref = new FileRefDto();
+                    ref.minioPath = minioPath;
+                    ref.mimeType = mimeType;
+                    ref.originalName = originalName;
+                    ref.sha256 = sha256;
+                    ref.sizeBytes = sizeBytes;
+                    fileRefs.add(ref);
+
+                    totalAttachmentBytes += sizeBytes;
+                }
+            }
+
+            if (extraFiles != null) {
+                for (MultipartFile f : extraFiles) {
+                    if (f == null || f.isEmpty()) continue;
+                    validator.validateFile(f);
+
+                    String sha256 = validator.computeSha256(f);
+                    String safeName = validator.sanitizeFilename(f.getOriginalFilename());
+                    String objectKey = gId + "/" + sha256 + "_" + safeName;
+                    String minioPath = fileStorage.putToMinio(objectKey, f);
+
+                    GenerationFile meta = new GenerationFile();
+                    meta.setFileId(ulid.nextULID());
+                    meta.setGenerationId(gId);
+                    meta.setOriginalName(f.getOriginalFilename());
+                    meta.setMimeType(f.getContentType());
+                    meta.setSizeBytes(f.getSize());
+                    meta.setSha256(sha256);
+                    meta.setMinioPath(minioPath);
+                    meta.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+                    fileRepo.save(meta);
+
+                    FileRefDto ref = new FileRefDto();
+                    ref.minioPath = minioPath;
+                    ref.mimeType = f.getContentType();
+                    ref.originalName = f.getOriginalFilename();
+                    ref.sha256 = sha256;
+                    ref.sizeBytes = f.getSize();
+                    fileRefs.add(ref);
+                }
+            }
+
+            g.setStatus(GenerationStatus.PROCESSING);
+            g.setUpdatedAt(Instant.now());
+            generationRepo.save(g);
+
+            FastApiGenerateRequest req = new FastApiGenerateRequest();
+            req.generationId = gId;
+            req.prompt = prompt;
+            req.mode = "full";
+            req.fileRefs = fileRefs;
+            req.domain = (domain != null && !domain.isBlank()) ? domain : null;
+            req.model = (model != null && !model.isBlank()) ? model : null;
+
+            final long started = System.currentTimeMillis();
+            final String[] completedResultHolder = { null };
+
+            String fastapiUrl = fastApiBaseUrl + "/internal/generate/stream";
+            String reqJson = mapper.writeValueAsString(req);
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(fastapiUrl).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "text/event-stream");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(30_000);
+            conn.setReadTimeout(660_000);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(reqJson.getBytes(StandardCharsets.UTF_8));
+            }
+
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data: "))
+                        continue;
+                    String json = line.substring(6).trim();
+                    if (json.isEmpty())
+                        continue;
+                    if (json.contains("\"type\":\"complete\"")) {
+                        try {
+                            Map<String, Object> eventMap = mapper.readValue(json, Map.class);
+                            Object resultObj = eventMap.get("result");
+                            if (resultObj instanceof Map) {
+                                Map<String, Object> resultMap = (Map<String, Object>) resultObj;
+                                resultMap.put("generationId", gId);
+                            }
+                            json = mapper.writeValueAsString(eventMap);
+                        } catch (Exception ignored) {
+                        }
+                        completedResultHolder[0] = json;
+                    }
+                    writer.print("data: " + json + "\n\n");
+                    writer.flush();
+                }
+            } finally {
+                conn.disconnect();
+            }
+
+            if (completedResultHolder[0] != null) {
+                try {
+                    Map<String, Object> wrapper = mapper.readValue(completedResultHolder[0], Map.class);
+                    Map<String, Object> result = (Map<String, Object>) wrapper.get("result");
+
+                    Object uiSpecRaw = result != null ? result.get("uiSpec") : null;
+                    Object codeBundleRaw = result != null ? result.get("codeBundle") : null;
+                    Object aiReportRaw = result != null ? result.get("aiReport") : null;
+
+                    UiSpecVersion spec = new UiSpecVersion();
+                    spec.setSpecVersionId(ulid.nextULID());
+                    spec.setGenerationId(gId);
+                    spec.setVersion(1);
+                    Map<String, Object> uiSpecMap = uiSpecRaw instanceof Map ? (Map<String, Object>) uiSpecRaw : Map.of();
+                    spec.setUiSpec(uiSpecMap);
+                    spec.setType(UiSpecVersion.Type.INITIAL);
+                    spec.setCreatedAt(Instant.now());
+                    uiSpecRepo.save(spec);
+
+                    CodeVersion cv = new CodeVersion();
+                    cv.setCodeVersionId(ulid.nextULID());
+                    cv.setGenerationId(gId);
+                    cv.setVersion(1);
+                    cv.setCreatedAt(Instant.now());
+                    List<FileEntry> entries = new ArrayList<>();
+                    if (codeBundleRaw instanceof Map) {
+                        Object filesObj = ((Map<?, ?>) codeBundleRaw).get("files");
+                        if (filesObj instanceof List) {
+                            for (Object fObj : (List<?>) filesObj) {
+                                if (fObj instanceof Map) {
+                                    Map<?, ?> fm = (Map<?, ?>) fObj;
+                                    entries.add(new FileEntry(
+                                            String.valueOf(fm.get("path")),
+                                            String.valueOf(fm.get("content"))));
+                                }
+                            }
+                        }
+                    }
+                    cv.setFiles(entries);
+                    codeRepo.save(cv);
+
+                    AiReport report = new AiReport();
+                    report.setReportId(ulid.nextULID());
+                    report.setGenerationId(gId);
+                    report.setVersion(1);
+                    report.setCreatedAt(Instant.now());
+                    if (aiReportRaw instanceof Map) {
+                        Map<?, ?> rmap = (Map<?, ?>) aiReportRaw;
+                        report.setScore(rmap.get("score") instanceof Number ? ((Number) rmap.get("score")).intValue() : 0);
+                        Object llmProviderObj = rmap.get("llm_provider");
+                        report.setLlmProvider(llmProviderObj != null ? String.valueOf(llmProviderObj) : "unknown");
+                        report.setRetriesCount(rmap.get("retries_count") instanceof Number ? ((Number) rmap.get("retries_count")).intValue() : 0);
+                        report.setBuildRetries(rmap.get("build_retries") instanceof Number ? ((Number) rmap.get("build_retries")).intValue() : 0);
+                        List<Map<String, Object>> issuesList = rmap.get("issues") instanceof List ? (List<Map<String, Object>>) rmap.get("issues") : List.of();
+                        report.setIssues(issuesList);
+                        List<String> sourcesUsed = rmap.get("sources_used") instanceof List ? (List<String>) rmap.get("sources_used") : List.of();
+                        report.setSourcesUsed(sourcesUsed);
+                        Map<String, Object> durations = rmap.get("durations") instanceof Map ? (Map<String, Object>) rmap.get("durations") : Map.of();
+                        report.setDurations(durations);
+                    } else {
+                        report.setScore(0);
+                        report.setIssues(List.of());
+                        report.setSourcesUsed(List.of());
+                        report.setLlmProvider("unknown");
+                        report.setDurations(Map.of());
+                        report.setRetriesCount(0);
+                    }
+                    reportRepo.save(report);
+
+                    g.setStatus(GenerationStatus.COMPLETED);
+                    g.setUpdatedAt(Instant.now());
+                    generationRepo.save(g);
+
+                    long durationMs = System.currentTimeMillis() - started;
+                    audit.recordEvent("GENERATION_COMPLETED", gId, sId, durationMs,
+                            Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", true, "source", "jira", "jiraIssueKeys", keys));
+                } catch (Exception ignored) {
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("createGenerationStreamFromJiraMulti failed for generationId={}: {}", generationId, e.getMessage(), e);
+            if (generationId != null) {
+                try {
+                    Generation failed = generationRepo.findById(generationId).orElse(null);
+                    if (failed != null) {
+                        failed.setStatus(GenerationStatus.FAILED);
+                        failed.setUpdatedAt(Instant.now());
+                        generationRepo.save(failed);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            try {
+                writer.print("data: {\"type\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}\n\n");
+                writer.flush();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private String buildJiraPrompt(JiraIssueDTO issue, String additionalPrompt) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Build a frontend UI based on this Jira ticket. Follow any attached mockups closely.\n\n");
+        sb.append("Jira Key: ").append(issue.key()).append("\n");
+        sb.append("Title: ").append(issue.summary()).append("\n\n");
+
+        if (issue.description() != null && !issue.description().isBlank()) {
+            sb.append("Description:\n").append(issue.description().trim()).append("\n\n");
+        }
+        if (issue.acceptanceCriteria() != null && !issue.acceptanceCriteria().isBlank()) {
+            sb.append("Acceptance Criteria:\n").append(issue.acceptanceCriteria().trim()).append("\n\n");
+        }
+        if (additionalPrompt != null && !additionalPrompt.isBlank()) {
+            sb.append("Additional instructions:\n").append(additionalPrompt.trim()).append("\n");
+        }
+        return sb.toString();
+    }
+
+    private String buildJiraPromptMulti(List<JiraIssueDTO> issues, String additionalPrompt) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Build ONE cohesive frontend UI that satisfies ALL of the following Jira tickets.\n");
+        sb.append("Follow any attached mockups closely (mockups may come from multiple tickets).\n");
+        sb.append("If tickets conflict, propose a sensible merged UX and keep the UI consistent.\n\n");
+
+        for (int i = 0; i < issues.size(); i++) {
+            JiraIssueDTO issue = issues.get(i);
+            sb.append("--- Ticket ").append(i + 1).append(" ---\n");
+            sb.append("Jira Key: ").append(issue.key()).append("\n");
+            sb.append("Title: ").append(issue.summary()).append("\n\n");
+
+            if (issue.description() != null && !issue.description().isBlank()) {
+                sb.append("Description:\n").append(issue.description().trim()).append("\n\n");
+            }
+            if (issue.acceptanceCriteria() != null && !issue.acceptanceCriteria().isBlank()) {
+                sb.append("Acceptance Criteria:\n").append(issue.acceptanceCriteria().trim()).append("\n\n");
+            }
+        }
+
+        if (additionalPrompt != null && !additionalPrompt.isBlank()) {
+            sb.append("Additional instructions:\n").append(additionalPrompt.trim()).append("\n");
+        }
+
+        return sb.toString();
     }
 
     public Generation getGeneration(String generationId) {

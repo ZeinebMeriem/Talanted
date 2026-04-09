@@ -6,7 +6,7 @@ spring:
     name: spring-bff
   mvc:
     async:
-      request-timeout: 660000  # 11 minutes — matches SseEmitter timeout
+      request-timeout: 660000 # 11 minutes — matches SseEmitter timeout
   data:
     mongodb:
       uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/ai_ui_generator}
@@ -36,6 +36,12 @@ app:
   keycloak:
     internal-url: ${KEYCLOAK_INTERNAL_URL:http://keycloak:8080}
     realm: ${KEYCLOAK_REALM:ai-ui}
+  jira:
+    base-url: ${JIRA_BASE_URL:}
+    email: ${JIRA_EMAIL:}
+    api-token: ${JIRA_API_TOKEN:}
+    timeout-seconds: ${JIRA_TIMEOUT_SECONDS:30}
+    frontend-labels: ${JIRA_FRONTEND_LABELS:ui,interface,ux}
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}

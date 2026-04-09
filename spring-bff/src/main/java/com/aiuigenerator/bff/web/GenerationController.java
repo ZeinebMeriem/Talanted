@@ -65,16 +65,25 @@ public class GenerationController {
      */
     @PostMapping(value = "/stream", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public void createStream(
-            @RequestParam("prompt") String prompt,
+            @RequestParam(name = "prompt", required = false) String prompt,
             @RequestParam(name = "files", required = false) List<MultipartFile> files,
             @RequestParam(name = "domain", required = false) String domain,
             @RequestParam(name = "model", required = false) String model,
+            @RequestParam(name = "jiraIssueKeys", required = false) List<String> jiraIssueKeys,
+            @RequestParam(name = "jiraIssueKey", required = false) String jiraIssueKey,
             JwtAuthenticationToken token,
             HttpServletResponse response) throws IOException {
 
-        String userId = (String) token.getToken().getClaims().get("sub");
-        log.info("POST /api/generations/stream: userId={}, prompt={}, filesCount={}, domain={}, model={}",
-                userId, prompt.substring(0, Math.min(50, prompt.length())),
+        String userId = "dev-user";
+        if (token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub != null) userId = String.valueOf(sub);
+        }
+
+        String safePrompt = prompt == null ? "" : prompt;
+        int jiraKeysCount = (jiraIssueKeys == null ? 0 : jiraIssueKeys.size());
+        log.info("POST /api/generations/stream: userId={}, jiraKeysCount={}, jiraIssueKey={}, promptLen={}, filesCount={}, domain={}, model={}",
+                userId, jiraKeysCount, jiraIssueKey, safePrompt.length(),
                 files == null ? 0 : files.size(), domain, model);
 
         // Set SSE headers — disable all buffering layers
@@ -88,7 +97,16 @@ public class GenerationController {
 
         PrintWriter writer = response.getWriter();
 
-        service.createGenerationStream(userId, prompt, files, domain, model, writer);
+        List<String> keys = (jiraIssueKeys != null) ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList() : List.of();
+        if (keys.isEmpty() && jiraIssueKey != null && !jiraIssueKey.isBlank()) {
+            keys = List.of(jiraIssueKey.trim());
+        }
+
+        if (!keys.isEmpty()) {
+            service.createGenerationStreamFromJiraMulti(userId, keys, safePrompt, files, domain, model, writer);
+        } else {
+            service.createGenerationStream(userId, safePrompt, files, domain, model, writer);
+        }
 
         // Ensure the response is fully committed
         if (!writer.checkError()) {
@@ -98,13 +116,31 @@ public class GenerationController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<GenerationCreateResponse> create(
-            @RequestParam("prompt") String prompt,
+            @RequestParam(name = "prompt", required = false) String prompt,
             @RequestParam(name = "files", required = false) List<MultipartFile> files,
             @RequestParam(name = "domain", required = false) String domain,
+            @RequestParam(name = "jiraIssueKeys", required = false) List<String> jiraIssueKeys,
+            @RequestParam(name = "jiraIssueKey", required = false) String jiraIssueKey,
             JwtAuthenticationToken token) {
 
-        String userId = (String) token.getToken().getClaims().get("sub");
-        GenerationCreateResponse out = service.createGeneration(userId, prompt, files, domain);
+        String userId = "dev-user";
+        if (token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub != null) userId = String.valueOf(sub);
+        }
+
+        String safePrompt = prompt == null ? "" : prompt;
+        List<String> keys = (jiraIssueKeys != null) ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList() : List.of();
+        if (keys.isEmpty() && jiraIssueKey != null && !jiraIssueKey.isBlank()) {
+            keys = List.of(jiraIssueKey.trim());
+        }
+
+        GenerationCreateResponse out;
+        if (!keys.isEmpty()) {
+            out = service.createGenerationFromJiraMulti(userId, keys, safePrompt, files, domain);
+        } else {
+            out = service.createGeneration(userId, safePrompt, files, domain);
+        }
         return ResponseEntity.status(201).body(out);
     }
 

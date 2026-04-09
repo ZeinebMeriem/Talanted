@@ -66,6 +66,61 @@ export type GenerationListItem = {
   updatedAt?: string
 }
 
+export type JiraIssue = {
+  key: string
+  summary: string
+  description?: string
+  acceptanceCriteria?: string
+  issueType?: string
+  status?: string
+  priority?: string
+  webUrl?: string
+  attachments?: { filename: string; mimeType: string; size: number; content: string }[]
+}
+
+export type JiraIssueListItem = {
+  key: string
+  summary: string
+  issueType?: string
+  status?: string
+  priority?: string
+  labels?: string[]
+  updated?: string
+  webUrl?: string
+}
+
+export async function getJiraIssue(issueKey: string, accessToken?: string): Promise<JiraIssue> {
+  const res = await fetch(`${BFF_BASE_URL}/api/jira/issues/${encodeURIComponent(issueKey)}`, {
+    headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return data as JiraIssue
+}
+
+export async function listJiraFrontendTasks(
+  urlOrProjectKey: string,
+  accessToken?: string,
+  opts?: { includeAll?: boolean },
+): Promise<JiraIssueListItem[]> {
+  const includeAll = opts?.includeAll ? '&includeAll=true' : ''
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/jira/frontend-tasks?url=${encodeURIComponent(urlOrProjectKey)}${includeAll}`,
+    {
+      headers: authHeaders(accessToken),
+    },
+  )
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return Array.isArray(data) ? (data as JiraIssueListItem[]) : []
+}
+
 export type AuditEventListItem = {
   eventId?: string
   generationId?: string
@@ -137,12 +192,21 @@ export async function* streamGeneration(
   accessToken?: string,
   domain?: string | null,
   model?: string,
+  jiraIssueKey?: string,
+  jiraIssueKeys?: string[],
 ): AsyncGenerator<SseEvent, void, unknown> {
   const form = new FormData()
   form.append('prompt', prompt)
   for (const f of files) form.append('files', f)
   if (domain) form.append('domain', domain)
   if (model) form.append('model', model)
+
+  const cleanKeys = (jiraIssueKeys || []).map((k) => (k || '').trim()).filter(Boolean)
+  if (cleanKeys.length) {
+    for (const k of cleanKeys) form.append('jiraIssueKeys', k)
+  } else if (jiraIssueKey) {
+    form.append('jiraIssueKey', jiraIssueKey)
+  }
 
   const url = `${BFF_BASE_URL}/api/generations/stream`
   console.error('🔴 streamGeneration: Fetching from URL:', url, 'with auth:', !!accessToken)
@@ -195,7 +259,14 @@ export async function* streamGeneration(
   }
 }
 
-export async function createGeneration(prompt: string, files: File[], accessToken?: string, domain?: string | null): Promise<unknown> {
+export async function createGeneration(
+  prompt: string,
+  files: File[],
+  accessToken?: string,
+  domain?: string | null,
+  jiraIssueKey?: string,
+  jiraIssueKeys?: string[],
+): Promise<unknown> {
   const form = new FormData()
   form.append('prompt', prompt)
   for (const f of files) {
@@ -203,6 +274,13 @@ export async function createGeneration(prompt: string, files: File[], accessToke
   }
   if (domain) {
     form.append('domain', domain)
+  }
+
+  const cleanKeys = (jiraIssueKeys || []).map((k) => (k || '').trim()).filter(Boolean)
+  if (cleanKeys.length) {
+    for (const k of cleanKeys) form.append('jiraIssueKeys', k)
+  } else if (jiraIssueKey) {
+    form.append('jiraIssueKey', jiraIssueKey)
   }
 
   // Avoid UI getting stuck forever if the request never returns (large PDFs, slow extraction/LLM, etc.).

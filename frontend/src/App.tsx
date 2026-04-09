@@ -1,6 +1,28 @@
 import { useState } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { AiEditor } from './AiEditor'
+import { JiraImportPage } from './JiraImportPage'
+
+// Custom hook that handles both auth and dev mode
+function useSafeAuth() {
+  try {
+    return useAuth()
+  } catch (e) {
+    // Dev mode: return mock auth context
+    return {
+      isLoading: false,
+      isAuthenticated: true,
+      user: {
+        profile: { sub: 'dev-user', email: 'dev@localhost' },
+        access_token: 'dev-token'
+      },
+      error: null,
+      signinRedirect: () => {},
+      signoutRedirect: () => Promise.resolve(),
+      removeUser: () => Promise.resolve()
+    } as any
+  }
+}
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Arvo:wght@400;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
@@ -301,7 +323,7 @@ const css = `
 `
 
 function LandingPage() {
-  const auth = useAuth()
+  const auth = useSafeAuth()
   const [tab, setTab] = useState<'signin' | 'signup'>('signin')
 
   const signInWithEmail = () => {
@@ -412,7 +434,7 @@ function LandingPage() {
 }
 
 export default function App() {
-  const auth = useAuth()
+  const auth = useSafeAuth()
 
   if (auth.isLoading) {
     return (
@@ -481,6 +503,11 @@ export default function App() {
       await auth.removeUser()
       window.location.assign('/')
     }
+  }
+
+  const path = window.location.pathname
+  if (path === '/jira' || path.startsWith('/jira/')) {
+    return <JiraImportPage accessToken={auth.user?.access_token} />
   }
 
   // Extract ?gen=... parameter if present (for loading forked projects)

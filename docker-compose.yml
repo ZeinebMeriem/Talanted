@@ -128,51 +128,28 @@ services:
       AI_OUTPUT_TARGET: ${AI_OUTPUT_TARGET:-react}
       AI_SPEC_BUILDER: ${AI_SPEC_BUILDER:-ollama}
       # ── Per-role provider selection (groq|gemini|openai|ollama) ──
-      PLANNER_PROVIDER: ${PLANNER_PROVIDER:-}
-      CODER_PROVIDER: ${CODER_PROVIDER:-}
+      # NO_LOCAL_MODEL=true => never fall back to Ollama
+      NO_LOCAL_MODEL: "true"
+      PLANNER_PROVIDER: gemini
+      CODER_PROVIDER: gemini
       PLANNER_MAX_TOKENS: ${PLANNER_MAX_TOKENS:-1200}
       CODER_MAX_TOKENS: ${CODER_MAX_TOKENS:-8192}
       EDIT_FILE_MOCK: ${EDIT_FILE_MOCK:-false}
-      # ── Groq ──
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
-      GROQ_PLANNER_MODEL: ${GROQ_PLANNER_MODEL:-}
-      GROQ_CODER_MODEL: ${GROQ_CODER_MODEL:-}
-      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
-      # ── Google Gemini ──
+      # ── Groq ── (disabled to avoid fallback)
+      # GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      # ── Google Gemini ── (PRIMARY - only one active)
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
       GEMINI_PLANNER_MODEL: ${GEMINI_PLANNER_MODEL:-}
       GEMINI_CODER_MODEL: ${GEMINI_CODER_MODEL:-}
-      # ── OpenRouter ──
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_PLANNER_MODEL: ${OPENROUTER_PLANNER_MODEL:-}
-      OPENROUTER_CODER_MODEL: ${OPENROUTER_CODER_MODEL:-}
-      # ── Anthropic Claude ──
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_CODER_MODEL: ${ANTHROPIC_CODER_MODEL:-claude-sonnet-4-6}
-      # ── OpenAI-compatible (generic) ──
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      OPENAI_PLANNER_MODEL: ${OPENAI_PLANNER_MODEL:-}
-      OPENAI_CODER_MODEL: ${OPENAI_CODER_MODEL:-}
-      # ── Local Ollama (fallback) ──
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
-      OLLAMA_CODER_MODEL: ${OLLAMA_CODER_MODEL:-qwen2.5-coder:latest}
-      OLLAMA_TIMEOUT_S: ${OLLAMA_TIMEOUT_S:-600}
-      OLLAMA_CONNECT_TIMEOUT_S: ${OLLAMA_CONNECT_TIMEOUT_S:-5}
-      # ── Cohere ──
-      COHERE_API_KEY: ${COHERE_API_KEY:-}
-      COHERE_MODEL: ${COHERE_MODEL:-command-a-03-2025}
-      # ── Mistral ──
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-small-latest}
-      MISTRAL_PLANNER_MODEL: ${MISTRAL_PLANNER_MODEL:-}
-      MISTRAL_CODER_MODEL: ${MISTRAL_CODER_MODEL:-}
-      MISTRAL_VISION_MODEL: ${MISTRAL_VISION_MODEL:-pixtral-12b-2409}
-      VISION_PROVIDER: ${VISION_PROVIDER:-}
+      # ── All other providers disabled ──
+      # OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # OLLAMA_BASE_URL: disabled
+      # COHERE_API_KEY: ${COHERE_API_KEY:-}
+      # MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       # ── NVIDIA NIM ──
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
       NVIDIA_MODEL: ${NVIDIA_MODEL:-deepseek-ai/deepseek-v3.2}
@@ -215,6 +192,13 @@ services:
       # Only needed when dev-mode is false:
       OAUTH_ISSUER: http://localhost:8083/realms/ai-ui
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
+      # Jira Integration
+      # Intentionally no default base URL — set JIRA_BASE_URL in your .env
+      JIRA_BASE_URL: ${JIRA_BASE_URL:-}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      # Labels to auto-detect "frontend" tasks to list from a board/project URL
+      JIRA_FRONTEND_LABELS: ${JIRA_FRONTEND_LABELS:-ui,interface,ux}
 
   frontend:
     build:
@@ -232,6 +216,9 @@ services:
       VITE_OIDC_AUTHORITY: http://localhost:8083/realms/ai-ui
       VITE_OIDC_CLIENT_ID: ai-ui-frontend
       VITE_OIDC_REDIRECT_URI: http://localhost:5173/auth/callback
+      # Windows + Docker bind mounts often miss FS events. Force polling so UI changes apply reliably.
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
     volumes:
       - ./frontend/src:/app/src
 

@@ -31,6 +31,12 @@ from .agents.entity_extractor_agent import EntityExtractorAgent
 logger = logging.getLogger(__name__)
 
 
+def _redact_error(e: object) -> str:
+    s = str(e) if e is not None else ""
+    # Redact Gemini API keys from any propagated httpx error strings.
+    return re.sub(r"(key=)[^&\s]+", r"\1REDACTED", s)
+
+
 class Orchestrator:
     """Agent 0 — orchestrateur (deterministe)."""
 
@@ -177,15 +183,15 @@ class Orchestrator:
                 except Exception as pe:
                     if "429" in str(pe) and attempt < 3:
                         wait = 10 * (2 ** attempt)  # exponential backoff: 10s, 20s, 40s
-                        logger.warning("Planner rate-limited, retrying in %ds (attempt %d/3): %s", wait, attempt + 1, pe)
+                        logger.warning("Planner rate-limited, retrying in %ds (attempt %d/3): %s", wait, attempt + 1, _redact_error(pe))
                         time.sleep(wait)
                     else:
-                        logger.error("Planner failed: %s", pe)
+                        logger.error("Planner failed: %s", _redact_error(pe))
                         raise
             llm_provider = f"{planner_type}:{self.planner.model}+{coder_type}:{self.llm_codegen.model}"
             pipeline.append(f"plan:{planner_type}:{self.planner.model}")
         except Exception as e:  # noqa: BLE001
-            llm_error = f"Planner: {type(e).__name__}: {e}"
+            llm_error = f"Planner: {type(e).__name__}: {_redact_error(e)}"
             logger.exception("Planner failed")
             llm_provider = f"{planner_type}:{self.planner.model}+{coder_type}:{self.llm_codegen.model}"
             pipeline.append(f"plan:{planner_type}:failed")
@@ -243,10 +249,10 @@ class Orchestrator:
                 except Exception as de:
                     if "429" in str(de) and attempt < 3:
                         wait = 10 * (2 ** attempt)  # exponential backoff: 10s, 20s, 40s
-                        logger.warning("DesignSystem rate-limited, retrying in %ds (attempt %d/4): %s", wait, attempt + 1, de)
+                        logger.warning("DesignSystem rate-limited, retrying in %ds (attempt %d/4): %s", wait, attempt + 1, _redact_error(de))
                         time.sleep(wait)
                     else:
-                        logger.error("DesignSystemAgent failed: %s", de)
+                        logger.error("DesignSystemAgent failed: %s", _redact_error(de))
                         raise
             pipeline.append("design_system")
             logger.info("DesignSystemAgent: generated %d token categories", len(design_tokens) if design_tokens else 0)
