@@ -46,10 +46,75 @@ class TedAssistant:
         self.llm = create_planner_provider()
 
     def get_suggestions(self, context: dict) -> list[TedSuggestion]:
-        """Generate smart suggestions based on current context."""
-        action = context.get('action', 'editing')
+        """Generate smart suggestions based on current context using LLM."""
         current_file = context.get('currentFile', '')
+        file_count = context.get('fileCount', 0)
+        action = context.get('action', 'editing')
 
+        context_info = []
+        if current_file:
+            context_info.append(f"Currently editing: {current_file}")
+        if file_count:
+            context_info.append(f"Project has {file_count} files")
+
+        context_str = "\n".join(context_info) if context_info else "General project development"
+
+        system_prompt = f"""You are TED, an AI assistant that generates helpful UI development suggestions.
+Generate 3 practical suggestions to improve the developer's code.
+
+Context:
+{context_str}
+Action: {action}
+
+Return suggestions as a JSON array with exactly 3 items. Each item must have:
+- id: unique identifier (lowercase, no spaces)
+- icon: single emoji
+- title: short title (max 40 chars)
+- description: brief description (max 60 chars)
+- action: the action text to perform (max 80 chars)
+
+Example format:
+```json
+[
+  {{"id": "perf-opt", "icon": "⚡", "title": "Optimize Performance", "description": "Add memoization to expensive components", "action": "Implement React.memo for performance gains"}},
+  {{"id": "test", "icon": "✅", "title": "Add Tests", "description": "Increase test coverage for reliability", "action": "Write unit tests for critical functions"}},
+  {{"id": "a11y", "icon": "♿", "title": "Improve Accessibility", "description": "Make UI accessible to all users", "action": "Add ARIA labels and keyboard navigation"}}
+]
+```
+
+Generate suggestions based on the current context. Be specific and actionable."""
+
+        try:
+            response_text = self.llm.chat(system_prompt, "Generate 3 helpful suggestions for this project as JSON.")
+
+            # Parse JSON response
+            import json
+            import re
+
+            # Extract JSON from response (handle markdown code blocks)
+            json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+            if json_match:
+                suggestions_data = json.loads(json_match.group())
+                suggestions = [
+                    TedSuggestion(
+                        id=s.get('id', f'sugg-{i}'),
+                        icon=s.get('icon', '💡'),
+                        title=s.get('title', 'Suggestion'),
+                        description=s.get('description', ''),
+                        action=s.get('action', '')
+                    )
+                    for i, s in enumerate(suggestions_data[:3])
+                ]
+                if suggestions:
+                    return suggestions
+        except Exception as e:
+            logger.warning(f"TED suggestions LLM error: {e} — falling back to static suggestions")
+
+        # Fallback to static suggestions if LLM fails
+        return self._get_static_suggestions(current_file, action)
+
+    def _get_static_suggestions(self, current_file: str, action: str) -> list[TedSuggestion]:
+        """Fallback static suggestions based on file context."""
         suggestions = []
 
         # Suggestion 1: Add validation
