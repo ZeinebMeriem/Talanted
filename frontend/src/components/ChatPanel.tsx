@@ -72,17 +72,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     try {
       const response = await editFile(selectedGenerationId, '', chatInput, selectedModel, accessToken)
 
-      const edits = response.edits?.map((e) => ({
-        file: e.file,
-        added: e.added_lines,
-        removed: e.removed_lines,
-      })) || []
+      const edits = response.filePath ? [{
+        file: response.filePath,
+        added: 0,
+        removed: 0,
+      }] : []
 
       setDiffEdits(edits)
 
       const aiMsg: ChatMsg = {
         role: 'ai',
-        text: response.message || 'Changes applied.',
+        text: response.buildOutput || 'Changes applied.',
         edits: edits.length > 0 ? edits : undefined,
       }
 

@@ -4,3 +4,5 @@ export { Preview, type ElementInfo, type ElementStyles, type StyleChange } from 
 export { VersionHistory } from './VersionHistory'
 export { HistoryPanel } from './HistoryPanel'
 export { AuditEventsPanel } from './AuditEventsPanel'
+export { PushGitLabModal, type PushGitLabModalProps } from './PushGitLabModal'
+export { TedChatBot } from './TedChatBot'

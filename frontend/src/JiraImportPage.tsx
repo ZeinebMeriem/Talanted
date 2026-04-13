@@ -109,7 +109,7 @@ export function JiraImportPage({
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', background: 'rgba(255,255,255,.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(84,128,186,.1)', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: '#5480ba' }}>📋 Import from Jira</div>
-        <a href='/?mode=create' style={{ color: '#5480ba', fontWeight: 700, textDecoration: 'none', transition: 'all 0.2s', fontSize: 13, padding: '8px 12px', borderRadius: 8, hover: 'background: rgba(84,128,186,.08)' }} onMouseEnter={(e) => { (e.target as HTMLAnchorElement).style.background = 'rgba(84,128,186,.08)' }} onMouseLeave={(e) => { (e.target as HTMLAnchorElement).style.background = 'transparent' }}>← Back to editor</a>
+        <a href='/?mode=create' style={{ color: '#5480ba', fontWeight: 700, textDecoration: 'none', transition: 'all 0.2s', fontSize: 13, padding: '8px 12px', borderRadius: 8 }} onMouseEnter={(e) => { (e.target as HTMLAnchorElement).style.background = 'rgba(84,128,186,.08)' }} onMouseLeave={(e) => { (e.target as HTMLAnchorElement).style.background = 'transparent' }}>← Back to editor</a>
       </div>
 
       <div style={{ padding: '32px 24px 40px 24px', maxWidth: 1260, margin: '0 auto' }}>

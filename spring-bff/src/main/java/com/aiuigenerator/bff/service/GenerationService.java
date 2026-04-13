@@ -532,7 +532,8 @@ public class GenerationService {
         String prompt = buildJiraPrompt(issue, additionalPrompt);
         validator.validatePrompt(prompt);
 
-        // Reuse existing flow by creating a fresh Generation and uploading Jira attachments
+        // Reuse existing flow by creating a fresh Generation and uploading Jira
+        // attachments
         long started = System.currentTimeMillis();
 
         String generationId = ulid.nextULID();
@@ -558,7 +559,8 @@ public class GenerationService {
         // Upload Jira attachments
         if (issue.attachments() != null) {
             for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
-                if (a == null || a.content() == null || a.content().isBlank()) continue;
+                if (a == null || a.content() == null || a.content().isBlank())
+                    continue;
 
                 byte[] bytes;
                 try {
@@ -602,7 +604,8 @@ public class GenerationService {
         // Upload any extra user files
         if (extraFiles != null) {
             for (MultipartFile f : extraFiles) {
-                if (f == null || f.isEmpty()) continue;
+                if (f == null || f.isEmpty())
+                    continue;
                 validator.validateFile(f);
 
                 String sha256 = validator.computeSha256(f);
@@ -757,7 +760,8 @@ public class GenerationService {
 
             if (issue.attachments() != null) {
                 for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
-                    if (a == null || a.content() == null || a.content().isBlank()) continue;
+                    if (a == null || a.content() == null || a.content().isBlank())
+                        continue;
 
                     byte[] bytes;
                     try {
@@ -800,7 +804,8 @@ public class GenerationService {
 
             if (extraFiles != null) {
                 for (MultipartFile f : extraFiles) {
-                    if (f == null || f.isEmpty()) continue;
+                    if (f == null || f.isEmpty())
+                        continue;
                     validator.validateFile(f);
 
                     String sha256 = validator.computeSha256(f);
@@ -900,7 +905,8 @@ public class GenerationService {
                     spec.setSpecVersionId(ulid.nextULID());
                     spec.setGenerationId(gId);
                     spec.setVersion(1);
-                    Map<String, Object> uiSpecMap = uiSpecRaw instanceof Map ? (Map<String, Object>) uiSpecRaw : Map.of();
+                    Map<String, Object> uiSpecMap = uiSpecRaw instanceof Map ? (Map<String, Object>) uiSpecRaw
+                            : Map.of();
                     spec.setUiSpec(uiSpecMap);
                     spec.setType(UiSpecVersion.Type.INITIAL);
                     spec.setCreatedAt(Instant.now());
@@ -935,16 +941,27 @@ public class GenerationService {
                     report.setCreatedAt(Instant.now());
                     if (aiReportRaw instanceof Map) {
                         Map<?, ?> rmap = (Map<?, ?>) aiReportRaw;
-                        report.setScore(rmap.get("score") instanceof Number ? ((Number) rmap.get("score")).intValue() : 0);
+                        report.setScore(
+                                rmap.get("score") instanceof Number ? ((Number) rmap.get("score")).intValue() : 0);
                         Object llmProviderObj = rmap.get("llm_provider");
                         report.setLlmProvider(llmProviderObj != null ? String.valueOf(llmProviderObj) : "unknown");
-                        report.setRetriesCount(rmap.get("retries_count") instanceof Number ? ((Number) rmap.get("retries_count")).intValue() : 0);
-                        report.setBuildRetries(rmap.get("build_retries") instanceof Number ? ((Number) rmap.get("build_retries")).intValue() : 0);
-                        List<Map<String, Object>> issues = rmap.get("issues") instanceof List ? (List<Map<String, Object>>) rmap.get("issues") : List.of();
+                        report.setRetriesCount(rmap.get("retries_count") instanceof Number
+                                ? ((Number) rmap.get("retries_count")).intValue()
+                                : 0);
+                        report.setBuildRetries(rmap.get("build_retries") instanceof Number
+                                ? ((Number) rmap.get("build_retries")).intValue()
+                                : 0);
+                        List<Map<String, Object>> issues = rmap.get("issues") instanceof List
+                                ? (List<Map<String, Object>>) rmap.get("issues")
+                                : List.of();
                         report.setIssues(issues);
-                        List<String> sourcesUsed = rmap.get("sources_used") instanceof List ? (List<String>) rmap.get("sources_used") : List.of();
+                        List<String> sourcesUsed = rmap.get("sources_used") instanceof List
+                                ? (List<String>) rmap.get("sources_used")
+                                : List.of();
                         report.setSourcesUsed(sourcesUsed);
-                        Map<String, Object> durations = rmap.get("durations") instanceof Map ? (Map<String, Object>) rmap.get("durations") : Map.of();
+                        Map<String, Object> durations = rmap.get("durations") instanceof Map
+                                ? (Map<String, Object>) rmap.get("durations")
+                                : Map.of();
                         report.setDurations(durations);
                     } else {
                         report.setScore(0);
@@ -962,7 +979,8 @@ public class GenerationService {
 
                     long durationMs = System.currentTimeMillis() - started;
                     audit.recordEvent("GENERATION_COMPLETED", gId, sId, durationMs,
-                            Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", true, "source", "jira"));
+                            Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", true, "source",
+                                    "jira"));
                 } catch (Exception ignored) {
                 }
             }
@@ -981,7 +999,8 @@ public class GenerationService {
                 }
             }
             try {
-                writer.print("data: {\"type\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}\n\n");
+                writer.print(
+                        "data: {\"type\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}\n\n");
                 writer.flush();
             } catch (Exception ignored) {
             }
@@ -995,11 +1014,12 @@ public class GenerationService {
             List<MultipartFile> extraFiles,
             String domain) {
 
-        List<String> keys = (jiraIssueKeys == null) ? List.of() : jiraIssueKeys.stream()
-                .filter(k -> k != null && !k.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList();
+        List<String> keys = (jiraIssueKeys == null) ? List.of()
+                : jiraIssueKeys.stream()
+                        .filter(k -> k != null && !k.isBlank())
+                        .map(String::trim)
+                        .distinct()
+                        .toList();
 
         if (keys.isEmpty()) {
             throw new IllegalArgumentException("jiraIssueKeys must not be empty");
@@ -1041,9 +1061,11 @@ public class GenerationService {
         final long totalCapBytes = 20L * 1024 * 1024; // 20MB safety cap
 
         for (JiraIssueDTO issue : issues) {
-            if (issue.attachments() == null) continue;
+            if (issue.attachments() == null)
+                continue;
             for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
-                if (a == null || a.content() == null || a.content().isBlank()) continue;
+                if (a == null || a.content() == null || a.content().isBlank())
+                    continue;
 
                 byte[] bytes;
                 try {
@@ -1094,7 +1116,8 @@ public class GenerationService {
         // Upload any extra user files
         if (extraFiles != null) {
             for (MultipartFile f : extraFiles) {
-                if (f == null || f.isEmpty()) continue;
+                if (f == null || f.isEmpty())
+                    continue;
                 validator.validateFile(f);
 
                 String sha256 = validator.computeSha256(f);
@@ -1189,7 +1212,8 @@ public class GenerationService {
 
         long durationMs = System.currentTimeMillis() - started;
         audit.recordEvent("GENERATION_COMPLETED", generationId, sessionId, durationMs,
-                Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", false, "source", "jira", "jiraIssueKeys", keys));
+                Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", false, "source", "jira",
+                        "jiraIssueKeys", keys));
 
         GenerationCreateResponse out = new GenerationCreateResponse();
         out.generationId = generationId;
@@ -1212,11 +1236,12 @@ public class GenerationService {
             String model,
             PrintWriter writer) {
 
-        List<String> keys = (jiraIssueKeys == null) ? List.of() : jiraIssueKeys.stream()
-                .filter(k -> k != null && !k.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList();
+        List<String> keys = (jiraIssueKeys == null) ? List.of()
+                : jiraIssueKeys.stream()
+                        .filter(k -> k != null && !k.isBlank())
+                        .map(String::trim)
+                        .distinct()
+                        .toList();
 
         if (keys.isEmpty()) {
             throw new IllegalArgumentException("jiraIssueKeys must not be empty");
@@ -1265,9 +1290,11 @@ public class GenerationService {
             final long totalCapBytes = 20L * 1024 * 1024; // 20MB safety cap
 
             for (JiraIssueDTO issue : issues) {
-                if (issue.attachments() == null) continue;
+                if (issue.attachments() == null)
+                    continue;
                 for (JiraIssueDTO.JiraAttachmentDTO a : issue.attachments()) {
-                    if (a == null || a.content() == null || a.content().isBlank()) continue;
+                    if (a == null || a.content() == null || a.content().isBlank())
+                        continue;
 
                     byte[] bytes;
                     try {
@@ -1317,7 +1344,8 @@ public class GenerationService {
 
             if (extraFiles != null) {
                 for (MultipartFile f : extraFiles) {
-                    if (f == null || f.isEmpty()) continue;
+                    if (f == null || f.isEmpty())
+                        continue;
                     validator.validateFile(f);
 
                     String sha256 = validator.computeSha256(f);
@@ -1417,7 +1445,8 @@ public class GenerationService {
                     spec.setSpecVersionId(ulid.nextULID());
                     spec.setGenerationId(gId);
                     spec.setVersion(1);
-                    Map<String, Object> uiSpecMap = uiSpecRaw instanceof Map ? (Map<String, Object>) uiSpecRaw : Map.of();
+                    Map<String, Object> uiSpecMap = uiSpecRaw instanceof Map ? (Map<String, Object>) uiSpecRaw
+                            : Map.of();
                     spec.setUiSpec(uiSpecMap);
                     spec.setType(UiSpecVersion.Type.INITIAL);
                     spec.setCreatedAt(Instant.now());
@@ -1452,16 +1481,27 @@ public class GenerationService {
                     report.setCreatedAt(Instant.now());
                     if (aiReportRaw instanceof Map) {
                         Map<?, ?> rmap = (Map<?, ?>) aiReportRaw;
-                        report.setScore(rmap.get("score") instanceof Number ? ((Number) rmap.get("score")).intValue() : 0);
+                        report.setScore(
+                                rmap.get("score") instanceof Number ? ((Number) rmap.get("score")).intValue() : 0);
                         Object llmProviderObj = rmap.get("llm_provider");
                         report.setLlmProvider(llmProviderObj != null ? String.valueOf(llmProviderObj) : "unknown");
-                        report.setRetriesCount(rmap.get("retries_count") instanceof Number ? ((Number) rmap.get("retries_count")).intValue() : 0);
-                        report.setBuildRetries(rmap.get("build_retries") instanceof Number ? ((Number) rmap.get("build_retries")).intValue() : 0);
-                        List<Map<String, Object>> issuesList = rmap.get("issues") instanceof List ? (List<Map<String, Object>>) rmap.get("issues") : List.of();
+                        report.setRetriesCount(rmap.get("retries_count") instanceof Number
+                                ? ((Number) rmap.get("retries_count")).intValue()
+                                : 0);
+                        report.setBuildRetries(rmap.get("build_retries") instanceof Number
+                                ? ((Number) rmap.get("build_retries")).intValue()
+                                : 0);
+                        List<Map<String, Object>> issuesList = rmap.get("issues") instanceof List
+                                ? (List<Map<String, Object>>) rmap.get("issues")
+                                : List.of();
                         report.setIssues(issuesList);
-                        List<String> sourcesUsed = rmap.get("sources_used") instanceof List ? (List<String>) rmap.get("sources_used") : List.of();
+                        List<String> sourcesUsed = rmap.get("sources_used") instanceof List
+                                ? (List<String>) rmap.get("sources_used")
+                                : List.of();
                         report.setSourcesUsed(sourcesUsed);
-                        Map<String, Object> durations = rmap.get("durations") instanceof Map ? (Map<String, Object>) rmap.get("durations") : Map.of();
+                        Map<String, Object> durations = rmap.get("durations") instanceof Map
+                                ? (Map<String, Object>) rmap.get("durations")
+                                : Map.of();
                         report.setDurations(durations);
                     } else {
                         report.setScore(0);
@@ -1479,13 +1519,15 @@ public class GenerationService {
 
                     long durationMs = System.currentTimeMillis() - started;
                     audit.recordEvent("GENERATION_COMPLETED", gId, sId, durationMs,
-                            Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", true, "source", "jira", "jiraIssueKeys", keys));
+                            Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", true, "source",
+                                    "jira", "jiraIssueKeys", keys));
                 } catch (Exception ignored) {
                 }
             }
 
         } catch (Exception e) {
-            log.error("createGenerationStreamFromJiraMulti failed for generationId={}: {}", generationId, e.getMessage(), e);
+            log.error("createGenerationStreamFromJiraMulti failed for generationId={}: {}", generationId,
+                    e.getMessage(), e);
             if (generationId != null) {
                 try {
                     Generation failed = generationRepo.findById(generationId).orElse(null);
@@ -1498,7 +1540,8 @@ public class GenerationService {
                 }
             }
             try {
-                writer.print("data: {\"type\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}\n\n");
+                writer.print(
+                        "data: {\"type\":\"error\",\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}\n\n");
                 writer.flush();
             } catch (Exception ignored) {
             }

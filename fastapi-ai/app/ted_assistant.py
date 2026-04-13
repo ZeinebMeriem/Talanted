@@ -1,0 +1,144 @@
+"""TED Assistant - Context-aware AI helper for UI generation."""
+
+import logging
+from typing import Optional
+from fastapi import APIRouter, Request
+from pydantic import BaseModel
+
+from .pipeline.llm_provider import create_planner_provider
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/ted", tags=["ted"])
+
+
+class TedContext(BaseModel):
+    generationId: Optional[str] = None
+    currentFile: Optional[str] = None
+    editedLines: Optional[int] = None
+    action: Optional[str] = None
+    fileCount: Optional[int] = 0
+    userMessage: Optional[str] = None
+
+
+class TedChatRequest(BaseModel):
+    message: str
+    context: dict = {}
+
+
+class TedSuggestion(BaseModel):
+    id: str
+    title: str
+    description: str
+    icon: str
+    action: str
+
+
+class TedChatResponse(BaseModel):
+    response: str
+    suggestions: list[TedSuggestion] = []
+    contextUsed: list[str] = []
+
+
+class TedAssistant:
+    """TED - The UI Generation Assistant."""
+
+    def __init__(self):
+        self.llm = create_planner_provider()
+
+    def get_suggestions(self, context: dict) -> list[TedSuggestion]:
+        """Generate smart suggestions based on current context."""
+        action = context.get('action', 'editing')
+        current_file = context.get('currentFile', '')
+
+        suggestions = []
+
+        # Suggestion 1: Add validation
+        if 'form' in current_file.lower() or 'input' in current_file.lower():
+            suggestions.append(TedSuggestion(
+                id='form-validation',
+                title='Add Form Validation',
+                description='Validate user input before submission',
+                icon='✅',
+                action='Add React form validation with error messages for better UX',
+            ))
+
+        # Suggestion 2: Add error handling
+        if action == 'editing':
+            suggestions.append(TedSuggestion(
+                id='error-handling',
+                title='Add Error Boundaries',
+                description='Catch and handle React errors gracefully',
+                icon='🛡️',
+                action='Create an Error Boundary component to handle runtime errors',
+            ))
+
+        # Suggestion 3: Improve accessibility
+        suggestions.append(TedSuggestion(
+            id='a11y',
+            title='Improve Accessibility',
+            description='Add ARIA labels and semantic HTML',
+            icon='♿',
+            action='Add aria-labels and keyboard navigation support',
+        ))
+
+        return suggestions[:3]
+
+    def chat(self, message: str, context: dict) -> TedChatResponse:
+        """Get a response from TED based on user message and context."""
+        current_file = context.get('currentFile', '')
+        file_count = context.get('fileCount', 0)
+
+        context_info = []
+        if current_file:
+            context_info.append(f"Currently editing: {current_file}")
+        if file_count:
+            context_info.append(f"Project has {file_count} files")
+
+        context_str = "\n".join(context_info) if context_info else "General question"
+
+        system_prompt = f"""You are TED, a friendly AI assistant helping developers build amazing UIs.
+
+Your personality:
+- Helpful and encouraging
+- Brief responses (2-3 sentences max)
+- Use emojis to be engaging
+- Give actionable, practical advice
+
+Context:
+{context_str}
+"""
+
+        user_prompt = f"User asks: {message}\n\nGive a helpful, brief response with one practical tip."
+
+        try:
+            response_text = self.llm.chat(system_prompt, user_prompt)
+            suggestions = self.get_suggestions(context)
+
+            return TedChatResponse(
+                response=response_text,
+                suggestions=suggestions,
+                contextUsed=context_info,
+            )
+        except Exception as e:
+            logger.error(f"TED chat error: {e}")
+            return TedChatResponse(
+                response="I'm here to help! What would you like to know about your project? 🚀",
+                suggestions=self.get_suggestions(context),
+                contextUsed=[],
+            )
+
+
+# Global TED instance
+ted = TedAssistant()
+
+
+@router.post("/chat", response_model=TedChatResponse)
+async def ted_chat(request: TedChatRequest) -> TedChatResponse:
+    """Chat with TED - get responses and suggestions."""
+    return ted.chat(request.message, request.context)
+
+
+@router.post("/suggestions", response_model=list[TedSuggestion])
+async def ted_suggestions(context: dict) -> list[TedSuggestion]:
+    """Get smart suggestions based on current context."""
+    return ted.get_suggestions(context)

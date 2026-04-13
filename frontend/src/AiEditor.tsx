@@ -22,6 +22,7 @@ import {
   rollbackGeneration,
   setAdminUserEnabled,
   getChatHistory,
+  postGenerationPushGitlab,
   type AdminStats,
   type AdminUser,
   type AuditEventListItem,
@@ -33,8 +34,7 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, HistoryPanel, AuditEventsPanel, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
-
+import { ChatPanel, CodeViewer, Preview, VersionHistory, HistoryPanel, AuditEventsPanel, PushGitLabModal, TedChatBot, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
 type Framework =
   | 'HTML/CSS'
@@ -42,7 +42,7 @@ type Framework =
 
 type CenterTab = 'preview' | 'code' | 'terminal'
 
-type RightTab = 'chat' | 'console' | 'logs'
+type RightTab = 'chat' | 'console' | 'logs' | 'versions'
 
 
 type CodeFile = { path: string; content: string }
@@ -137,6 +137,11 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [dragOver, setDragOver] = useState(false)
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('gemini')
+
+  // TED Chatbot state
+  const [isTedOpen, setIsTedOpen] = useState(false)
+  const [currentEditingFile, setCurrentEditingFile] = useState<string | null>(null)
+  const lastEditTime = useRef<number>(0)
 
   // Auto-detect domain from prompt keywords (mirrors Python detect_domain())
   const autoDetectedDomain = useMemo(() => {
@@ -239,6 +244,12 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [versions, setVersions] = useState<GenerationVersionsResponse | null>(null)
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionsError, setVersionsError] = useState<string | null>(null)
+
+  // GitLab push modal
+  const [isPushGitLabModalOpen, setIsPushGitLabModalOpen] = useState(false)
+  const [isGitLabPushLoading, setIsGitLabPushLoading] = useState(false)
+  const [gitLabPushError, setGitLabPushError] = useState<string | null>(null)
+  const [gitLabPushSuccess, setGitLabPushSuccess] = useState<{ projectUrl: string; commitHash: string } | null>(null)
 
   // Handle element selection from inspect mode
   const handleElementSelected = useCallback((info: ElementInfo) => {
@@ -362,6 +373,43 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       }
     },
     [accessToken, loadAudit, loadHistory, loadVersions],
+  )
+
+  const handlePushGitLab = useCallback(
+    async (params: {
+      gitlabUrl: string
+      projectPath: string
+      token: string
+      branch: string
+      commitMessage: string
+      autoCreate: boolean
+    }) => {
+      if (!apiResult?.generationId) return
+
+      try {
+        setGitLabPushError(null)
+        setIsGitLabPushLoading(true)
+        const response = await postGenerationPushGitlab(apiResult.generationId, params, accessToken)
+
+        if (response.success) {
+          setGitLabPushSuccess({
+            projectUrl: response.projectUrl || '',
+            commitHash: response.commitHash || '',
+          })
+          // Show success for 5 seconds then hide
+          setTimeout(() => {
+            setGitLabPushSuccess(null)
+          }, 5000)
+        } else {
+          setGitLabPushError(response.message || 'Push failed')
+        }
+      } catch (e: any) {
+        setGitLabPushError(e?.message ?? 'Failed to push to GitLab')
+      } finally {
+        setIsGitLabPushLoading(false)
+      }
+    },
+    [apiResult?.generationId, accessToken],
   )
 
   const loadProfile = useCallback(async () => {
@@ -685,21 +733,25 @@ document.addEventListener('click', function(e) {
     return () => window.removeEventListener('keydown', handleKey)
   }, [inspectMode])
 
+  const [userScale, setUserScale] = useState<number | null>(null)
+
   // Auto-scale preview like Lovable: observe container width and scale to fit 1280px
   useEffect(() => {
     const el = previewContainerRef.current
     if (!el) return
     const obs = new ResizeObserver(entries => {
+      if (userScale !== null) return // don't auto-scale if user manually zoomed
       const width = entries[0].contentRect.width
-      if (width > 0) setPreviewScale(width / 1280)
+      // Scale to fit visually, but cap it so it doesn't get ridiculously small or too large
+      if (width > 0) setPreviewScale(Math.min(1.0, Math.max(0.6, width / 1280)))
     })
     obs.observe(el)
     return () => obs.disconnect()
-  }, [])
+  }, [userScale])
 
   // Derived — always in sync with apiResult, no separate state needed
   const builtProjectUrl = apiResult?.generationId
-    ? `/preview/${apiResult.generationId}/dist/index.html`
+    ? `http://localhost:8000/projects/${apiResult.generationId}/dist/index.html`
     : null
 
   // Debug logging
@@ -2191,6 +2243,41 @@ document.addEventListener('click', function(e) {
         <span className="mono" style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>
           localhost:5173
         </span>
+
+        {/* TED Button */}
+        <button
+          onClick={() => setIsTedOpen(true)}
+          style={{
+            padding: '8px 16px',
+            marginLeft: 12,
+            borderRadius: 10,
+            border: '1px solid #dbeafe',
+            background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            color: '#3b82f6',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all .25s',
+            boxShadow: '0 1px 2px rgba(59,130,246,.08)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.transform = 'translateY(-1px)'
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(59,130,246,.15)'
+            e.currentTarget.style.borderColor = '#93c5fd'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = 'none'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(59,130,246,.08)'
+            e.currentTarget.style.borderColor = '#dbeafe'
+          }}
+          type="button"
+          title="Open TED Assistant"
+        >
+          🤖 TED
+        </button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -2285,7 +2372,10 @@ document.addEventListener('click', function(e) {
                   background: previewScale <= 0.3 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
                   border: '1px solid #e2e8f0', color: previewScale <= 0.3 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
                 }}
-                onClick={() => setPreviewScale(s => Math.max(0.3, s - 0.1))}
+                onClick={() => {
+                  setPreviewScale(s => Math.max(0.3, s - 0.1));
+                  setUserScale(Math.max(0.3, previewScale - 0.1));
+                }}
                 disabled={previewScale <= 0.3}
                 title="Zoom out"
                 type="button"
@@ -2304,7 +2394,10 @@ document.addEventListener('click', function(e) {
                   background: previewScale >= 1.5 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
                   border: '1px solid #e2e8f0', color: previewScale >= 1.5 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
                 }}
-                onClick={() => setPreviewScale(s => Math.min(1.5, s + 0.1))}
+                onClick={() => {
+                  setPreviewScale(s => Math.min(1.5, s + 0.1));
+                  setUserScale(Math.min(1.5, previewScale + 0.1));
+                }}
                 disabled={previewScale >= 1.5}
                 title="Zoom in"
                 type="button"
@@ -2402,6 +2495,44 @@ document.addEventListener('click', function(e) {
                 onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(37,99,235,.15)' }}
               >
                 📋 FORK
+              </button>
+            )}
+
+            {apiResult?.generationId && (
+              <button
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                  background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)', border: '1px solid #f472b6', color: '#db2777',
+                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: '0 2px 6px rgba(219,39,119,.15)'
+                }}
+                onClick={() => setIsPushGitLabModalOpen(true)}
+                title="Push code to GitLab repository"
+                type="button"
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(219,39,119,.25)' }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(219,39,119,.15)' }}
+              >
+                📤 GITLAB
+              </button>
+            )}
+
+            {apiResult?.generationId && (
+              <button
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                  background: 'linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%)', border: '1px solid #a5b4fc', color: '#4f46e5',
+                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: '0 2px 6px rgba(79,70,229,.15)'
+                }}
+                onClick={() => setIsTedOpen(true)}
+                title="Open TED AI Assistant"
+                type="button"
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(79,70,229,.25)' }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(79,70,229,.15)' }}
+              >
+                🤖 TED
               </button>
             )}
           </div>
@@ -2510,7 +2641,7 @@ document.addEventListener('click', function(e) {
               setDiffVisible={setDiffVisible}
               diffEdits={diffEdits}
               setDiffEdits={setDiffEdits}
-              accessToken={accessToken}
+              accessToken={accessToken || ''}
               selectedModel={selectedModel}
               onFileUpdated={(newMessages, edits) => {
                 setChatMessages(newMessages)
@@ -2577,6 +2708,77 @@ document.addEventListener('click', function(e) {
           )}
         </div>
       </div>
+
+      <PushGitLabModal
+        isOpen={isPushGitLabModalOpen}
+        onClose={() => setIsPushGitLabModalOpen(false)}
+        onPush={handlePushGitLab}
+        isLoading={isGitLabPushLoading}
+      />
+
+      {/* TED Chatbot */}
+      <TedChatBot
+        isOpen={isTedOpen}
+        onClose={() => setIsTedOpen(false)}
+        accessToken={accessToken}
+        generationId={selectedGenerationId || undefined}
+        currentFile={currentEditingFile || undefined}
+        fileCount={apiResult?.codeBundle?.files?.length ?? 0}
+      />
+
+      {gitLabPushSuccess && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            backgroundColor: '#dcfce7',
+            border: '1px solid #86efac',
+            color: '#166534',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            zIndex: 20000,
+            maxWidth: '400px',
+            fontSize: '14px',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>✅ Push Successful</div>
+          <div style={{ fontSize: '13px', marginBottom: '8px' }}>
+            <a
+              href={gitLabPushSuccess.projectUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: '#15803d', textDecoration: 'underline' }}
+            >
+              View on GitLab
+            </a>
+          </div>
+          <div style={{ fontSize: '12px', color: '#3f6319' }}>
+            Commit: <code>{gitLabPushSuccess.commitHash?.substring(0, 7)}</code>
+          </div>
+        </div>
+      )}
+
+      {gitLabPushError && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            backgroundColor: '#fee2e2',
+            border: '1px solid #fecaca',
+            color: '#991b1b',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            zIndex: 20000,
+            maxWidth: '400px',
+            fontSize: '14px',
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>❌ Push Failed</div>
+          <div style={{ fontSize: '13px', marginTop: '4px' }}>{gitLabPushError}</div>
+        </div>
+      )}
 
     </div>
   )

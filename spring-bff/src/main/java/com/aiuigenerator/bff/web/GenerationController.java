@@ -77,12 +77,14 @@ public class GenerationController {
         String userId = "dev-user";
         if (token != null && token.getToken() != null) {
             Object sub = token.getToken().getClaims().get("sub");
-            if (sub != null) userId = String.valueOf(sub);
+            if (sub != null)
+                userId = String.valueOf(sub);
         }
 
         String safePrompt = prompt == null ? "" : prompt;
         int jiraKeysCount = (jiraIssueKeys == null ? 0 : jiraIssueKeys.size());
-        log.info("POST /api/generations/stream: userId={}, jiraKeysCount={}, jiraIssueKey={}, promptLen={}, filesCount={}, domain={}, model={}",
+        log.info(
+                "POST /api/generations/stream: userId={}, jiraKeysCount={}, jiraIssueKey={}, promptLen={}, filesCount={}, domain={}, model={}",
                 userId, jiraKeysCount, jiraIssueKey, safePrompt.length(),
                 files == null ? 0 : files.size(), domain, model);
 
@@ -97,7 +99,9 @@ public class GenerationController {
 
         PrintWriter writer = response.getWriter();
 
-        List<String> keys = (jiraIssueKeys != null) ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList() : List.of();
+        List<String> keys = (jiraIssueKeys != null)
+                ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList()
+                : List.of();
         if (keys.isEmpty() && jiraIssueKey != null && !jiraIssueKey.isBlank()) {
             keys = List.of(jiraIssueKey.trim());
         }
@@ -126,11 +130,14 @@ public class GenerationController {
         String userId = "dev-user";
         if (token != null && token.getToken() != null) {
             Object sub = token.getToken().getClaims().get("sub");
-            if (sub != null) userId = String.valueOf(sub);
+            if (sub != null)
+                userId = String.valueOf(sub);
         }
 
         String safePrompt = prompt == null ? "" : prompt;
-        List<String> keys = (jiraIssueKeys != null) ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList() : List.of();
+        List<String> keys = (jiraIssueKeys != null)
+                ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList()
+                : List.of();
         if (keys.isEmpty() && jiraIssueKey != null && !jiraIssueKey.isBlank()) {
             keys = List.of(jiraIssueKey.trim());
         }

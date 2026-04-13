@@ -584,3 +584,142 @@ export async function duplicateGeneration(
   return (typeof data === 'object' && data !== null ? (data as DuplicateResponse) : {})
 }
 
+// ─── GitLab Push types ──────────────────────────────────────────────────
+
+export type PushToGitLabRequest = {
+  gitlabUrl: string
+  projectPath: string
+  token: string
+  branch: string
+  commitMessage: string
+  autoCreate: boolean
+}
+
+export type PushToGitLabResponse = {
+  success: boolean
+  projectUrl?: string
+  branch?: string
+  commitHash?: string
+  message: string
+}
+
+export async function postGenerationPushGitlab(
+  generationId: string,
+  request: PushToGitLabRequest,
+  accessToken?: string,
+): Promise<PushToGitLabResponse> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/push-gitlab`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+      body: JSON.stringify(request),
+    },
+  )
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+
+  return (typeof data === 'object' && data !== null ? (data as PushToGitLabResponse) : { success: false, message: 'Unknown error' })
+}
+
+// ══════════════════════════════════════════════════════════════
+// TED CHATBOT API
+// ══════════════════════════════════════════════════════════════
+
+export type TedContext = {
+  generationId?: string
+  currentFile?: string
+  editedLines?: number
+  action?: 'editing' | 'previewing' | 'testing' | 'uploading'
+  lastChange?: string
+  fileCount?: number
+  totalLines?: number
+  userMessage?: string
+}
+
+export type TedMessage = {
+  id: string
+  type: 'user' | 'bot'
+  text: string
+  timestamp: Date
+  suggestion?: string
+}
+
+export type TedSuggestion = {
+  id: string
+  title: string
+  description: string
+  icon: string
+  action: string
+}
+
+export type TedChatResponse = {
+  response: string
+  suggestions?: TedSuggestion[]
+  contextUsed?: string[]
+}
+
+/**
+ * Send a message to TED and get a response
+ */
+export async function tedSendMessage(
+  message: string,
+  context?: TedContext,
+  accessToken?: string,
+): Promise<TedChatResponse> {
+  const res = await fetch(`${BFF_BASE_URL}/api/ted/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(accessToken),
+    },
+    body: JSON.stringify({
+      message,
+      context: context || {},
+    }),
+  })
+
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+
+  return (typeof data === 'object' && data !== null
+    ? (data as TedChatResponse)
+    : { response: 'Sorry, I could not process that.', suggestions: [] })
+}
+
+/**
+ * Get smart suggestions based on current context
+ */
+export async function tedGetSuggestions(
+  context: TedContext,
+  accessToken?: string,
+): Promise<TedSuggestion[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/ted/suggestions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(accessToken),
+    },
+    body: JSON.stringify(context),
+  })
+
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    return []
+  }
+
+  return Array.isArray(data) ? (data as TedSuggestion[]) : []
+}
+

@@ -129,16 +129,20 @@ services:
       AI_SPEC_BUILDER: ${AI_SPEC_BUILDER:-ollama}
       # ── Per-role provider selection (groq|gemini|openai|ollama) ──
       # NO_LOCAL_MODEL=true => never fall back to Ollama
-      NO_LOCAL_MODEL: "true"
-      PLANNER_PROVIDER: gemini
-      CODER_PROVIDER: gemini
+      NO_LOCAL_MODEL: ${NO_LOCAL_MODEL:-false}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:cloud}
+      OLLAMA_CODER_MODEL: ${OLLAMA_CODER_MODEL:-qwen3.5:cloud}
+      PLANNER_PROVIDER: ${PLANNER_PROVIDER:-groq}
+      CODER_PROVIDER: ${CODER_PROVIDER:-groq}
       PLANNER_MAX_TOKENS: ${PLANNER_MAX_TOKENS:-1200}
       CODER_MAX_TOKENS: ${CODER_MAX_TOKENS:-8192}
       EDIT_FILE_MOCK: ${EDIT_FILE_MOCK:-false}
-      # ── Groq ── (disabled to avoid fallback)
-      # GROQ_API_KEY: ${GROQ_API_KEY:-}
-      # GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
-      # ── Google Gemini ── (PRIMARY - only one active)
+      # ── Groq ── (ACTIVE - fast, free 30 RPM)
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_PLANNER_MODEL: ${GROQ_PLANNER_MODEL:-llama-3.3-70b-versatile}
+      GROQ_CODER_MODEL: ${GROQ_CODER_MODEL:-llama-3.3-70b-versatile}
+      # ── Google Gemini ── (fallback only)
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
       GEMINI_PLANNER_MODEL: ${GEMINI_PLANNER_MODEL:-}

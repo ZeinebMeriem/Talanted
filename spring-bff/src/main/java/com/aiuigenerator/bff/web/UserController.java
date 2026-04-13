@@ -65,7 +65,7 @@ public class UserController {
         if (token == null) {
             long total = generationRepo.count();
             long completed = generationRepo.countByStatus(com.aiuigenerator.bff.domain.GenerationStatus.COMPLETED);
-            
+
             Map<String, Object> result = new HashMap<>();
             result.put("totalGenerations", total);
             result.put("completedGenerations", completed);
@@ -75,7 +75,8 @@ public class UserController {
 
         String userId = (String) token.getToken().getClaims().get("sub");
         long total = generationRepo.countByUserId(userId);
-        long completed = generationRepo.countByUserIdAndStatus(userId, com.aiuigenerator.bff.domain.GenerationStatus.COMPLETED);
+        long completed = generationRepo.countByUserIdAndStatus(userId,
+                com.aiuigenerator.bff.domain.GenerationStatus.COMPLETED);
 
         Map<String, Object> result = new HashMap<>();
         result.put("totalGenerations", total);
