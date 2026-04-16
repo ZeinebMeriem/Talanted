@@ -54,6 +54,12 @@ Frontend (React)  →  Spring BFF (Java)  →  FastAPI AI (Python)
 - **User Registration** — Self sign-up with email verification (Gmail SMTP)
 - **Enterprise Auth** — Keycloak 25 OAuth2/OIDC with JWT validation, RBAC roles
 
+### Integrations
+
+- **TED Chatbot** — AI assistant that understands your entire project structure and provides context-aware coding suggestions
+- **GitLab Integration** — Push generated projects directly to GitLab (gitlab.com or self-hosted)
+- **Jira Integration** — Import user stories from Jira boards and convert them to UI specs
+
 ---
 
 ## Tech Stack
@@ -284,6 +290,122 @@ Every successful chat edit creates a new `CodeVersion` in MongoDB containing a s
 
 ---
 
-## License
+## Development Setup
+
+### Local Development
+
+```bash
+# 1. Install dependencies
+cd frontend && npm install
+cd ../spring-bff && mvn clean install
+cd ../fastapi-ai && pip install -r requirements.txt
+
+# 2. Start services
+docker compose up -d mongo keycloak minio
+
+# 3. Run services locally (optional, for faster iteration)
+# In separate terminals:
+# Terminal 1: fastapi-ai
+cd fastapi-ai && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2: frontend
+cd frontend && npm run dev
+
+# Terminal 3: spring-bff
+cd spring-bff && mvn spring-boot:run
+```
+
+### File Structure for Development
+
+- **Frontend Changes**: `frontend/src/` — Changes hot-reload with Vite
+- **Backend Changes**: `spring-bff/src/main/java/` — Rebuild: `mvn compile`
+- **AI Pipeline**: `fastapi-ai/app/pipeline/` — Restart uvicorn for changes
+
+### Key Files to Modify
+
+- **Add a new API endpoint**: `spring-bff/src/main/java/com/aiuigenerator/bff/web/`
+- **Change UI layout**: `frontend/src/App.tsx` or `AiEditor.tsx`
+- **Modify code generation**: `fastapi-ai/app/pipeline/agents/planner_agent.py`
+- **Add a new integration**: `spring-bff/src/main/java/com/aiuigenerator/bff/service/`
+
+---
+
+## Troubleshooting
+
+### Frontend doesn't launch in Docker
+
+**Problem**: Container exits or shows ECONNREFUSED
+**Solution**:
+```bash
+# Check logs
+docker logs ai-ui-frontend
+
+# Rebuild from scratch
+docker compose down
+docker compose up -d --build frontend
+```
+
+### FastAPI health check failing
+
+**Problem**: `ai-ui-fastapi` marked as unhealthy
+**Solution**:
+```bash
+# Check if Groq/Gemini API key is set
+docker compose exec fastapi-ai env | grep GROQ_API_KEY
+
+# View logs
+docker logs ai-ui-fastapi
+```
+
+### Spring BFF can't reach FastAPI
+
+**Problem**: Generation fails with "Cannot connect to fastapi-ai"
+**Solution**:
+```bash
+# Verify both services are running
+docker ps | grep ai-ui
+
+# Check connectivity inside Spring container
+docker exec ai-ui-spring-bff curl http://fastapi-ai:8000/health
+```
+
+### MongoDB full or corrupted
+
+**Problem**: Generations not saved to database
+**Solution**:
+```bash
+# Clear all projects from MongoDB
+docker exec ai-ui-mongo mongosh ai_ui_generator --eval "db.generations.deleteMany({})"
+
+# Or reset MongoDB volume
+docker compose down -v
+docker compose up -d mongo
+```
+
+### Keycloak login not working
+
+**Problem**: "Invalid client" or redirect loop
+**Solution**:
+```bash
+# Re-import realm configuration
+docker compose exec -T keycloak bash -c "
+  wget -q -O /tmp/realm.json https://.../realm-ai-ui.json
+  /opt/keycloak/bin/kc.sh import --dir /opt/keycloak/data/import
+"
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. **Fork the repository** and create a feature branch: `git checkout -b feature/your-feature`
+2. **Make changes** following the existing code style
+3. **Test locally** with the development setup above
+4. **Commit with clear messages**: `git commit -m "feat: add TED chatbot integration"`
+5. **Push and create a Pull Request**
+
+---
 
 PFE Project — Talan © 2026

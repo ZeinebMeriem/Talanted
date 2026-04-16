@@ -36,7 +36,8 @@ Desktop.ini
 .DS_Store
 
 # --- Editors ---
-.vscode/
+.vscode/settings.json
+.vscode/extensions.json
 
 # --- Runtime artifacts ---
 projects/
@@ -44,11 +45,17 @@ tmp-*
 
 # --- Local analysis / notes (not for repo) ---
 docs/
-*.md
-!README.md
+*.local.md
 PROJECT_ANALYSIS.md
 RAPPORT_TECHNIQUE.md
 PREPARATION_SOUTENANCE.md
+AGENTS_TABLE.md
+AI_PIPELINE_CODE.md
+ARCHITECTURE_*.md
+DEMO_*.md
+TECHNICAL_*.md
+MERMAID_*.md
 
 # --- Build caches ---
 tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
