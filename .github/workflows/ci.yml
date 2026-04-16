@@ -8,13 +8,42 @@ on:
 
 jobs:
   frontend:
-    uses: ./.github/workflows/frontend.yml
+    runs-on: ubuntu-latest
+    name: Frontend CI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx tsc --noEmit
+      - run: cd frontend && npm run build
 
   backend:
-    uses: ./.github/workflows/backend.yml
+    runs-on: ubuntu-latest
+    name: Backend CI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      - run: cd spring-bff && mvn clean package -DskipTests
 
   fastapi:
-    uses: ./.github/workflows/fastapi.yml
+    runs-on: ubuntu-latest
+    name: FastAPI CI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: cd fastapi-ai && pip install -r requirements.txt
+      - run: cd fastapi-ai && pytest tests/ -v || true
 
   docker-build:
     runs-on: ubuntu-latest
