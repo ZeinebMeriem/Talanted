@@ -15,11 +15,28 @@ spring:
       max-file-size: 50MB
       max-request-size: 100MB
 
+logging:
+  level:
+    root: INFO
+    com.aiuigenerator.bff: DEBUG
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/spring-bff.log
+    max-size: 10MB
+    max-history: 10
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
 
 app:
   fastapi:
