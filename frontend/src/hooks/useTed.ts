@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { tedSendMessage, tedGetSuggestions, type TedContext, type TedMessage as TedMessageType, type TedSuggestion as TedSuggestionType } from '../api'
 
 export type TedMessage = TedMessageType

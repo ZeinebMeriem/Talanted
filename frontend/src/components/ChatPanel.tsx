@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useEffect, useState } from 'react'
-import { editFile, type EditFileResponse } from '../api'
+import { useCallback, useRef, useEffect } from 'react'
+import { editFile } from '../api'
 
 export type ChatMsg = {
   role: 'ai' | 'user'

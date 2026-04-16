@@ -1,5 +1,4 @@
 import { describe, it, expect, run } from "./test-utils";
-import { generateProject, editFile } from "./api";
 
 describe("API Client", () => {
   it("should validate GenerateRequest payload", () => {
@@ -38,3 +37,4 @@ describe("API Client", () => {
 
 // Run tests
 run().catch(console.error);
+
