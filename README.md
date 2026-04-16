@@ -2,6 +2,10 @@
 
 > Describe your idea. Get a working interface.
 
+[![Frontend CI](https://github.com/AI-UI-GENERATOR/UI-GENERATOR/actions/workflows/frontend.yml/badge.svg?branch=main)](https://github.com/AI-UI-GENERATOR/UI-GENERATOR/actions/workflows/frontend.yml)
+[![Backend CI](https://github.com/AI-UI-GENERATOR/UI-GENERATOR/actions/workflows/backend.yml/badge.svg?branch=main)](https://github.com/AI-UI-GENERATOR/UI-GENERATOR/actions/workflows/backend.yml)
+[![FastAPI CI](https://github.com/AI-UI-GENERATOR/UI-GENERATOR/actions/workflows/fastapi.yml/badge.svg?branch=main)](https://github.com/AI-UI-GENERATOR/UI-GENERATOR/actions/workflows/fastapi.yml)
+
 A full-stack application that generates functional React UI code from natural language prompts or uploaded documents. Built as a PFE (Projet de Fin d'Études) at **Talan**.
 
 ---
@@ -405,6 +409,16 @@ Contributions are welcome! Please:
 3. **Test locally** with the development setup above
 4. **Commit with clear messages**: `git commit -m "feat: add TED chatbot integration"`
 5. **Push and create a Pull Request**
+
+### CI/CD Pipeline
+
+All pull requests and pushes automatically trigger our CI/CD pipeline:
+
+- **Frontend**: TypeScript strict mode, build, security audit
+- **Backend**: Maven build, unit tests, OWASP dependency check
+- **FastAPI**: Python lint, type checking, pytest, coverage
+
+See [.github/CICD.md](.github/CICD.md) for detailed pipeline documentation.
 
 ---
 
