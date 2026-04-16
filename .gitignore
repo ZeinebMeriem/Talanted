@@ -43,6 +43,9 @@ projects/
 tmp-*
 
 # --- Local analysis / notes (not for repo) ---
+docs/
+*.md
+!README.md
 PROJECT_ANALYSIS.md
 RAPPORT_TECHNIQUE.md
 PREPARATION_SOUTENANCE.md

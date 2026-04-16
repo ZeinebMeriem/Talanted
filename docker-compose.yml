@@ -180,6 +180,15 @@ services:
         condition: service_healthy
     ports:
       - "8081:8080"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/ai_ui_generator
@@ -211,9 +220,16 @@ services:
     container_name: ai-ui-frontend
     restart: unless-stopped
     depends_on:
-      - spring-bff
+      spring-bff:
+        condition: service_healthy
     ports:
       - "5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5173"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     environment:
       VITE_BFF_BASE_URL: http://localhost:8081
       VITE_GENERATION_TIMEOUT_MS: 3600000

@@ -636,6 +636,8 @@ export async function postGenerationPushGitlab(
 export type TedContext = {
   generationId?: string
   currentFile?: string
+  fileContent?: string
+  allFiles?: Array<{ path: string; content: string }>
   editedLines?: number
   action?: 'editing' | 'previewing' | 'testing' | 'uploading'
   lastChange?: string
@@ -650,6 +652,7 @@ export type TedMessage = {
   text: string
   timestamp: Date
   suggestion?: string
+  actionSteps?: string[]
 }
 
 export type TedSuggestion = {
@@ -658,12 +661,14 @@ export type TedSuggestion = {
   description: string
   icon: string
   action: string
+  steps?: string[]
 }
 
 export type TedChatResponse = {
   response: string
   suggestions?: TedSuggestion[]
   contextUsed?: string[]
+  actionSteps?: string[]
 }
 
 /**
@@ -673,6 +678,7 @@ export async function tedSendMessage(
   message: string,
   context?: TedContext,
   accessToken?: string,
+  conversationHistory?: Array<{ type: 'user' | 'bot'; text: string }>,
 ): Promise<TedChatResponse> {
   const res = await fetch(`${BFF_BASE_URL}/api/ted/chat`, {
     method: 'POST',
@@ -683,6 +689,7 @@ export async function tedSendMessage(
     body: JSON.stringify({
       message,
       context: context || {},
+      conversationHistory: conversationHistory || [],
     }),
   })
 

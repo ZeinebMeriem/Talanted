@@ -31,6 +31,7 @@ import com.aiuigenerator.bff.dto.EditFileResponse;
 import com.aiuigenerator.bff.dto.GenerationCreateResponse;
 import com.aiuigenerator.bff.dto.GenerationRollbackResponse;
 import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
+import com.aiuigenerator.bff.dto.GitLabClientDto;
 import com.aiuigenerator.bff.service.AuditService;
 import com.aiuigenerator.bff.service.GenerationService;
 
@@ -216,5 +217,34 @@ public class GenerationController {
         String userId = (String) token.getToken().getClaims().get("sub");
         com.aiuigenerator.bff.dto.DuplicateResponse resp = service.duplicateGeneration(id, userId);
         return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * Push generated code to GitLab repository
+     */
+    @PostMapping("/{id}/push-gitlab")
+    public ResponseEntity<GitLabClientDto.PushToGitLabResponse> pushToGitLab(
+            @PathVariable("id") String generationId,
+            @RequestBody GitLabClientDto.PushToGitLabRequest request,
+            JwtAuthenticationToken token) {
+
+        log.info(
+                "POST /api/generations/{}/push-gitlab: projectPath={}, branch={}, autoCreate={}",
+                generationId,
+                request.projectPath,
+                request.branch,
+                request.autoCreate);
+
+        try {
+            GitLabClientDto.PushToGitLabResponse response = service.pushGenerationToGitLab(
+                    generationId,
+                    request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to push to GitLab", e);
+            return ResponseEntity.badRequest().body(
+                    GitLabClientDto.PushToGitLabResponse.error(
+                            "Failed to push to GitLab: " + e.getMessage()));
+        }
     }
 }

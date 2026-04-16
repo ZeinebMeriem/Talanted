@@ -47,6 +47,7 @@ import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
 import com.aiuigenerator.bff.dto.JiraIssueDTO;
 import com.aiuigenerator.bff.dto.RestoreRequest;
 import com.aiuigenerator.bff.dto.CodeFileDto;
+import com.aiuigenerator.bff.dto.GitLabClientDto;
 import com.aiuigenerator.bff.repo.AiReportRepository;
 import com.aiuigenerator.bff.repo.ChatMessageRepository;
 import com.aiuigenerator.bff.repo.CodeVersionRepository;
@@ -70,6 +71,7 @@ public class GenerationService {
     private final FastApiClient fastApi;
     private final AuditService audit;
     private final JiraService jiraService;
+    private final GitLabService gitLabService;
 
     private final GenerationRepository generationRepo;
     private final GenerationFileRepository fileRepo;
@@ -84,6 +86,7 @@ public class GenerationService {
             FastApiClient fastApi,
             AuditService audit,
             JiraService jiraService,
+            GitLabService gitLabService,
             GenerationRepository generationRepo,
             GenerationFileRepository fileRepo,
             UiSpecVersionRepository uiSpecRepo,
@@ -95,6 +98,7 @@ public class GenerationService {
         this.fastApi = fastApi;
         this.audit = audit;
         this.jiraService = jiraService;
+        this.gitLabService = gitLabService;
         this.generationRepo = generationRepo;
         this.fileRepo = fileRepo;
         this.uiSpecRepo = uiSpecRepo;
@@ -1825,5 +1829,97 @@ public class GenerationService {
                 Map.of("sourceId", sourceId));
 
         return fastapiResp;
+    }
+
+    /**
+     * Push generated code to GitLab
+     */
+    public GitLabClientDto.PushToGitLabResponse pushGenerationToGitLab(
+            String generationId,
+            GitLabClientDto.PushToGitLabRequest request) {
+        long startMs = System.currentTimeMillis();
+
+        try {
+            // 1. Fetch generation
+            Generation g = generationRepo.findById(generationId)
+                    .orElseThrow(() -> new IllegalArgumentException("generation not found"));
+
+            // 2. Get latest CodeVersion
+            CodeVersion codeVersion = codeRepo.findByGenerationIdOrderByVersionAsc(generationId)
+                    .stream()
+                    .reduce((first, second) -> second) // Get the last (latest version)
+                    .orElseThrow(() -> new IllegalArgumentException("No code generated yet"));
+
+            log.info(
+                    "Pushing generation {} to GitLab: projectPath={}, branch={}, autoCreate={}",
+                    generationId,
+                    request.projectPath,
+                    request.branch,
+                    request.autoCreate);
+
+            // 3. Push to GitLab
+            GitLabClientDto.PushResult result = gitLabService.pushCode(
+                    request.gitlabUrl,
+                    request.token,
+                    request.projectPath,
+                    request.branch,
+                    codeVersion.getFiles(),
+                    request.commitMessage);
+
+            // 4. Save GitLab metadata to Generation
+            String projectUrl = gitLabService.getProjectUrl(
+                    request.gitlabUrl,
+                    request.projectPath);
+            g.setGitlabProjectUrl(projectUrl);
+            g.setGitlabBranch(request.branch);
+            g.setGitlabCommitHash(result.commitHash);
+            g.setGitlabPushedAt(Instant.now());
+            g.setUpdatedAt(Instant.now());
+            generationRepo.save(g);
+
+            // 5. Audit
+            long durationMs = System.currentTimeMillis() - startMs;
+            audit.recordEvent(
+                    "GITLAB_PUSH",
+                    generationId,
+                    g.getSessionId(),
+                    durationMs,
+                    Map.of(
+                            "projectUrl", projectUrl,
+                            "branch", request.branch,
+                            "commitHash", result.commitHash));
+
+            log.info(
+                    "Successfully pushed generation {} to {} (branch: {}, commit: {})",
+                    generationId,
+                    projectUrl,
+                    request.branch,
+                    result.commitHash);
+
+            // 6. Return response
+            return new GitLabClientDto.PushToGitLabResponse(
+                    true,
+                    projectUrl,
+                    request.branch,
+                    result.commitHash,
+                    "Successfully pushed to GitLab");
+
+        } catch (GitLabService.GitLabServiceException | IllegalArgumentException e) {
+            log.error("Failed to push generation {} to GitLab: {}", generationId, e.getMessage(), e);
+
+            long durationMs = System.currentTimeMillis() - startMs;
+            audit.recordEvent(
+                    "GITLAB_PUSH_FAILED",
+                    generationId,
+                    "unknown",
+                    durationMs,
+                    Map.of("error", e.getMessage()));
+
+            return GitLabClientDto.PushToGitLabResponse.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error during GitLab push", e);
+            return GitLabClientDto.PushToGitLabResponse.error(
+                    "Unexpected error: " + e.getMessage());
+        }
     }
 }

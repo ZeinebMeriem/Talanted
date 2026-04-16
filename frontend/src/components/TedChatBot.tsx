@@ -8,6 +8,8 @@ interface TedChatBotProps {
   generationId?: string
   currentFile?: string
   fileCount?: number
+  fileContent?: string
+  allFiles?: Array<{ path: string; content: string }>
 }
 
 export const TedChatBot: React.FC<TedChatBotProps> = ({
@@ -17,6 +19,8 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
   generationId,
   currentFile,
   fileCount,
+  fileContent,
+  allFiles,
 }) => {
   const [input, setInput] = React.useState('')
   const [darkMode, setDarkMode] = React.useState(false)
@@ -35,10 +39,12 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
         generationId,
         currentFile,
         fileCount,
+        fileContent,
+        allFiles,
         action: 'previewing',
       })
     }
-  }, [isOpen, generationId, currentFile, fileCount, updateContext])
+  }, [isOpen, generationId, currentFile, fileCount, fileContent, allFiles, updateContext])
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -244,7 +250,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode }) => {
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}>
-      <div className={`flex gap-2.5 max-w-xs ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+      <div className={`flex gap-2.5 max-w-sm ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
         {!isUser && (
           <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-sm shadow-md">
             🤖
@@ -260,8 +266,22 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode }) => {
           }`}
         >
           <p className="text-sm leading-relaxed">{message.text}</p>
+
+          {/* Action Steps */}
+          {message.actionSteps && message.actionSteps.length > 0 && (
+            <div className={`mt-3 space-y-1.5 text-xs ${isUser ? 'text-blue-100' : ''}`}>
+              <div className="font-semibold opacity-70">Steps:</div>
+              {message.actionSteps.map((step, idx) => (
+                <div key={idx} className="flex gap-2 ml-2 opacity-80">
+                  <span className="font-bold">→</span>
+                  <span>{step}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <span
-            className={`text-xs mt-2 block opacity-70 ${
+            className={`text-xs mt-3 block opacity-70 ${
               isUser ? 'text-blue-100' : ''
             }`}
           >

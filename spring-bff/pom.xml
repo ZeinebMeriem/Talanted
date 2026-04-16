@@ -89,6 +89,13 @@
       <version>8.3.0</version>
     </dependency>
 
+    <!-- GitLab API client -->
+    <dependency>
+      <groupId>org.gitlab4j</groupId>
+      <artifactId>gitlab4j-api</artifactId>
+      <version>6.0.0-rc.5</version>
+    </dependency>
+
     <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>

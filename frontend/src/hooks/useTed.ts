@@ -68,8 +68,16 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
       setSuggestions([]) // Clear suggestions when user sends message
 
       try {
+        // Convert messages to history format for API (skip greeting message)
+        const conversationHistory = messages
+          .filter((m) => m.id !== '1') // Skip initial greeting
+          .map((m) => ({
+            type: m.type as 'user' | 'bot',
+            text: m.text,
+          }))
+
         // Get response from TED
-        const response = await tedSendMessage(text, tedContext.current, accessToken)
+        const response = await tedSendMessage(text, tedContext.current, accessToken, conversationHistory)
 
         setIsTyping(false)
 
@@ -82,6 +90,7 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
           type: 'bot',
           text: response.response,
           timestamp: new Date(),
+          actionSteps: response.actionSteps,
         }
 
         setMessages((prev) => [...prev, botMessage])
@@ -108,7 +117,7 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
         setIsLoading(false)
       }
     },
-    [enabled, accessToken],
+    [enabled, accessToken, messages],
   )
 
   /**

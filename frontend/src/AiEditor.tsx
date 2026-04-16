@@ -2724,6 +2724,11 @@ document.addEventListener('click', function(e) {
         generationId={selectedGenerationId || undefined}
         currentFile={currentEditingFile || undefined}
         fileCount={apiResult?.codeBundle?.files?.length ?? 0}
+        fileContent={effectiveFileContents.get(currentEditingFile || '')?.content || ''}
+        allFiles={Array.from(effectiveFileContents.entries()).map(([path, file]) => ({
+          path,
+          content: file.content || '',
+        }))}
       />
 
       {gitLabPushSuccess && (

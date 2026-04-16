@@ -39,6 +39,14 @@ app.add_middleware(
 
 orchestrator = Orchestrator()
 
+# Import and register TED routes
+try:
+    from . import ted_assistant
+    app.include_router(ted_assistant.router)
+    logger.info("✅ TED chatbot routes registered")
+except Exception as e:
+    logger.warning("⚠️  TED chatbot unavailable: %s", e)
+
 # Serve built React projects as static files
 PROJECTS_DIR = os.environ.get("PROJECTS_DIR", "/app/projects")
 os.makedirs(PROJECTS_DIR, exist_ok=True)

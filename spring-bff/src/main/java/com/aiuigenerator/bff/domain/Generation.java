@@ -30,6 +30,14 @@ public class Generation {
 
     private List<String> jiraIssueKeys;
 
+    private String gitlabProjectUrl; // https://gitlab.com/group/project
+
+    private String gitlabBranch; // main, feature/ai-generated
+
+    private String gitlabCommitHash; // git commit SHA-1 hash
+
+    private Instant gitlabPushedAt; // timestamp when pushed to GitLab
+
     public String getGenerationId() {
         return generationId;
     }
@@ -108,5 +116,37 @@ public class Generation {
 
     public void setJiraIssueKeys(List<String> jiraIssueKeys) {
         this.jiraIssueKeys = jiraIssueKeys;
+    }
+
+    public String getGitlabProjectUrl() {
+        return gitlabProjectUrl;
+    }
+
+    public void setGitlabProjectUrl(String gitlabProjectUrl) {
+        this.gitlabProjectUrl = gitlabProjectUrl;
+    }
+
+    public String getGitlabBranch() {
+        return gitlabBranch;
+    }
+
+    public void setGitlabBranch(String gitlabBranch) {
+        this.gitlabBranch = gitlabBranch;
+    }
+
+    public String getGitlabCommitHash() {
+        return gitlabCommitHash;
+    }
+
+    public void setGitlabCommitHash(String gitlabCommitHash) {
+        this.gitlabCommitHash = gitlabCommitHash;
+    }
+
+    public Instant getGitlabPushedAt() {
+        return gitlabPushedAt;
+    }
+
+    public void setGitlabPushedAt(Instant gitlabPushedAt) {
+        this.gitlabPushedAt = gitlabPushedAt;
     }
 }
