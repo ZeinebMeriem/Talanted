@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .exceptions import UIGeneratorException
 from .pipeline.orchestrator import Orchestrator
 from .schemas import (
     AiReport,
@@ -25,10 +26,18 @@ from .schemas import (
     DuplicateResponse,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AI UI Generator - FastAPI (MVP)")
+app = FastAPI(
+    title="AI UI Generator - FastAPI",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,11 +62,47 @@ os.makedirs(PROJECTS_DIR, exist_ok=True)
 app.mount("/projects", StaticFiles(directory=PROJECTS_DIR, html=True), name="projects")
 
 
+@app.exception_handler(UIGeneratorException)
+async def ui_generator_exception_handler(
+    request: Request, exc: UIGeneratorException
+) -> JSONResponse:
+    """Handle custom UI Generator exceptions with structured response."""
+    logger.warning(
+        "UIGeneratorException on %s %s: %s [%s]",
+        request.method,
+        request.url.path,
+        exc.message,
+        exc.error_code,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.error_code,
+            "message": exc.message,
+            "details": exc.details,
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all exception handler for unexpected errors."""
     tb = traceback.format_exc()
-    logger.error("Unhandled exception on %s %s:\n%s", request.method, request.url.path, tb)
-    return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": tb[-2000:]})
+    logger.error(
+        "Unhandled exception on %s %s: %s\n%s",
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+        tb,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "INTERNAL_ERROR",
+            "message": "An unexpected error occurred",
+            "details": {"exception_type": type(exc).__name__},
+        },
+    )
 
 
 @app.get("/health")
