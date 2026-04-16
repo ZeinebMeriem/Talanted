@@ -1,0 +1,75 @@
+name: Full Stack CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  frontend:
+    uses: ./.github/workflows/frontend.yml
+
+  backend:
+    uses: ./.github/workflows/backend.yml
+
+  fastapi:
+    uses: ./.github/workflows/fastapi.yml
+
+  docker-build:
+    runs-on: ubuntu-latest
+    name: Docker Build Check
+    needs: [frontend, backend, fastapi]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Spring BFF image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./spring-bff
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build FastAPI image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./fastapi-ai
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  summary:
+    runs-on: ubuntu-latest
+    name: CI Summary
+    needs: [frontend, backend, fastapi, docker-build]
+    if: always()
+
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "✅ Frontend: ${{ needs.frontend.result }}"
+          echo "✅ Backend: ${{ needs.backend.result }}"
+          echo "✅ FastAPI: ${{ needs.fastapi.result }}"
+          echo "✅ Docker: ${{ needs.docker-build.result }}"
+
+      - name: Fail if any job failed
+        if: |
+          needs.frontend.result == 'failure' ||
+          needs.backend.result == 'failure' ||
+          needs.fastapi.result == 'failure' ||
+          needs.docker-build.result == 'failure'
+        run: exit 1
