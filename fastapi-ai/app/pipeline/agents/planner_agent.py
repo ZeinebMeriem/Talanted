@@ -247,6 +247,7 @@ def _clean_files(raw: list[Any]) -> list[dict[str, str]]:
         r"|src/components/[\w\-]+\.tsx"                   # React component
         r"|src/pages/[\w\-]+\.tsx"                        # React page
         r"|src/[\w\-]+\.tsx"                              # React root (App.tsx etc.)
+        r"|public/[\w\-\.]+\.(ico|png|svg|jpg|jpeg|webp|gif|json|xml|txt)"  # public static assets
         r")$",
         re.IGNORECASE,
     )

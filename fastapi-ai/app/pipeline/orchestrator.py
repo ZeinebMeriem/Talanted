@@ -1539,15 +1539,18 @@ export default App;
         os.makedirs(src_dir, exist_ok=True)
         for cf in code.files:
             content = cf.content
-            # Determine destination — preserve src/components/ and src/pages/ structure
+            # Determine destination — preserve src/components/, src/pages/, and public/ structure
             if cf.path.startswith("src/"):
                 rel = cf.path[len("src/"):]          # strip "src/" prefix
                 dest = os.path.join(src_dir, rel)
+            elif cf.path.startswith("public/"):
+                rel = cf.path[len("public/"):]       # strip "public/" prefix
+                dest = os.path.join(project_path, "public", rel)
             elif cf.path.endswith((".tsx", ".ts")) and "main.tsx" not in cf.path:
                 dest = os.path.join(src_dir, os.path.basename(cf.path))
             else:
                 dest = os.path.join(project_path, os.path.basename(cf.path))
-            # Create parent directory if needed (e.g. src/components/, src/pages/)
+            # Create parent directory if needed (e.g. src/components/, src/pages/, public/)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             if cf.path.endswith((".tsx", ".ts")) and "main.tsx" not in cf.path:
                 content = self._sanitize_tsx(content)
