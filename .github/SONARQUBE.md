@@ -37,7 +37,7 @@ Look for: `SonarQube is up` message
 Access SonarQube dashboard:
 
 ```
-URL: http://localhost:9000
+URL: http://localhost:9010
 Default login: admin / admin
 ```
 
