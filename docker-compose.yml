@@ -271,7 +271,6 @@ services:
       SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/sonar
       SONAR_JDBC_USERNAME: sonar
       SONAR_JDBC_PASSWORD: sonarPassword123
-      SONAR_WEB_CONTEXT: /sonarqube
       SONAR_WEB_JAVAOPTS: -Xmx2048m -Xms1024m
     volumes:
       - sonarqube_data:/opt/sonarqube/data
