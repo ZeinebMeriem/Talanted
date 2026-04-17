@@ -35,6 +35,21 @@ jobs:
         working-directory: ./spring-bff
         run: mvn test
 
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=ai-ui-generator-backend
+            -Dsonar.sources=spring-bff/src/main/java
+            -Dsonar.tests=spring-bff/src/test/java
+            -Dsonar.java.source=17
+            -Dsonar.java.binaries=spring-bff/target/classes
+            -Dsonar.junit.reportPaths=spring-bff/target/surefire-reports
+            -Dsonar.coverage.jacoco.xmlReportPaths=spring-bff/target/site/jacoco/jacoco.xml
+
       - name: Check code quality
         working-directory: ./spring-bff
         run: mvn checkstyle:check || echo "⚠️  Checkstyle warnings found"

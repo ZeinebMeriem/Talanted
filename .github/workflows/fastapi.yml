@@ -46,6 +46,19 @@ jobs:
         working-directory: ./fastapi-ai
         run: pytest tests/ -v --tb=short --cov=app --cov-report=xml || true
 
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=ai-ui-generator-fastapi
+            -Dsonar.sources=fastapi-ai/app
+            -Dsonar.tests=fastapi-ai/tests
+            -Dsonar.python.coverage.reportPaths=fastapi-ai/coverage.xml
+            -Dsonar.sourceEncoding=UTF-8
+
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
