@@ -25,6 +25,105 @@ public class GitLabService {
     private static final int GIT_TIMEOUT_SECONDS = 120;
 
     /**
+     * Ensure GitLab project exists, creating if necessary
+     */
+    public boolean ensureProjectExists(String gitlabUrl, String token, String projectPath) {
+        try {
+            String url = normalizeGitLabUrl(gitlabUrl);
+            String apiUrl = url + "/api/v4/projects";
+
+            // Extract group and project name from path (e.g., "group/project" or "user/project")
+            String[] parts = projectPath.split("/");
+            if (parts.length < 2) {
+                log.warn("Invalid project path format: {}", projectPath);
+                return false;
+            }
+
+            String groupName = parts[0];
+            String projectName = parts[1];
+
+            // First, try to check if project already exists
+            String projectId = URLEncode(projectPath);
+            String getUrl = apiUrl + "/" + projectId;
+
+            ProcessBuilder checkPb = new ProcessBuilder(
+                    "curl",
+                    "-s",
+                    "-o", "/dev/null", "-w", "%{http_code}",
+                    "-H", "PRIVATE-TOKEN: " + token,
+                    getUrl);
+
+            Process checkProcess = checkPb.start();
+            boolean completed = checkProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+
+            if (!completed) {
+                checkProcess.destroy();
+                return false;
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(checkProcess.getInputStream()));
+            String statusCode = reader.readLine();
+            reader.close();
+
+            if (statusCode != null && statusCode.startsWith("20")) {
+                log.info("Project {} already exists", projectPath);
+                return true;
+            }
+
+            // Project doesn't exist, create it
+            log.info("Creating new GitLab project: {}", projectPath);
+
+            String createPayload = String.format(
+                    "{\"name\":\"%s\",\"namespace_id\":\"%s\",\"visibility\":\"private\",\"initialize_with_readme\":false}",
+                    projectName, groupName);
+
+            ProcessBuilder createPb = new ProcessBuilder(
+                    "curl",
+                    "-s",
+                    "-X", "POST",
+                    "-H", "PRIVATE-TOKEN: " + token,
+                    "-H", "Content-Type: application/json",
+                    "-d", createPayload,
+                    "-w", "%{http_code}",
+                    "-o", "/dev/null",
+                    apiUrl);
+
+            Process createProcess = createPb.start();
+            completed = createProcess.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
+
+            if (!completed) {
+                createProcess.destroy();
+                log.warn("Create project request timed out");
+                return false;
+            }
+
+            reader = new BufferedReader(new InputStreamReader(createProcess.getInputStream()));
+            statusCode = reader.readLine();
+            reader.close();
+
+            boolean created = statusCode != null && (statusCode.startsWith("20") || statusCode.equals("201"));
+            if (created) {
+                log.info("Successfully created GitLab project: {}", projectPath);
+            } else {
+                log.warn("Failed to create GitLab project: HTTP {}", statusCode);
+            }
+            return created;
+
+        } catch (Exception e) {
+            log.error("Error ensuring GitLab project exists", e);
+            return false;
+        }
+    }
+
+    /**
+     * URL encode for GitLab API (replace / with %)
+     */
+    private String URLEncode(String projectPath) {
+        // GitLab uses %2F for forward slash in project path encoding
+        return projectPath.replace("/", "%2F");
+    }
+
+    /**
      * Validate GitLab token by checking user endpoint
      */
     public boolean validateToken(String gitlabUrl, String token) {
@@ -32,9 +131,13 @@ public class GitLabService {
             String url = normalizeGitLabUrl(gitlabUrl);
             String apiUrl = url + "/api/v4/user";
 
+            log.debug("Validating token for GitLab URL: {}", apiUrl);
+
+            // Use separate output and error streams for cleaner parsing
             ProcessBuilder pb = new ProcessBuilder(
                     "curl",
                     "-s",
+                    "-o", "/tmp/gitlab_response.txt",
                     "-w", "%{http_code}",
                     "-H", "PRIVATE-TOKEN: " + token,
                     apiUrl);
@@ -54,15 +157,27 @@ public class GitLabService {
                 return false;
             }
 
+            // Read only stdout which contains the HTTP code
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            StringBuilder output = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line);
-            }
-            String httpCode = output.toString().substring(output.length() - 3);
+            String httpCode = reader.readLine();
+            reader.close();
 
-            return httpCode.startsWith("20"); // 200-299 = success
+            if (httpCode == null || httpCode.trim().isEmpty()) {
+                log.warn("No HTTP code returned from GitLab");
+                return false;
+            }
+
+            httpCode = httpCode.trim();
+            log.debug("GitLab validation HTTP code: {}", httpCode);
+            boolean isValid = httpCode.startsWith("20"); // 200-299 = success
+
+            if (isValid) {
+                log.info("GitLab token validation successful for URL: {}", url);
+            } else {
+                log.warn("GitLab token validation failed with HTTP {}", httpCode);
+            }
+
+            return isValid;
 
         } catch (Exception e) {
             log.error("Error validating GitLab token", e);

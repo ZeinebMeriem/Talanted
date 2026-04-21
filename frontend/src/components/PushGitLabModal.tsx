@@ -1,413 +1,281 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { gitlabAuthorizeSendRequest, gitlabCredentialsGetRequest, gitlabDisconnectSendRequest } from '../api'
+
+interface GitLabCredential {
+  gitlabUrl: string
+  gitlabUsername: string
+  connectedAt: string
+  isActive: boolean
+}
 
 export interface PushGitLabModalProps {
   isOpen: boolean
   onClose: () => void
-  onPush: (params: {
-    gitlabUrl: string
-    projectPath: string
-    token: string
-    branch: string
-    commitMessage: string
-    autoCreate: boolean
-  }) => Promise<void>
-  isLoading?: boolean
+  generationId: string
+  accessToken?: string
+  onFetchCredentials?: () => Promise<void>
 }
 
 export const PushGitLabModal: React.FC<PushGitLabModalProps> = ({
   isOpen,
   onClose,
-  onPush,
-  isLoading = false,
+  generationId,
+  accessToken,
+  onFetchCredentials,
 }) => {
   const [gitlabUrl, setGitlabUrl] = useState('https://gitlab.com')
   const [projectPath, setProjectPath] = useState('')
-  const [token, setToken] = useState('')
   const [branch, setBranch] = useState('main')
   const [commitMessage, setCommitMessage] = useState(`feat: AI-generated UI (${new Date().toISOString().split('T')[0]})`)
   const [autoCreate, setAutoCreate] = useState(true)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [credentials, setCredentials] = useState<GitLabCredential[]>([])
+  const [fetchingCredentials, setFetchingCredentials] = useState(false)
+  const [authorizing, setAuthorizing] = useState(false)
 
-  if (!isOpen) return null
+  // Load credentials when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadCredentials()
+    }
+  }, [isOpen])
+
+  const loadCredentials = async () => {
+    try {
+      setFetchingCredentials(true)
+      const creds = await gitlabCredentialsGetRequest(accessToken)
+      setCredentials(creds || [])
+      if (creds && creds.length > 0 && !credentials.some(c => c.gitlabUrl === gitlabUrl)) {
+        setGitlabUrl(creds[0].gitlabUrl)
+      }
+    } catch (err) {
+      console.error('Failed to load credentials:', err)
+      setError('Failed to load GitLab credentials')
+    } finally {
+      setFetchingCredentials(false)
+    }
+  }
+
+  const handleConnectGitLab = async () => {
+    try {
+      setAuthorizing(true)
+      setError('')
+      const { authorizationUrl } = await gitlabAuthorizeSendRequest(gitlabUrl, accessToken)
+      // Redirect user to GitLab OAuth login
+      window.location.href = authorizationUrl
+    } catch (err) {
+      console.error('Failed to connect:', err)
+      setError(`Failed to connect GitLab: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setAuthorizing(false)
+    }
+  }
+
+  const handleDisconnect = async (urlToDisconnect: string) => {
+    try {
+      setError('')
+      await gitlabDisconnectSendRequest(urlToDisconnect, accessToken)
+      await loadCredentials()
+      setSuccess(`Disconnected from ${urlToDisconnect}`)
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      console.error('Failed to disconnect:', err)
+      setError(`Failed to disconnect: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
 
   const handlePush = async () => {
     setError('')
+    setSuccess('')
 
-    // Validation
-    if (!gitlabUrl.trim()) {
-      setError('GitLab URL is required')
-      return
-    }
     if (!projectPath.trim()) {
-      setError('Project path is required (e.g., group/project)')
+      setError('Project path is required')
       return
     }
-    if (!token.trim()) {
-      setError('Personal Access Token is required')
-      return
-    }
-    if (!branch.trim()) {
-      setError('Branch name is required')
+
+    const credExists = credentials.some(c => c.gitlabUrl === gitlabUrl && c.isActive)
+    if (!credExists) {
+      setError('GitLab not connected. Please connect first.')
       return
     }
 
     try {
-      await onPush({
-        gitlabUrl: gitlabUrl.trim(),
-        projectPath: projectPath.trim(),
-        token: token.trim(),
-        branch: branch.trim(),
-        commitMessage: commitMessage.trim(),
-        autoCreate,
+      setLoading(true)
+      const response = await fetch(`/api/generations/${generationId}/push-gitlab`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gitlabUrl,
+          projectPath: projectPath.trim(),
+          branch: branch.trim(),
+          commitMessage: commitMessage.trim(),
+          autoCreate,
+        }),
       })
 
-      // Reset form on success
-      setGitlabUrl('https://gitlab.com')
-      setProjectPath('')
-      setToken('')
-      setBranch('main')
-      setCommitMessage(`feat: AI-generated UI (${new Date().toISOString().split('T')[0]})`)
-      setAutoCreate(true)
-      onClose()
-    } catch (err: any) {
-      setError(err?.message || 'Failed to push to GitLab')
+      const data = await response.json()
+      if (data.success) {
+        setSuccess(`Successfully pushed to ${data.projectUrl}`)
+        setProjectPath('')
+        setTimeout(() => {
+          onClose()
+        }, 2000)
+      } else {
+        setError(data.message || 'Push failed')
+      }
+    } catch (err) {
+      console.error('Push failed:', err)
+      setError(`Push failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setLoading(false)
     }
   }
 
+  if (!isOpen) return null
+
+  const connectedUrl = credentials.find(c => c.isActive && c.gitlabUrl === gitlabUrl)
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '32px',
-          maxWidth: '500px',
-          width: '90%',
-          boxShadow: '0 20px 25px rgba(0, 0, 0, 0.15)',
-          maxHeight: '80vh',
-          overflow: 'auto',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-lg shadow-xl max-w-md w-full">
         {/* Header */}
-        <div style={{ marginBottom: '24px' }}>
-          <h2 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 600, color: '#1f2937' }}>
-            📤 Push to GitLab
-          </h2>
-          <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>
-            Push your generated code to a GitLab repository
+        <div className="border-b border-slate-200 dark:border-slate-700 p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">📤</span>
+            <h2 className="text-xl font-bold">Push to GitLab</h2>
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {connectedUrl ? 'Push your generated code to GitLab' : 'Connect to GitLab to push your code'}
           </p>
         </div>
 
-        {/* Error Message */}
+        {/* Messages */}
         {error && (
-          <div
-            style={{
-              marginBottom: '16px',
-              padding: '12px',
-              backgroundColor: '#fee2e2',
-              border: '1px solid #fecaca',
-              borderRadius: '8px',
-              color: '#991b1b',
-              fontSize: '14px',
-            }}
-          >
-            {error}
+          <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+            <p className="text-sm text-red-700 dark:text-red-300">✗ {error}</p>
+          </div>
+        )}
+        {success && (
+          <div className="mx-6 mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg">
+            <p className="text-sm text-green-700 dark:text-green-300">✓ {success}</p>
           </div>
         )}
 
-        {/* Form */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* GitLab Instance URL */}
-          <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-              }}
-            >
-              GitLab Instance
-            </label>
-            <input
-              type="text"
-              placeholder="https://gitlab.com"
-              value={gitlabUrl}
-              onChange={(e) => setGitlabUrl(e.target.value)}
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontFamily: 'monospace',
-                boxSizing: 'border-box',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            />
-            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#9ca3af' }}>
-              Use https://gitlab.com or your self-hosted instance URL
-            </p>
-          </div>
+        <div className="p-6 space-y-4 max-h-96 overflow-y-auto">
+          {/* Connected Instances */}
+          {credentials.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Connected GitLab Instances</label>
+              <div className="space-y-2">
+                {credentials.map(cred => (
+                  <div key={cred.gitlabUrl} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="radio"
+                        name="gitlabUrl"
+                        value={cred.gitlabUrl}
+                        checked={gitlabUrl === cred.gitlabUrl}
+                        onChange={e => setGitlabUrl(e.target.value)}
+                      />
+                      <div>
+                        <div className="text-sm font-medium">{cred.gitlabUrl}</div>
+                        <div className="text-xs text-slate-500">as {cred.gitlabUsername}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDisconnect(cred.gitlabUrl)}
+                      className="text-xs text-slate-500 hover:text-red-600 dark:hover:text-red-400"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-          {/* Project Path */}
-          <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-              }}
-            >
-              Project Path
-            </label>
-            <input
-              type="text"
-              placeholder="group/project"
-              value={projectPath}
-              onChange={(e) => setProjectPath(e.target.value)}
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontFamily: 'monospace',
-                boxSizing: 'border-box',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            />
-            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#9ca3af' }}>
-              E.g., "mygroup/myproject"
-            </p>
-          </div>
-
-          {/* Personal Access Token */}
-          <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-              }}
-            >
-              Personal Access Token
-            </label>
-            <input
-              type="password"
-              placeholder="glpat-xxxxxxxxxx"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontFamily: 'monospace',
-                boxSizing: 'border-box',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            />
-            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#9ca3af' }}>
-              <a
-                href="https://gitlab.com/-/profile/personal_access_tokens"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: '#3b82f6', textDecoration: 'none' }}
-              >
-                Generate token
-              </a>
-              {' with api scope'}
-            </p>
-          </div>
-
-          {/* Branch */}
-          <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-              }}
-            >
-              Branch Name
-            </label>
-            <input
-              type="text"
-              placeholder="main"
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontFamily: 'monospace',
-                boxSizing: 'border-box',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            />
-          </div>
-
-          {/* Commit Message */}
-          <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-              }}
-            >
-              Commit Message
-            </label>
-            <textarea
-              placeholder="feat: Your commit message"
-              value={commitMessage}
-              onChange={(e) => setCommitMessage(e.target.value)}
-              disabled={isLoading}
-              rows={2}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '14px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontFamily: 'monospace',
-                boxSizing: 'border-box',
-                opacity: isLoading ? 0.6 : 1,
-                resize: 'vertical',
-              }}
-            />
-          </div>
-
-          {/* Auto-create checkbox */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
+          {/* Connect Button */}
+          <button
+            onClick={handleConnectGitLab}
+            disabled={authorizing || fetchingCredentials}
+            className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
           >
-            <input
-              type="checkbox"
-              id="autoCreate"
-              checked={autoCreate}
-              onChange={(e) => setAutoCreate(e.target.checked)}
-              disabled={isLoading}
-              style={{
-                width: '16px',
-                height: '16px',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            />
-            <label
-              htmlFor="autoCreate"
-              style={{
-                fontSize: '14px',
-                color: '#374151',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            >
-              Auto-create project if it doesn't exist
-            </label>
-          </div>
+            {authorizing ? '⏳ Authorizing...' : '🔗 Connect to GitLab'}
+          </button>
+
+          {/* Project Fields (only if connected) */}
+          {credentials.length > 0 && connectedUrl && (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-2">Project Path</label>
+                <input
+                  type="text"
+                  value={projectPath}
+                  onChange={e => setProjectPath(e.target.value)}
+                  placeholder="username/project-name"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  E.g., "mygroup/myproject"
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Branch Name</label>
+                <input
+                  type="text"
+                  value={branch}
+                  onChange={e => setBranch(e.target.value)}
+                  placeholder="main"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Commit Message</label>
+                <textarea
+                  value={commitMessage}
+                  onChange={e => setCommitMessage(e.target.value)}
+                  placeholder="feat: AI-generated UI"
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoCreate}
+                  onChange={e => setAutoCreate(e.target.checked)}
+                />
+                <span className="text-sm">Auto-create project if it doesn't exist</span>
+              </label>
+            </>
+          )}
         </div>
 
-        {/* Buttons */}
-        <div
-          style={{
-            marginTop: '32px',
-            display: 'flex',
-            gap: '12px',
-            justifyContent: 'flex-end',
-          }}
-        >
+        {/* Footer */}
+        <div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-4 flex gap-2">
           <button
             onClick={onClose}
-            disabled={isLoading}
-            style={{
-              padding: '10px 24px',
-              fontSize: '14px',
-              fontWeight: 500,
-              border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              backgroundColor: '#f3f4f6',
-              color: '#374151',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
-              opacity: isLoading ? 0.6 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!isLoading) {
-                e.currentTarget.style.backgroundColor = '#e5e7eb'
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#f3f4f6'
-            }}
+            className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
           >
             Cancel
           </button>
-          <button
-            onClick={handlePush}
-            disabled={isLoading}
-            style={{
-              padding: '10px 24px',
-              fontSize: '14px',
-              fontWeight: 500,
-              border: 'none',
-              borderRadius: '6px',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
-              opacity: isLoading ? 0.6 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!isLoading) {
-                e.currentTarget.style.backgroundColor = '#2563eb'
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#3b82f6'
-            }}
-          >
-            {isLoading ? '⏳ Pushing...' : '🚀 Push'}
-          </button>
+          {credentials.length > 0 && connectedUrl && (
+            <button
+              onClick={handlePush}
+              disabled={loading || !projectPath.trim()}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-lg"
+            >
+              {loading ? '⏳ Pushing...' : '📤 Push'}
+            </button>
+          )}
         </div>
       </div>
     </div>
   )
 }
+

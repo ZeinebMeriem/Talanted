@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8082
 
 spring:
   application:
@@ -39,6 +39,8 @@ management:
       show-details: when-authorized
 
 app:
+  security:
+    dev-mode: ${APP_SECURITY_DEV_MODE:true}
   fastapi:
     base-url: ${FASTAPI_BASE_URL:http://localhost:8000}
     timeout-seconds: ${FASTAPI_TIMEOUT_SECONDS:3600}

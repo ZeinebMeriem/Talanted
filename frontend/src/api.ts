@@ -1,4 +1,4 @@
-const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8081'
+const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8082'
 
 function authHeaders(accessToken?: string): HeadersInit | undefined {
   if (!accessToken) return undefined
@@ -627,6 +627,89 @@ export async function postGenerationPushGitlab(
   }
 
   return (typeof data === 'object' && data !== null ? (data as PushToGitLabResponse) : { success: false, message: 'Unknown error' })
+}
+
+// ══════════════════════════════════════════════════════════════
+// GITLAB OAUTH2 API
+// ══════════════════════════════════════════════════════════════
+
+export type GitLabCredential = {
+  gitlabUrl: string
+  gitlabUsername: string
+  connectedAt: string
+  isActive: boolean
+  scope: string
+}
+
+export async function gitlabAuthorizeSendRequest(
+  gitlabUrl: string = 'https://gitlab.com',
+  accessToken?: string,
+): Promise<{ authorizationUrl: string; state: string }> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/gitlab/auth/authorize?gitlabUrl=${encodeURIComponent(gitlabUrl)}`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+    },
+  )
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+
+  return data as { authorizationUrl: string; state: string }
+}
+
+export async function gitlabCredentialsGetRequest(
+  accessToken?: string,
+): Promise<GitLabCredential[]> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/gitlab/credentials`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+    },
+  )
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+
+  return Array.isArray(data) ? data : []
+}
+
+export async function gitlabDisconnectSendRequest(
+  gitlabUrl: string,
+  accessToken?: string,
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/gitlab/disconnect?gitlabUrl=${encodeURIComponent(gitlabUrl)}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(accessToken),
+      },
+    },
+  )
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+
+  return (typeof data === 'object' && data !== null ? (data as { success: boolean; message: string }) : { success: false, message: 'Unknown error' })
 }
 
 // ══════════════════════════════════════════════════════════════

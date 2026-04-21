@@ -238,13 +238,33 @@ public class GenerationController {
         try {
             GitLabClientDto.PushToGitLabResponse response = service.pushGenerationToGitLab(
                     generationId,
-                    request);
+                    request,
+                    token);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Failed to push to GitLab", e);
             return ResponseEntity.badRequest().body(
                     GitLabClientDto.PushToGitLabResponse.error(
                             "Failed to push to GitLab: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Validate GitLab token
+     */
+    @PostMapping("/validate-gitlab-token")
+    public ResponseEntity<?> validateGitLabToken(
+            @RequestBody GitLabClientDto.ValidateTokenRequest request,
+            JwtAuthenticationToken token) {
+
+        log.info("POST /api/generations/validate-gitlab-token: gitlabUrl={}", request.gitlabUrl);
+
+        try {
+            boolean isValid = service.validateGitLabToken(request.gitlabUrl, request.token);
+            return ResponseEntity.ok(new GitLabClientDto.ValidateTokenResponse(isValid));
+        } catch (Exception e) {
+            log.error("Failed to validate GitLab token", e);
+            return ResponseEntity.ok(new GitLabClientDto.ValidateTokenResponse(false));
         }
     }
 }

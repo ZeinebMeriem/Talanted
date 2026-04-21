@@ -247,9 +247,6 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
   // GitLab push modal
   const [isPushGitLabModalOpen, setIsPushGitLabModalOpen] = useState(false)
-  const [isGitLabPushLoading, setIsGitLabPushLoading] = useState(false)
-  const [gitLabPushError, setGitLabPushError] = useState<string | null>(null)
-  const [gitLabPushSuccess, setGitLabPushSuccess] = useState<{ projectUrl: string; commitHash: string } | null>(null)
 
   // Handle element selection from inspect mode
   const handleElementSelected = useCallback((info: ElementInfo) => {
@@ -373,43 +370,6 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       }
     },
     [accessToken, loadAudit, loadHistory, loadVersions],
-  )
-
-  const handlePushGitLab = useCallback(
-    async (params: {
-      gitlabUrl: string
-      projectPath: string
-      token: string
-      branch: string
-      commitMessage: string
-      autoCreate: boolean
-    }) => {
-      if (!apiResult?.generationId) return
-
-      try {
-        setGitLabPushError(null)
-        setIsGitLabPushLoading(true)
-        const response = await postGenerationPushGitlab(apiResult.generationId, params, accessToken)
-
-        if (response.success) {
-          setGitLabPushSuccess({
-            projectUrl: response.projectUrl || '',
-            commitHash: response.commitHash || '',
-          })
-          // Show success for 5 seconds then hide
-          setTimeout(() => {
-            setGitLabPushSuccess(null)
-          }, 5000)
-        } else {
-          setGitLabPushError(response.message || 'Push failed')
-        }
-      } catch (e: any) {
-        setGitLabPushError(e?.message ?? 'Failed to push to GitLab')
-      } finally {
-        setIsGitLabPushLoading(false)
-      }
-    },
-    [apiResult?.generationId, accessToken],
   )
 
   const loadProfile = useCallback(async () => {
@@ -2712,8 +2672,8 @@ document.addEventListener('click', function(e) {
       <PushGitLabModal
         isOpen={isPushGitLabModalOpen}
         onClose={() => setIsPushGitLabModalOpen(false)}
-        onPush={handlePushGitLab}
-        isLoading={isGitLabPushLoading}
+        generationId={selectedGenerationId || ''}
+        accessToken={accessToken}
       />
 
       {/* TED Chatbot */}
@@ -2730,60 +2690,6 @@ document.addEventListener('click', function(e) {
           content: file.content || '',
         }))}
       />
-
-      {gitLabPushSuccess && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            backgroundColor: '#dcfce7',
-            border: '1px solid #86efac',
-            color: '#166534',
-            padding: '12px 16px',
-            borderRadius: '8px',
-            zIndex: 20000,
-            maxWidth: '400px',
-            fontSize: '14px',
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: '4px' }}>✅ Push Successful</div>
-          <div style={{ fontSize: '13px', marginBottom: '8px' }}>
-            <a
-              href={gitLabPushSuccess.projectUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: '#15803d', textDecoration: 'underline' }}
-            >
-              View on GitLab
-            </a>
-          </div>
-          <div style={{ fontSize: '12px', color: '#3f6319' }}>
-            Commit: <code>{gitLabPushSuccess.commitHash?.substring(0, 7)}</code>
-          </div>
-        </div>
-      )}
-
-      {gitLabPushError && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            backgroundColor: '#fee2e2',
-            border: '1px solid #fecaca',
-            color: '#991b1b',
-            padding: '12px 16px',
-            borderRadius: '8px',
-            zIndex: 20000,
-            maxWidth: '400px',
-            fontSize: '14px',
-          }}
-        >
-          <div style={{ fontWeight: 600 }}>❌ Push Failed</div>
-          <div style={{ fontSize: '13px', marginTop: '4px' }}>{gitLabPushError}</div>
-        </div>
-      )}
 
     </div>
   )

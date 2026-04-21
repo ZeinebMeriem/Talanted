@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import java.io.PrintWriter;
@@ -22,6 +23,7 @@ import java.util.Base64;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.data.domain.Sort;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -72,6 +74,7 @@ public class GenerationService {
     private final AuditService audit;
     private final JiraService jiraService;
     private final GitLabService gitLabService;
+    private final GitLabOAuth2Service gitLabOAuth2Service;
 
     private final GenerationRepository generationRepo;
     private final GenerationFileRepository fileRepo;
@@ -87,6 +90,7 @@ public class GenerationService {
             AuditService audit,
             JiraService jiraService,
             GitLabService gitLabService,
+            GitLabOAuth2Service gitLabOAuth2Service,
             GenerationRepository generationRepo,
             GenerationFileRepository fileRepo,
             UiSpecVersionRepository uiSpecRepo,
@@ -99,6 +103,7 @@ public class GenerationService {
         this.audit = audit;
         this.jiraService = jiraService;
         this.gitLabService = gitLabService;
+        this.gitLabOAuth2Service = gitLabOAuth2Service;
         this.generationRepo = generationRepo;
         this.fileRepo = fileRepo;
         this.uiSpecRepo = uiSpecRepo;
@@ -1832,20 +1837,47 @@ public class GenerationService {
     }
 
     /**
-     * Push generated code to GitLab
+     * Push generated code to GitLab using OAuth2 stored credentials
      */
     public GitLabClientDto.PushToGitLabResponse pushGenerationToGitLab(
             String generationId,
-            GitLabClientDto.PushToGitLabRequest request) {
+            GitLabClientDto.PushToGitLabRequest request,
+            JwtAuthenticationToken authToken) {
         long startMs = System.currentTimeMillis();
 
         try {
-            // 1. Fetch generation
-            Generation g = generationRepo.findById(generationId)
+            // 1. Get user ID from JWT token
+            String userId = (String) authToken.getToken().getClaims().get("sub");
+            log.info("Pushing generation {} to GitLab for user {}", generationId, userId);
+
+            // 2. Fetch stored GitLab credentials
+            var credential = gitLabOAuth2Service.getCredential(userId, request.gitlabUrl);
+            if (credential.isEmpty()) {
+                log.warn("No GitLab credential found for user {} on {}", userId, request.gitlabUrl);
+                return GitLabClientDto.PushToGitLabResponse.error(
+                        "GitLab not connected. Please authorize first via /api/gitlab/auth/authorize");
+            }
+
+            var cred = credential.get();
+            log.debug("Found GitLab credential for user on {}", request.gitlabUrl);
+
+            // 3. Refresh token if needed
+            if (cred.needsRefresh()) {
+                log.info("Token needs refresh, attempting refresh");
+                try {
+                    gitLabOAuth2Service.refreshTokenIfNeeded(cred);
+                    log.debug("Token refreshed successfully");
+                } catch (Exception e) {
+                    log.warn("Token refresh failed, attempting push with existing token", e);
+                }
+            }
+
+            // 4. Fetch generation
+            var g = generationRepo.findById(generationId)
                     .orElseThrow(() -> new IllegalArgumentException("generation not found"));
 
-            // 2. Get latest CodeVersion
-            CodeVersion codeVersion = codeRepo.findByGenerationIdOrderByVersionAsc(generationId)
+            // 5. Get latest CodeVersion
+            var codeVersion = codeRepo.findByGenerationIdOrderByVersionAsc(generationId)
                     .stream()
                     .reduce((first, second) -> second) // Get the last (latest version)
                     .orElseThrow(() -> new IllegalArgumentException("No code generated yet"));
@@ -1857,16 +1889,29 @@ public class GenerationService {
                     request.branch,
                     request.autoCreate);
 
-            // 3. Push to GitLab
-            GitLabClientDto.PushResult result = gitLabService.pushCode(
+            // 6. Ensure project exists (create if autoCreate is true)
+            if (request.autoCreate) {
+                log.info("autoCreate enabled, ensuring project exists");
+                boolean projectExists = gitLabService.ensureProjectExists(
+                        request.gitlabUrl,
+                        cred.getAccessToken(),
+                        request.projectPath);
+
+                if (!projectExists) {
+                    log.warn("Failed to ensure project exists, but attempting push anyway");
+                }
+            }
+
+            // 7. Push to GitLab using stored token
+            var result = gitLabService.pushCode(
                     request.gitlabUrl,
-                    request.token,
+                    cred.getAccessToken(),
                     request.projectPath,
                     request.branch,
                     codeVersion.getFiles(),
                     request.commitMessage);
 
-            // 4. Save GitLab metadata to Generation
+            // 8. Save GitLab metadata to Generation
             String projectUrl = gitLabService.getProjectUrl(
                     request.gitlabUrl,
                     request.projectPath);
@@ -1877,7 +1922,7 @@ public class GenerationService {
             g.setUpdatedAt(Instant.now());
             generationRepo.save(g);
 
-            // 5. Audit
+            // 9. Audit
             long durationMs = System.currentTimeMillis() - startMs;
             audit.recordEvent(
                     "GITLAB_PUSH",
@@ -1887,7 +1932,8 @@ public class GenerationService {
                     Map.of(
                             "projectUrl", projectUrl,
                             "branch", request.branch,
-                            "commitHash", result.commitHash));
+                            "commitHash", result.commitHash,
+                            "gitlabUrl", request.gitlabUrl));
 
             log.info(
                     "Successfully pushed generation {} to {} (branch: {}, commit: {})",
@@ -1896,7 +1942,7 @@ public class GenerationService {
                     request.branch,
                     result.commitHash);
 
-            // 6. Return response
+            // 10. Return response
             return new GitLabClientDto.PushToGitLabResponse(
                     true,
                     projectUrl,
@@ -1920,6 +1966,18 @@ public class GenerationService {
             log.error("Unexpected error during GitLab push", e);
             return GitLabClientDto.PushToGitLabResponse.error(
                     "Unexpected error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Validate GitLab token
+     */
+    public boolean validateGitLabToken(String gitlabUrl, String token) {
+        try {
+            return gitLabService.validateToken(gitlabUrl, token);
+        } catch (Exception e) {
+            log.error("Error validating GitLab token", e);
+            return false;
         }
     }
 }
