@@ -8,6 +8,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
+      '/api': {
+        target: 'http://localhost:8082',
+        changeOrigin: true,
+      },
       '/preview': {
         target: 'http://fastapi-ai:8000',
         rewrite: (path) => path.replace(/^\/preview/, '/projects'),
