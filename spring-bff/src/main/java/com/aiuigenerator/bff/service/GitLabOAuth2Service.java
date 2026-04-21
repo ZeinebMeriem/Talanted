@@ -287,6 +287,22 @@ public class GitLabOAuth2Service {
     }
 
     /**
+     * Create a mock GitLab credential for dev mode
+     */
+    public UserGitLabCredential createMockCredential(String userId, String gitlabUrl) {
+        String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
+        UserGitLabCredential credential = new UserGitLabCredential(userId, normalizedUrl, "dev-user");
+        credential.setAccessToken("dev-token-" + UUID.randomUUID());
+        credential.setScope("api read_user");
+        credential.setActive(true);
+        credential.setUpdatedAt(Instant.now());
+
+        UserGitLabCredential saved = credentialRepo.save(credential);
+        log.info("Created mock GitLab credential for user {} on {}", userId, normalizedUrl);
+        return saved;
+    }
+
+    /**
      * URL encode for OAuth2 parameters
      */
     private String urlEncode(String value) {

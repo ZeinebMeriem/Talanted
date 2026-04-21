@@ -67,6 +67,19 @@ public class GitLabOAuth2Controller {
             String userId = extractUserId(token);
             String state = gitLabOAuth2Service.generateState();
 
+            // In dev mode, mock the OAuth flow by creating a credential directly
+            if (devMode) {
+                log.info("Dev mode: Creating mock GitLab credential for user {}", userId);
+                UserGitLabCredential credential = gitLabOAuth2Service.createMockCredential(userId, gitlabUrl);
+
+                ObjectNode response = objectMapper.createObjectNode();
+                response.put("success", true);
+                response.put("message", "Mock connection created in dev mode");
+                response.put("gitlabUrl", credential.getGitlabUrl());
+                response.put("gitlabUsername", credential.getGitlabUsername());
+                return ResponseEntity.ok(response);
+            }
+
             // Store state in session or cache for validation (simplified for now)
             String authorizationUrl = gitLabOAuth2Service.generateAuthorizationUrl(gitlabUrl, state);
 
@@ -165,10 +178,18 @@ public class GitLabOAuth2Controller {
     @GetMapping("/verify")
     public ResponseEntity<?> verify(
             @RequestParam(required = false, defaultValue = "https://gitlab.com") String gitlabUrl,
-            JwtAuthenticationToken token) {
+            Authentication auth) {
 
         try {
-            String userId = extractUserId(token);
+            String userId;
+            if (auth instanceof JwtAuthenticationToken) {
+                JwtAuthenticationToken token = (JwtAuthenticationToken) auth;
+                userId = extractUserId(token);
+            } else if (devMode) {
+                userId = "dev-user";
+            } else {
+                return ResponseEntity.status(401).body(createErrorResponse("No authentication"));
+            }
 
             Optional<UserGitLabCredential> credential = gitLabOAuth2Service.getCredential(userId, gitlabUrl);
 
@@ -207,10 +228,18 @@ public class GitLabOAuth2Controller {
     @PostMapping("/disconnect")
     public ResponseEntity<?> disconnect(
             @RequestParam(required = false, defaultValue = "https://gitlab.com") String gitlabUrl,
-            JwtAuthenticationToken token) {
+            Authentication auth) {
 
         try {
-            String userId = extractUserId(token);
+            String userId;
+            if (auth instanceof JwtAuthenticationToken) {
+                JwtAuthenticationToken token = (JwtAuthenticationToken) auth;
+                userId = extractUserId(token);
+            } else if (devMode) {
+                userId = "dev-user";
+            } else {
+                return ResponseEntity.status(401).body(createErrorResponse("No authentication"));
+            }
 
             gitLabOAuth2Service.disconnectGitLab(userId, gitlabUrl);
 
