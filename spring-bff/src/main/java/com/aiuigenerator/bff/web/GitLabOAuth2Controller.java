@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -122,9 +123,17 @@ public class GitLabOAuth2Controller {
      * List all connected GitLab instances for current user
      */
     @GetMapping("/credentials")
-    public ResponseEntity<?> listCredentials(JwtAuthenticationToken token) {
+    public ResponseEntity<?> listCredentials(Authentication auth) {
         try {
-            String userId = extractUserId(token);
+            String userId;
+            if (auth instanceof JwtAuthenticationToken) {
+                JwtAuthenticationToken token = (JwtAuthenticationToken) auth;
+                userId = extractUserId(token);
+            } else if (devMode) {
+                userId = "dev-user";
+            } else {
+                return ResponseEntity.status(401).body(createErrorResponse("No authentication token provided"));
+            }
             List<UserGitLabCredential> credentials = gitLabOAuth2Service.listCredentials(userId);
 
             List<ObjectNode> response = credentials.stream()
