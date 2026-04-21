@@ -1,4 +1,4 @@
-const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || `${window.location.protocol}//${window.location.hostname}:8082`
+const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8082'
 
 function authHeaders(accessToken?: string): HeadersInit | undefined {
   if (!accessToken) return undefined
