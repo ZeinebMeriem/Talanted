@@ -61,10 +61,19 @@ public class GitLabOAuth2Controller {
     @GetMapping("/auth/authorize")
     public ResponseEntity<?> authorize(
             @RequestParam(required = false, defaultValue = "https://gitlab.com") String gitlabUrl,
-            JwtAuthenticationToken token) {
+            Authentication auth) {
 
         try {
-            String userId = extractUserId(token);
+            String userId;
+            if (auth instanceof JwtAuthenticationToken) {
+                JwtAuthenticationToken token = (JwtAuthenticationToken) auth;
+                userId = extractUserId(token);
+            } else if (devMode) {
+                userId = "dev-user";
+            } else {
+                return ResponseEntity.status(401).body(createErrorResponse("No authentication"));
+            }
+
             String state = gitLabOAuth2Service.generateState();
 
             // In dev mode, mock the OAuth flow by creating a credential directly
