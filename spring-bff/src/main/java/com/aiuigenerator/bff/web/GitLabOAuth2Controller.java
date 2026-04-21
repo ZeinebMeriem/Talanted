@@ -107,10 +107,18 @@ public class GitLabOAuth2Controller {
             @RequestParam String code,
             @RequestParam(required = false) String state,
             @RequestParam(required = false, defaultValue = "https://gitlab.com") String gitlabUrl,
-            JwtAuthenticationToken token) {
+            Authentication auth) {
 
         try {
-            String userId = extractUserId(token);
+            String userId;
+            if (auth instanceof JwtAuthenticationToken) {
+                JwtAuthenticationToken token = (JwtAuthenticationToken) auth;
+                userId = extractUserId(token);
+            } else if (devMode) {
+                userId = "dev-user";
+            } else {
+                return ResponseEntity.status(401).body(createErrorResponse("No authentication"));
+            }
 
             log.info("Processing OAuth2 callback for user {} on GitLab {}", userId, gitlabUrl);
 
