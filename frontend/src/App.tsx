@@ -6,7 +6,23 @@ import { JiraImportPage } from './JiraImportPage'
 // Custom hook that handles both auth and dev mode
 function useSafeAuth() {
   try {
-    return useAuth()
+    const auth = useAuth()
+    // If auth is undefined (not in AuthProvider), return dev mock
+    if (!auth) {
+      return {
+        isLoading: false,
+        isAuthenticated: true,
+        user: {
+          profile: { sub: 'dev-user', email: 'dev@localhost' },
+          access_token: 'dev-token'
+        },
+        error: null,
+        signinRedirect: () => {},
+        signoutRedirect: () => Promise.resolve(),
+        removeUser: () => Promise.resolve()
+      } as any
+    }
+    return auth
   } catch (e) {
     // Dev mode: return mock auth context
     return {

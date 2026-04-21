@@ -45,6 +45,9 @@ public class GitLabOAuth2Service {
     @Value("${server.servlet.context-path:}")
     private String contextPath;
 
+    @Value("${app.security.dev-mode:false}")
+    private boolean devMode;
+
     public GitLabOAuth2Service(
             UserGitLabCredentialRepository credentialRepo,
             RestTemplate restTemplate,
@@ -62,15 +65,18 @@ public class GitLabOAuth2Service {
         String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
         String authorizationUri = normalizedUrl + "/oauth/authorize";
 
+        // In dev mode, use a placeholder client_id
+        String effectiveClientId = (clientId == null || clientId.isBlank()) && devMode ? "dev-client-id" : clientId;
+
         Map<String, String> params = new HashMap<>();
-        params.put("client_id", clientId);
+        params.put("client_id", effectiveClientId);
         params.put("redirect_uri", redirectUri);
         params.put("response_type", "code");
         params.put("scope", "api read_user");
         params.put("state", state);
 
         StringBuilder url = new StringBuilder(authorizationUri);
-        url.append("?client_id=").append(clientId);
+        url.append("?client_id=").append(effectiveClientId);
         url.append("&redirect_uri=").append(urlEncode(redirectUri));
         url.append("&response_type=code");
         url.append("&scope=api%20read_user");
