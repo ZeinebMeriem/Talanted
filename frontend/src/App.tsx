@@ -463,8 +463,12 @@ export default function App() {
   }
 
   if (!auth.isAuthenticated) {
-    // Not authenticated - react-oidc-context should redirect to Keycloak
-    // If it doesn't, show loading while redirect happens
+    // Auto-redirect to Keycloak login
+    React.useEffect(() => {
+      auth.signinRedirect()
+    }, [auth])
+
+    // Not authenticated - show loading while redirect happens
     return (
       <>
         <style>{css}</style>
