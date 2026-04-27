@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { AiEditor } from './AiEditor'
 import { JiraImportPage } from './JiraImportPage'
@@ -464,7 +464,7 @@ export default function App() {
 
   if (!auth.isAuthenticated) {
     // Auto-redirect to Keycloak login
-    React.useEffect(() => {
+    useEffect(() => {
       auth.signinRedirect()
     }, [auth])
 
