@@ -200,8 +200,12 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
       CORS_ALLOWED_ORIGINS: http://localhost:5173,http://frontend:5173
-      # DEV MODE: Skip Keycloak authentication
-      APP_SECURITY_DEV_MODE: "true"
+      # PRODUCTION MODE: Enable Keycloak OAuth2 authentication
+      APP_SECURITY_DEV_MODE: "false"
+      # GitLab OAuth credentials
+      GITLAB_OAUTH_CLIENT_ID: "d1152c3ca144adc13273603e6baea0abbc6ec04ab913c2b7bf1f6056190b528e"
+      GITLAB_OAUTH_CLIENT_SECRET: "gloas-aa32cd15325996201e6c1c5a67e71aa289781499343fcdaca602b3b31510d585"
+      GITLAB_OAUTH_REDIRECT_URI: "http://127.0.0.1:8081/api/gitlab/auth/callback"
       # Only needed when dev-mode is false:
       OAUTH_ISSUER: http://localhost:8083/realms/ai-ui
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
@@ -231,7 +235,7 @@ services:
       retries: 3
       start_period: 15s
     environment:
-      VITE_BFF_BASE_URL: http://localhost:8081
+      VITE_BFF_BASE_URL:
       VITE_GENERATION_TIMEOUT_MS: 3600000
       VITE_OIDC_AUTHORITY: http://localhost:8083/realms/ai-ui
       VITE_OIDC_CLIENT_ID: ai-ui-frontend

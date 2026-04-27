@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,14 +19,17 @@ public class UserController {
 
     private final GenerationRepository generationRepo;
 
+    @Value("${app.security.dev-mode:false}")
+    private boolean devMode;
+
     public UserController(GenerationRepository generationRepo) {
         this.generationRepo = generationRepo;
     }
 
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> me(JwtAuthenticationToken token) {
-        // Dev mode: return mock user
-        if (token == null) {
+        // In dev mode, return mock user if token missing
+        if (devMode && (token == null || token.getToken() == null)) {
             Map<String, Object> result = new HashMap<>();
             result.put("userId", "dev-user");
             result.put("username", "developer");
@@ -35,6 +39,11 @@ public class UserController {
             result.put("lastName", "User");
             result.put("roles", List.of("user"));
             return ResponseEntity.ok(result);
+        }
+
+        // Production: require authenticated user
+        if (token == null || token.getToken() == null) {
+            throw new IllegalArgumentException("Authentication required - token missing");
         }
 
         Map<String, Object> claims = token.getToken().getClaims();
@@ -61,8 +70,8 @@ public class UserController {
 
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> stats(JwtAuthenticationToken token) {
-        // Dev mode: return all projects stats
-        if (token == null) {
+        // In dev mode, return all projects stats
+        if (devMode && (token == null || token.getToken() == null)) {
             long total = generationRepo.count();
             long completed = generationRepo.countByStatus(com.aiuigenerator.bff.domain.GenerationStatus.COMPLETED);
 
@@ -71,6 +80,11 @@ public class UserController {
             result.put("completedGenerations", completed);
             result.put("successRate", total > 0 ? Math.round((completed * 100.0) / total) : 0);
             return ResponseEntity.ok(result);
+        }
+
+        // Production: require authenticated user
+        if (token == null || token.getToken() == null) {
+            throw new IllegalArgumentException("Authentication required - token missing");
         }
 
         String userId = (String) token.getToken().getClaims().get("sub");

@@ -9,7 +9,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8082',
+        target: 'http://spring-bff:8082',
         changeOrigin: true,
       },
       '/preview': {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { gitlabAuthorizeSendRequest, gitlabCredentialsGetRequest, gitlabDisconnectSendRequest } from '../api'
+import { gitlabAuthorizeSendRequest, gitlabCredentialsGetRequest, gitlabDisconnectSendRequest, postGenerationPushGitlab } from '../api'
 
 interface GitLabCredential {
   gitlabUrl: string
@@ -103,19 +103,18 @@ export const PushGitLabModal: React.FC<PushGitLabModalProps> = ({
 
     try {
       setLoading(true)
-      const response = await fetch(`/api/generations/${generationId}/push-gitlab`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await postGenerationPushGitlab(
+        generationId,
+        {
           gitlabUrl,
           projectPath: projectPath.trim(),
           branch: branch.trim(),
           commitMessage: commitMessage.trim(),
           autoCreate,
-        }),
-      })
+        },
+        accessToken
+      )
 
-      const data = await response.json()
       if (data.success) {
         setSuccess(`Successfully pushed to ${data.projectUrl}`)
         setProjectPath('')
@@ -170,7 +169,7 @@ export const PushGitLabModal: React.FC<PushGitLabModalProps> = ({
               <label className="block text-sm font-medium mb-2">Connected GitLab Instances</label>
               <div className="space-y-2">
                 {credentials.map(cred => (
-                  <div key={cred.gitlabUrl} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                  <div key={cred.gitlabUrl + "_" + cred.connectedAt} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded">
                     <div className="flex items-center gap-2 flex-1">
                       <input
                         type="radio"

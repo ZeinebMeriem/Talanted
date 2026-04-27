@@ -5,10 +5,40 @@ import { JiraImportPage } from './JiraImportPage'
 
 // Custom hook that handles both auth and dev mode
 function useSafeAuth() {
+  // Check if we're in dev environment and Keycloak is configured for localhost
+  const isDev = import.meta.env.DEV &&
+    (import.meta.env.VITE_OIDC_AUTHORITY ?? '').includes('localhost');
+
   try {
     const auth = useAuth()
-    // If auth is undefined (not in AuthProvider), return dev mock
+
+    // If AuthProvider not initialized
     if (!auth) {
+      // In dev mode: silently fallback to mock dev-user
+      if (isDev) {
+        console.warn('[DEV MODE] AuthProvider not initialized, using mock dev-user authentication')
+        return {
+          isLoading: false,
+          isAuthenticated: true,
+          user: {
+            profile: { sub: 'dev-user', email: 'dev@localhost' },
+            access_token: 'dev-token'
+          },
+          error: null,
+          signinRedirect: () => {},
+          signoutRedirect: () => Promise.resolve(),
+          removeUser: () => Promise.resolve()
+        } as any
+      }
+      // In production: require real auth
+      throw new Error('Authentication provider not initialized. Check VITE_OIDC_AUTHORITY configuration.')
+    }
+
+    return auth
+  } catch (e) {
+    // In dev mode: fallback to mock
+    if (isDev) {
+      console.warn('[DEV MODE] Authentication error, falling back to mock dev-user:', e)
       return {
         isLoading: false,
         isAuthenticated: true,
@@ -22,21 +52,8 @@ function useSafeAuth() {
         removeUser: () => Promise.resolve()
       } as any
     }
-    return auth
-  } catch (e) {
-    // Dev mode: return mock auth context
-    return {
-      isLoading: false,
-      isAuthenticated: true,
-      user: {
-        profile: { sub: 'dev-user', email: 'dev@localhost' },
-        access_token: 'dev-token'
-      },
-      error: null,
-      signinRedirect: () => {},
-      signoutRedirect: () => Promise.resolve(),
-      removeUser: () => Promise.resolve()
-    } as any
+    // In production: fail hard
+    throw e
   }
 }
 

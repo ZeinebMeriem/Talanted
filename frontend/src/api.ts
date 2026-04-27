@@ -1,4 +1,4 @@
-const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8082'
+const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8081'
 
 function authHeaders(accessToken?: string): HeadersInit | undefined {
   if (!accessToken) return undefined
@@ -589,7 +589,6 @@ export async function duplicateGeneration(
 export type PushToGitLabRequest = {
   gitlabUrl: string
   projectPath: string
-  token: string
   branch: string
   commitMessage: string
   autoCreate: boolean

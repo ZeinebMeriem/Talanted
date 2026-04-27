@@ -167,11 +167,23 @@ public class GenerationController {
 
     @GetMapping
     public List<Generation> list(JwtAuthenticationToken token) {
-        // In dev mode or without token, show all projects
-        if (devMode || token == null) {
+        // In dev mode (legacy support), return all projects
+        if (devMode) {
             return service.listAllGenerations();
         }
-        return service.listGenerations((String) token.getToken().getClaims().get("sub"));
+
+        // Production: require authenticated user
+        if (token == null || token.getToken() == null) {
+            throw new IllegalArgumentException("Authentication required - token missing");
+        }
+
+        Object subClaim = token.getToken().getClaims().get("sub");
+        if (subClaim == null) {
+            throw new IllegalArgumentException("Invalid token - missing 'sub' claim");
+        }
+
+        String userId = subClaim.toString();
+        return service.listGenerations(userId);
     }
 
     @GetMapping("/{id}/code")
@@ -223,7 +235,7 @@ public class GenerationController {
      * Push generated code to GitLab repository
      */
     @PostMapping("/{id}/push-gitlab")
-    public ResponseEntity<GitLabClientDto.PushToGitLabResponse> pushToGitLab(
+    public ResponseEntity<?> pushToGitLab(
             @PathVariable("id") String generationId,
             @RequestBody GitLabClientDto.PushToGitLabRequest request,
             JwtAuthenticationToken token) {
@@ -240,12 +252,15 @@ public class GenerationController {
                     generationId,
                     request,
                     token);
+
+            // Return 200 for both success and validation errors (error is in response body)
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Failed to push to GitLab", e);
-            return ResponseEntity.badRequest().body(
-                    GitLabClientDto.PushToGitLabResponse.error(
-                            "Failed to push to GitLab: " + e.getMessage()));
+            log.error("Failed to push to GitLab: {}", e.getMessage(), e);
+            return ResponseEntity.ok(GitLabClientDto.PushToGitLabResponse.error(
+                    "Failed to push to GitLab: " + e.getMessage(),
+                    "GIT_PUSH_FAILED",
+                    "Check logs for details. The generation may still be valid for editing."));
         }
     }
 
@@ -258,6 +273,12 @@ public class GenerationController {
             JwtAuthenticationToken token) {
 
         log.info("POST /api/generations/validate-gitlab-token: gitlabUrl={}", request.gitlabUrl);
+
+        // Dev mode: validation not supported without authentication
+        if (token == null || token.getToken() == null) {
+            return ResponseEntity.badRequest().body(
+                    new GitLabClientDto.ValidateTokenResponse(false));
+        }
 
         try {
             boolean isValid = service.validateGitLabToken(request.gitlabUrl, request.token);
