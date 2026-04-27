@@ -3,56 +3,20 @@ import { useAuth } from 'react-oidc-context'
 import { AiEditor } from './AiEditor'
 import { JiraImportPage } from './JiraImportPage'
 
-// Custom hook that handles both auth and dev mode
+// Custom hook that handles OAuth2 authentication
 function useSafeAuth() {
-  // Check if we're in dev environment and Keycloak is configured for localhost
-  const isDev = import.meta.env.DEV &&
-    (import.meta.env.VITE_OIDC_AUTHORITY ?? '').includes('localhost');
-
   try {
     const auth = useAuth()
 
-    // If AuthProvider not initialized
-    if (!auth) {
-      // In dev mode: silently fallback to mock dev-user
-      if (isDev) {
-        console.warn('[DEV MODE] AuthProvider not initialized, using mock dev-user authentication')
-        return {
-          isLoading: false,
-          isAuthenticated: true,
-          user: {
-            profile: { sub: 'dev-user', email: 'dev@localhost' },
-            access_token: 'dev-token'
-          },
-          error: null,
-          signinRedirect: () => {},
-          signoutRedirect: () => Promise.resolve(),
-          removeUser: () => Promise.resolve()
-        } as any
-      }
-      // In production: require real auth
-      throw new Error('Authentication provider not initialized. Check VITE_OIDC_AUTHORITY configuration.')
+    // Check if actually authenticated (not just context initialized)
+    if (!auth || !auth.isAuthenticated) {
+      throw new Error('Not authenticated. User must login via Keycloak.')
     }
 
     return auth
   } catch (e) {
-    // In dev mode: fallback to mock
-    if (isDev) {
-      console.warn('[DEV MODE] Authentication error, falling back to mock dev-user:', e)
-      return {
-        isLoading: false,
-        isAuthenticated: true,
-        user: {
-          profile: { sub: 'dev-user', email: 'dev@localhost' },
-          access_token: 'dev-token'
-        },
-        error: null,
-        signinRedirect: () => {},
-        signoutRedirect: () => Promise.resolve(),
-        removeUser: () => Promise.resolve()
-      } as any
-    }
-    // In production: fail hard
+    // Always fail hard - we want real OAuth2
+    console.error('[AUTH ERROR] Real Keycloak authentication required:', e)
     throw e
   }
 }
