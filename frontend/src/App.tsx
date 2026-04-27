@@ -3,22 +3,11 @@ import { useAuth } from 'react-oidc-context'
 import { AiEditor } from './AiEditor'
 import { JiraImportPage } from './JiraImportPage'
 
-// Custom hook that handles OAuth2 authentication
+// Custom hook that returns auth context
+// Assumes AuthProvider is properly configured
 function useSafeAuth() {
-  try {
-    const auth = useAuth()
-
-    // Check if actually authenticated (not just context initialized)
-    if (!auth || !auth.isAuthenticated) {
-      throw new Error('Not authenticated. User must login via Keycloak.')
-    }
-
-    return auth
-  } catch (e) {
-    // Always fail hard - we want real OAuth2
-    console.error('[AUTH ERROR] Real Keycloak authentication required:', e)
-    throw e
-  }
+  const auth = useAuth()
+  return auth
 }
 
 const css = `
@@ -474,9 +463,38 @@ export default function App() {
   }
 
   if (!auth.isAuthenticated) {
-    return <LandingPage />
+    // Not authenticated - react-oidc-context should redirect to Keycloak
+    // If it doesn't, show loading while redirect happens
+    return (
+      <>
+        <style>{css}</style>
+        <div style={{
+          minHeight: '100vh', background: '#f7f7f7',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16,
+          color: '#5480ba', fontFamily: 'Inter, sans-serif', padding: '20px',
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: '50%',
+            border: '2px solid rgba(84,128,186,0.2)',
+            borderTopColor: '#5480ba',
+            animation: 'rotate-slow 0.8s linear infinite',
+          }} />
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Redirecting to Keycloak...</p>
+            <p style={{ fontSize: 13, color: '#999' }}>Please login to continue</p>
+          </div>
+          <button onClick={() => void auth.signinRedirect()} style={{
+            padding: '10px 24px', background: '#5480ba',
+            color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600,
+          }}>
+            Login with Keycloak
+          </button>
+        </div>
+      </>
+    )
   }
 
+  // Authenticated - show the app
   const profile = auth.user?.profile as any
   const username = profile?.preferred_username || profile?.email || profile?.sub || 'user'
   const email = profile?.email as string | undefined
