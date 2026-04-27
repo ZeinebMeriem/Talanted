@@ -2,6 +2,7 @@ package com.aiuigenerator.bff.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.aiuigenerator.bff.domain.FileEntry;
 import com.aiuigenerator.bff.dto.GitLabClientDto;
@@ -24,10 +25,30 @@ public class GitLabService {
     private static final String GIT_AUTHOR_NAME = "AI Generator";
     private static final int GIT_TIMEOUT_SECONDS = 120;
 
+    @Value("${app.security.dev-mode:false}")
+    private boolean devMode;
+
+    /**
+     * Determine auth header for GitLab API based on token type
+     * OAuth2 access tokens use 'Authorization: Bearer', PATs use 'PRIVATE-TOKEN'
+     */
+    private String[] gitlabAuthHeader(String token) {
+        if (token != null && token.startsWith("glpat-")) {
+            return new String[]{"-H", "PRIVATE-TOKEN: " + token};
+        }
+        return new String[]{"-H", "Authorization: Bearer " + token};
+    }
+
     /**
      * Ensure GitLab project exists, creating if necessary
      */
     public boolean ensureProjectExists(String gitlabUrl, String token, String projectPath) {
+        // Skip if using mock token (dev mode - no real GitLab connection needed)
+        if (token != null && token.startsWith("dev-token-")) {
+            log.info("Dev mode with mock token: Skipping project existence check for {}", projectPath);
+            return true;
+        }
+
         try {
             String url = normalizeGitLabUrl(gitlabUrl);
             String apiUrl = url + "/api/v4/projects";
@@ -46,12 +67,13 @@ public class GitLabService {
             String projectId = URLEncode(projectPath);
             String getUrl = apiUrl + "/" + projectId;
 
-            ProcessBuilder checkPb = new ProcessBuilder(
-                    "curl",
-                    "-s",
-                    "-o", "/dev/null", "-w", "%{http_code}",
-                    "-H", "PRIVATE-TOKEN: " + token,
-                    getUrl);
+            String[] authHeader = gitlabAuthHeader(token);
+            List<String> checkCmd = new java.util.ArrayList<>(java.util.Arrays.asList(
+                    "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}"));
+            checkCmd.add(authHeader[0]);
+            checkCmd.add(authHeader[1]);
+            checkCmd.add(getUrl);
+            ProcessBuilder checkPb = new ProcessBuilder(checkCmd);
 
             Process checkProcess = checkPb.start();
             boolean completed = checkProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
@@ -77,16 +99,16 @@ public class GitLabService {
                     "{\"name\":\"%s\",\"namespace_id\":\"%s\",\"visibility\":\"private\",\"initialize_with_readme\":false}",
                     projectName, groupName);
 
-            ProcessBuilder createPb = new ProcessBuilder(
-                    "curl",
-                    "-s",
-                    "-X", "POST",
-                    "-H", "PRIVATE-TOKEN: " + token,
+            List<String> createCmd = new java.util.ArrayList<>(java.util.Arrays.asList(
+                    "curl", "-s", "-X", "POST",
                     "-H", "Content-Type: application/json",
                     "-d", createPayload,
                     "-w", "%{http_code}",
-                    "-o", "/dev/null",
-                    apiUrl);
+                    "-o", "/dev/null"));
+            createCmd.add(authHeader[0]);
+            createCmd.add(authHeader[1]);
+            createCmd.add(apiUrl);
+            ProcessBuilder createPb = new ProcessBuilder(createCmd);
 
             Process createProcess = createPb.start();
             completed = createProcess.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
@@ -127,6 +149,12 @@ public class GitLabService {
      * Validate GitLab token by checking user endpoint
      */
     public boolean validateToken(String gitlabUrl, String token) {
+        // Skip validation for mock tokens (dev mode)
+        if (token != null && token.startsWith("dev-token-")) {
+            log.debug("Dev mode mock token: Auto-validating");
+            return true;
+        }
+
         try {
             String url = normalizeGitLabUrl(gitlabUrl);
             String apiUrl = url + "/api/v4/user";
@@ -134,13 +162,13 @@ public class GitLabService {
             log.debug("Validating token for GitLab URL: {}", apiUrl);
 
             // Use separate output and error streams for cleaner parsing
-            ProcessBuilder pb = new ProcessBuilder(
-                    "curl",
-                    "-s",
-                    "-o", "/tmp/gitlab_response.txt",
-                    "-w", "%{http_code}",
-                    "-H", "PRIVATE-TOKEN: " + token,
-                    apiUrl);
+            String[] authHeader = gitlabAuthHeader(token);
+            List<String> cmd = new java.util.ArrayList<>(java.util.Arrays.asList(
+                    "curl", "-s", "-o", "/tmp/gitlab_response.txt", "-w", "%{http_code}"));
+            cmd.add(authHeader[0]);
+            cmd.add(authHeader[1]);
+            cmd.add(apiUrl);
+            ProcessBuilder pb = new ProcessBuilder(cmd);
 
             Process process = pb.start();
             boolean completed = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
@@ -197,7 +225,15 @@ public class GitLabService {
             String commitMessage) throws GitLabServiceException {
         String tempDir = null;
         try {
-            // 1. Create temp directory
+            // Skip actual push if using dev mode mock token (for testing without real GitLab)
+            if (token != null && token.startsWith("dev-token-")) {
+                log.info("Mock token detected: Skipping actual push, returning mock response for project {}", projectPath);
+                String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
+                String projectUrl = buildProjectUrl(normalizedUrl, projectPath);
+                return new GitLabClientDto.PushResult(projectUrl, branch, "dev-commit-" + System.currentTimeMillis());
+            }
+
+            // Real credentials: perform actual git push
             tempDir = createTempDirectory();
             log.info("Created temp dir: {}", tempDir);
 
@@ -222,8 +258,9 @@ public class GitLabService {
             // 6. Add remote and push (use URL with token for authentication)
             executeGitCommand(tempDir, "remote", "add", "origin", projectUrlWithToken);
             executeGitCommand(tempDir, "branch", "-M", branch);
-            // Use force push to allow overwriting existing content on the branch
-            executeGitCommand(tempDir, "push", "-u", "-f", "origin", branch);
+            // Push with --force: safely overwrite remote branch with generated code
+            // Since we generate fresh code each time, we always want to replace the remote
+            executeGitCommand(tempDir, "push", "-u", "--force", "origin", branch);
 
             // 7. Get commit hash
             String commitHash = getCommitHash(tempDir);

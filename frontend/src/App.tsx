@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { AiEditor } from './AiEditor'
 import { JiraImportPage } from './JiraImportPage'
@@ -421,6 +421,31 @@ function LandingPage() {
 
 export default function App() {
   const auth = useSafeAuth()
+  const hasRedirected = useRef(false)
+
+  // Auto-redirect to Keycloak when not authenticated
+  useEffect(() => {
+    if (!auth.isLoading && !auth.isAuthenticated && !auth.error && !hasRedirected.current) {
+      hasRedirected.current = true
+      auth.signinRedirect()
+    }
+  }, [auth])
+
+  // Debug: expose auth state to console
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__AUTH_DEBUG = {
+        isLoading: auth.isLoading,
+        isAuthenticated: auth.isAuthenticated,
+        error: auth.error,
+        user: auth.user ? {
+          profile: auth.user.profile,
+          access_token: auth.user.access_token ? '***masked***' : undefined,
+        } : null,
+      }
+      console.log('🔐 Auth state updated:', (window as any).__AUTH_DEBUG)
+    }
+  }, [auth])
 
   if (auth.isLoading) {
     return (
@@ -463,12 +488,7 @@ export default function App() {
   }
 
   if (!auth.isAuthenticated) {
-    // Auto-redirect to Keycloak login
-    useEffect(() => {
-      auth.signinRedirect()
-    }, [auth])
-
-    // Not authenticated - show loading while redirect happens
+    // Not authenticated - show loading while redirect happens (redirect is handled by top-level useEffect)
     return (
       <>
         <style>{css}</style>

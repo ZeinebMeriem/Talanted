@@ -58,6 +58,22 @@ public class GitLabOAuth2Service {
     }
 
     /**
+     * Check if real GitLab OAuth credentials are configured (not dev mode placeholder)
+     */
+    public boolean hasRealCredentials() {
+        boolean hasCreds = clientId != null && !clientId.isBlank();
+        log.debug("hasRealCredentials: clientId present={}, devMode={}", hasCreds, devMode);
+        return hasCreds;
+    }
+
+    /**
+     * Get the configured redirect URI for debugging
+     */
+    public String getRedirectUri() {
+        return redirectUri;
+    }
+
+    /**
      * Generate OAuth2 authorization URL
      * User will be redirected to GitLab login, then back to callback endpoint
      */
@@ -65,24 +81,17 @@ public class GitLabOAuth2Service {
         String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
         String authorizationUri = normalizedUrl + "/oauth/authorize";
 
-        // In dev mode, use a placeholder client_id
+        // In dev mode without real creds, use a placeholder client_id
         String effectiveClientId = (clientId == null || clientId.isBlank()) && devMode ? "dev-client-id" : clientId;
 
-        Map<String, String> params = new HashMap<>();
-        params.put("client_id", effectiveClientId);
-        params.put("redirect_uri", redirectUri);
-        params.put("response_type", "code");
-        params.put("scope", "api read_user");
-        params.put("state", state);
-
         StringBuilder url = new StringBuilder(authorizationUri);
-        url.append("?client_id=").append(effectiveClientId);
+        url.append("?client_id=").append(urlEncode(effectiveClientId));
         url.append("&redirect_uri=").append(urlEncode(redirectUri));
         url.append("&response_type=code");
         url.append("&scope=api%20read_user");
         url.append("&state=").append(state);
 
-        log.info("Generated authorization URL for GitLab: {}", normalizedUrl);
+        log.info("Generated authorization URL for GitLab: {} with redirect_uri={}", normalizedUrl, redirectUri);
         return url.toString();
     }
 
@@ -104,23 +113,27 @@ public class GitLabOAuth2Service {
         String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
         String tokenUri = normalizedUrl + "/oauth/token";
 
-        // Exchange code for token
-        Map<String, String> tokenRequest = new HashMap<>();
-        tokenRequest.put("client_id", clientId);
-        tokenRequest.put("client_secret", clientSecret);
-        tokenRequest.put("code", code);
-        tokenRequest.put("grant_type", "authorization_code");
-        tokenRequest.put("redirect_uri", redirectUri);
+        log.info("OAuth2 callback: exchanging code for token. clientId={}, redirectUri={}",
+                clientId != null ? clientId.substring(0, Math.min(8, clientId.length())) + "..." : "null",
+                redirectUri);
+
+        // Exchange code for token using form-urlencoded (GitLab requires this, not JSON)
+        org.springframework.util.LinkedMultiValueMap<String, String> tokenRequest = new org.springframework.util.LinkedMultiValueMap<>();
+        tokenRequest.add("client_id", clientId);
+        tokenRequest.add("client_secret", clientSecret);
+        tokenRequest.add("code", code);
+        tokenRequest.add("grant_type", "authorization_code");
+        tokenRequest.add("redirect_uri", redirectUri);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-        String requestBody = objectMapper.writeValueAsString(tokenRequest);
-        HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
+        HttpEntity<org.springframework.util.LinkedMultiValueMap<String, String>> entity = new HttpEntity<>(tokenRequest, headers);
 
         try {
             // Call GitLab token endpoint
             String response = restTemplate.postForObject(tokenUri, entity, String.class);
+            log.debug("GitLab token response: {}", response);
             JsonNode tokenNode = objectMapper.readTree(response);
 
             // Extract token data
@@ -133,15 +146,17 @@ public class GitLabOAuth2Service {
             String gitlabUsername = fetchGitLabUsername(accessToken, normalizedUrl);
 
             // Create or update credential
-            Optional<UserGitLabCredential> existing = credentialRepo.findByUserIdAndGitlabUrl(userId, gitlabUrl);
+            Optional<UserGitLabCredential> existing = credentialRepo.findFirstByUserIdAndGitlabUrl(userId, normalizedUrl);
 
             UserGitLabCredential credential;
             if (existing.isPresent()) {
                 credential = existing.get();
-                log.info("Updating existing GitLab credential for user {} on {}", userId, gitlabUrl);
+                // Update username in case switching from mock to real OAuth
+                credential.setGitlabUsername(gitlabUsername);
+                log.info("Updating existing GitLab credential for user {} on {} with username {}", userId, normalizedUrl, gitlabUsername);
             } else {
-                credential = new UserGitLabCredential(userId, gitlabUrl, gitlabUsername);
-                log.info("Creating new GitLab credential for user {} on {}", userId, gitlabUrl);
+                credential = new UserGitLabCredential(userId, normalizedUrl, gitlabUsername);
+                log.info("Creating new GitLab credential for user {} on {}", userId, normalizedUrl);
             }
 
             credential.setAccessToken(accessToken);
@@ -168,7 +183,7 @@ public class GitLabOAuth2Service {
      */
     public Optional<UserGitLabCredential> getCredential(String userId, String gitlabUrl) {
         String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
-        return credentialRepo.findByUserIdAndGitlabUrl(userId, normalizedUrl);
+        return credentialRepo.findFirstByUserIdAndGitlabUrl(userId, normalizedUrl);
     }
 
     /**
@@ -236,18 +251,19 @@ public class GitLabOAuth2Service {
     }
 
     /**
-     * Fetch GitLab username from API
+     * Fetch GitLab username from API using OAuth2 Bearer token
      */
     private String fetchGitLabUsername(String accessToken, String gitlabUrl) throws Exception {
-        String userInfoUri = gitlabUrl + "/api/v4/user";
+        String userInfoUri = normalizeGitLabUrl(gitlabUrl) + "/api/v4/user";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("PRIVATE-TOKEN", accessToken);
+        headers.set("Authorization", "Bearer " + accessToken);
         HttpEntity<String> entity = new HttpEntity<>(headers);
 
         try {
-            String response = restTemplate.getForObject(userInfoUri, String.class);
-            JsonNode userNode = objectMapper.readTree(response);
+            org.springframework.http.ResponseEntity<String> response =
+                    restTemplate.exchange(userInfoUri, org.springframework.http.HttpMethod.GET, entity, String.class);
+            JsonNode userNode = objectMapper.readTree(response.getBody());
             return userNode.get("username").asText();
         } catch (Exception e) {
             log.error("Failed to fetch GitLab username", e);
@@ -256,7 +272,7 @@ public class GitLabOAuth2Service {
     }
 
     /**
-     * Verify token is still valid
+     * Verify token is still valid using OAuth2 Bearer token
      */
     public boolean verifyToken(String gitlabUrl, String accessToken) {
         try {
@@ -264,14 +280,74 @@ public class GitLabOAuth2Service {
             String userInfoUri = normalizedUrl + "/api/v4/user";
 
             HttpHeaders headers = new HttpHeaders();
-            headers.set("PRIVATE-TOKEN", accessToken);
+            headers.set("Authorization", "Bearer " + accessToken);
             HttpEntity<String> entity = new HttpEntity<>(headers);
 
-            String response = restTemplate.getForObject(userInfoUri, String.class);
-            return response != null && !response.isEmpty();
+            org.springframework.http.ResponseEntity<String> response =
+                    restTemplate.exchange(userInfoUri, org.springframework.http.HttpMethod.GET, entity, String.class);
+            return response.getBody() != null && !response.getBody().isEmpty();
 
         } catch (Exception e) {
             log.warn("Token verification failed for {}: {}", gitlabUrl, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Verify GitLab Personal Access Token (PAT) and return username
+     */
+    public String getGitLabUsername(String gitlabUrl, String personalAccessToken) {
+        try {
+            String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
+            String userInfoUri = normalizedUrl + "/api/v4/user";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", personalAccessToken);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            org.springframework.http.ResponseEntity<String> response =
+                    restTemplate.exchange(userInfoUri, org.springframework.http.HttpMethod.GET, entity, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JsonNode user = objectMapper.readTree(response.getBody());
+                String username = user.get("username").asText();
+                log.info("Successfully retrieved GitLab username: {}", username);
+                return username;
+            }
+
+            throw new Exception("Failed to get user info: " + response.getStatusCode());
+
+        } catch (Exception e) {
+            log.error("Failed to get GitLab username: {}", e.getMessage());
+            throw new RuntimeException("Failed to verify GitLab token: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Verify if a GitLab Personal Access Token is valid
+     */
+    public boolean verifyTokenWithPAT(String gitlabUrl, String personalAccessToken) {
+        try {
+            String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
+            String userInfoUri = normalizedUrl + "/api/v4/user";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("PRIVATE-TOKEN", personalAccessToken);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            org.springframework.http.ResponseEntity<String> response =
+                    restTemplate.exchange(userInfoUri, org.springframework.http.HttpMethod.GET, entity, String.class);
+
+            boolean isValid = response.getStatusCode().is2xxSuccessful() && response.getBody() != null && !response.getBody().isEmpty();
+            if (isValid) {
+                log.info("PAT verified successfully for GitLab: {}", gitlabUrl);
+            } else {
+                log.warn("PAT verification failed for GitLab: {}", gitlabUrl);
+            }
+            return isValid;
+
+        } catch (Exception e) {
+            log.warn("PAT verification failed for GitLab {}: {}", gitlabUrl, e.getMessage());
             return false;
         }
     }
@@ -288,17 +364,33 @@ public class GitLabOAuth2Service {
 
     /**
      * Create a mock GitLab credential for dev mode
+     * If credential already exists for this user+URL, reuse it instead of creating a duplicate
      */
-    public UserGitLabCredential createMockCredential(String userId, String gitlabUrl) {
+    public synchronized UserGitLabCredential createMockCredential(String userId, String gitlabUrl) {
         String normalizedUrl = normalizeGitLabUrl(gitlabUrl);
-        UserGitLabCredential credential = new UserGitLabCredential(userId, normalizedUrl, "dev-user");
+
+        // Check if credential already exists - findFirst avoids IncorrectResultSizeDataAccessException
+        Optional<UserGitLabCredential> existing = credentialRepo.findFirstByUserIdAndGitlabUrl(userId, normalizedUrl);
+
+        UserGitLabCredential credential;
+        if (existing.isPresent()) {
+            // Reuse existing credential instead of creating duplicate
+            credential = existing.get();
+            log.info("Reusing existing mock GitLab credential for user {} on {}", userId, normalizedUrl);
+        } else {
+            // Create new credential only if it doesn't exist
+            credential = new UserGitLabCredential(userId, normalizedUrl, "dev-user");
+            log.info("Creating new mock GitLab credential for user {} on {}", userId, normalizedUrl);
+        }
+
+        // Update fields
         credential.setAccessToken("dev-token-" + UUID.randomUUID());
         credential.setScope("api read_user");
         credential.setActive(true);
         credential.setUpdatedAt(Instant.now());
 
         UserGitLabCredential saved = credentialRepo.save(credential);
-        log.info("Created mock GitLab credential for user {} on {}", userId, normalizedUrl);
+        log.info("Mock GitLab credential saved for user {} on {}", userId, normalizedUrl);
         return saved;
     }
 

@@ -241,22 +241,32 @@ public class GenerationController {
             JwtAuthenticationToken token) {
 
         log.info(
-                "POST /api/generations/{}/push-gitlab: projectPath={}, branch={}, autoCreate={}",
+                "POST /api/generations/{}/push-gitlab: projectPath={}, branch={}, autoCreate={}, tokenProvided={}",
                 generationId,
                 request.projectPath,
                 request.branch,
-                request.autoCreate);
+                request.autoCreate,
+                request.token != null && !request.token.isBlank());
 
         try {
+            log.debug("Calling service.pushGenerationToGitLab for generation: {}", generationId);
             GitLabClientDto.PushToGitLabResponse response = service.pushGenerationToGitLab(
                     generationId,
                     request,
                     token);
 
+            log.info("Push response for {}: success={}, message={}", generationId, response.success, response.message);
+
             // Return 200 for both success and validation errors (error is in response body)
             return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("Validation error for generation {}: {}", generationId, e.getMessage());
+            return ResponseEntity.ok(GitLabClientDto.PushToGitLabResponse.error(
+                    e.getMessage(),
+                    "VALIDATION_FAILED",
+                    "Check that generation exists and code has been generated"));
         } catch (Exception e) {
-            log.error("Failed to push to GitLab: {}", e.getMessage(), e);
+            log.error("Failed to push to GitLab for generation {}: {}", generationId, e.getMessage(), e);
             return ResponseEntity.ok(GitLabClientDto.PushToGitLabResponse.error(
                     "Failed to push to GitLab: " + e.getMessage(),
                     "GIT_PUSH_FAILED",

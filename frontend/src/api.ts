@@ -1,4 +1,6 @@
-const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || 'http://localhost:8081'
+// Use relative URL so Vite proxy handles all /api requests
+// The VITE_BFF_BASE_URL env var is only used for non-proxied setups
+const BFF_BASE_URL = import.meta.env.VITE_BFF_BASE_URL || ''
 
 function authHeaders(accessToken?: string): HeadersInit | undefined {
   if (!accessToken) return undefined
@@ -253,7 +255,7 @@ export async function* streamGeneration(
       }
     }
   } finally {
-    reader.cancel().catch(() => {})
+    reader.cancel().catch(() => { })
   }
 }
 
@@ -314,11 +316,16 @@ export async function createGeneration(
 }
 
 export async function listGenerations(accessToken?: string): Promise<GenerationListItem[]> {
-  const res = await fetch(`${BFF_BASE_URL}/api/generations`, { headers: authHeaders(accessToken) })
+  const url = `${BFF_BASE_URL}/api/generations`
+  console.log('🔗 Fetching from:', url, 'Auth header:', authHeaders(accessToken))
+  const res = await fetch(url, { headers: authHeaders(accessToken) })
+  console.log('🔗 Response status:', res.status, 'OK:', res.ok)
   const data: unknown = await readJsonOrNull(res)
+  console.log('🔗 Response data:', data)
 
   if (!res.ok) {
     const message = extractErrorMessage(data)
+    console.error('🔗 Error response:', message || `HTTP ${res.status}`)
     throw new Error(message || `HTTP ${res.status}`)
   }
 
@@ -592,6 +599,7 @@ export type PushToGitLabRequest = {
   branch: string
   commitMessage: string
   autoCreate: boolean
+  token?: string  // GitLab Personal Access Token
 }
 
 export type PushToGitLabResponse = {
@@ -600,13 +608,25 @@ export type PushToGitLabResponse = {
   branch?: string
   commitHash?: string
   message: string
+  errorCode?: string
+  nextSteps?: string
 }
 
 export async function postGenerationPushGitlab(
   generationId: string,
-  request: PushToGitLabRequest,
+  request: Omit<PushToGitLabRequest, 'token'> & { personalAccessToken?: string },
   accessToken?: string,
 ): Promise<PushToGitLabResponse> {
+  // Convert personalAccessToken field to token field for backend API
+  const fullRequest: PushToGitLabRequest = {
+    gitlabUrl: request.gitlabUrl,
+    projectPath: request.projectPath,
+    branch: request.branch,
+    commitMessage: request.commitMessage,
+    autoCreate: request.autoCreate,
+    token: request.personalAccessToken,
+  }
+
   const res = await fetch(
     `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/push-gitlab`,
     {
@@ -615,7 +635,7 @@ export async function postGenerationPushGitlab(
         'Content-Type': 'application/json',
         ...authHeaders(accessToken),
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(fullRequest),
     },
   )
   const data: unknown = await readJsonOrNull(res)
@@ -643,9 +663,11 @@ export type GitLabCredential = {
 export async function gitlabAuthorizeSendRequest(
   gitlabUrl: string = 'https://gitlab.com',
   accessToken?: string,
-): Promise<{ authorizationUrl: string; state: string }> {
+  force: boolean = false,
+): Promise<{ authorizationUrl: string; state: string } | { success: boolean; gitlabUrl: string; gitlabUsername: string; message: string }> {
+  const forceParam = force ? '&force=true' : ''
   const res = await fetch(
-    `${BFF_BASE_URL}/api/gitlab/auth/authorize?gitlabUrl=${encodeURIComponent(gitlabUrl)}`,
+    `${BFF_BASE_URL}/api/gitlab/auth/authorize?gitlabUrl=${encodeURIComponent(gitlabUrl)}${forceParam}`,
     {
       method: 'GET',
       headers: {
@@ -661,7 +683,7 @@ export async function gitlabAuthorizeSendRequest(
     throw new Error(message || `HTTP ${res.status}`)
   }
 
-  return data as { authorizationUrl: string; state: string }
+  return data as { authorizationUrl: string; state: string } | { success: boolean; gitlabUrl: string; gitlabUsername: string; message: string }
 }
 
 export async function gitlabCredentialsGetRequest(
@@ -687,18 +709,23 @@ export async function gitlabCredentialsGetRequest(
   return Array.isArray(data) ? data : []
 }
 
-export async function gitlabDisconnectSendRequest(
+export async function verifyGitLabToken(
   gitlabUrl: string,
+  personalAccessToken: string,
   accessToken?: string,
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ username: string }> {
   const res = await fetch(
-    `${BFF_BASE_URL}/api/gitlab/disconnect?gitlabUrl=${encodeURIComponent(gitlabUrl)}`,
+    `${BFF_BASE_URL}/api/gitlab/verify-token`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...authHeaders(accessToken),
       },
+      body: JSON.stringify({
+        gitlabUrl,
+        personalAccessToken,
+      }),
     },
   )
   const data: unknown = await readJsonOrNull(res)
@@ -708,7 +735,7 @@ export async function gitlabDisconnectSendRequest(
     throw new Error(message || `HTTP ${res.status}`)
   }
 
-  return (typeof data === 'object' && data !== null ? (data as { success: boolean; message: string }) : { success: false, message: 'Unknown error' })
+  return (typeof data === 'object' && data !== null ? (data as { username: string }) : { username: '' })
 }
 
 // ══════════════════════════════════════════════════════════════

@@ -286,9 +286,12 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     try {
       setHistoryError(null)
       setHistoryLoading(true)
+      console.log('📦 Loading projects... Token:', accessToken ? '✅ Present' : '❌ Missing')
       const items = await listGenerations(accessToken)
+      console.log('📦 Projects loaded:', items.length, items)
       setHistory(items)
     } catch (e: any) {
+      console.error('❌ Failed to load projects:', e)
       setHistoryError(e?.message ?? 'Unable to load history')
     } finally {
       setHistoryLoading(false)

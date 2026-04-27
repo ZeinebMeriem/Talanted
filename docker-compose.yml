@@ -201,7 +201,7 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
       CORS_ALLOWED_ORIGINS: http://localhost:5173,http://frontend:5173
       # PRODUCTION MODE: Enable Keycloak OAuth2 authentication
-      APP_SECURITY_DEV_MODE: "false"
+      APP_SECURITY_DEV_MODE: "true"
       # GitLab OAuth credentials
       GITLAB_OAUTH_CLIENT_ID: "d1152c3ca144adc13273603e6baea0abbc6ec04ab913c2b7bf1f6056190b528e"
       GITLAB_OAUTH_CLIENT_SECRET: "gloas-aa32cd15325996201e6c1c5a67e71aa289781499343fcdaca602b3b31510d585"

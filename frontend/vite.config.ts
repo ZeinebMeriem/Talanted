@@ -9,7 +9,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://spring-bff:8082',
+        target: 'http://spring-bff:8080',
         changeOrigin: true,
       },
       '/preview': {
@@ -17,6 +17,8 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/preview/, '/projects'),
         changeOrigin: true,
       },
+      // Fallback for direct browser requests (non-proxy mode)
+      // Use relative URLs so browser goes through Vite dev server
     },
   },
 })

@@ -17,7 +17,7 @@ public interface UserGitLabCredentialRepository extends MongoRepository<UserGitL
     /**
      * Find credential for a specific user and GitLab instance
      */
-    Optional<UserGitLabCredential> findByUserIdAndGitlabUrl(String userId, String gitlabUrl);
+    Optional<UserGitLabCredential> findFirstByUserIdAndGitlabUrl(String userId, String gitlabUrl);
 
     /**
      * Find all credentials for a user (both active and inactive)
@@ -33,6 +33,11 @@ public interface UserGitLabCredentialRepository extends MongoRepository<UserGitL
      * Delete credential for a specific user and GitLab instance
      */
     void deleteByUserIdAndGitlabUrl(String userId, String gitlabUrl);
+
+    /**
+     * Find all credentials for a user and GitLab instance (for deduplication)
+     */
+    List<UserGitLabCredential> findByUserIdAndGitlabUrl(String userId, String gitlabUrl);
 
     /**
      * Check if user has a credential for a GitLab instance

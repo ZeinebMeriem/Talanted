@@ -10,6 +10,7 @@
   <description>AI UI Generator - Spring Boot BFF (MVP)</description>
 
   <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <java.version>17</java.version>
     <spring-boot.version>3.2.5</spring-boot.version>
     <aws.sdk.version>2.25.65</aws.sdk.version>
