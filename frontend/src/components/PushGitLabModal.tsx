@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
-import { postGenerationPushGitlab, verifyGitLabToken } from '../api'
+import { Modal, FormField, Button, ConfirmDialog } from './index'
+import { useToast } from '../hooks/useToast'
+import { validators } from '../utils/validation'
 
 export interface PushGitLabModalProps {
   isOpen: boolean
@@ -14,273 +16,234 @@ export const PushGitLabModal: React.FC<PushGitLabModalProps> = ({
   generationId,
   accessToken,
 }) => {
+  const toast = useToast()
   const [gitlabUrl, setGitlabUrl] = useState('https://gitlab.com')
-  const [token, setToken] = useState('')
   const [projectPath, setProjectPath] = useState('')
+  const [token, setToken] = useState('')
   const [branch, setBranch] = useState('main')
   const [message, setMessage] = useState('')
-  const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const handleVerify = async () => {
-    if (!token) {
-      setResult('❌ Please enter a GitLab token')
-      return
+  // Validation rules
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {}
+
+    if (!gitlabUrl.trim()) {
+      newErrors.gitlabUrl = 'GitLab URL is required'
+    } else if (validators.url(gitlabUrl)) {
+      newErrors.gitlabUrl = 'Please enter a valid GitLab URL'
     }
 
-    try {
-      setLoading(true)
-      const user = await verifyGitLabToken(gitlabUrl, token, accessToken)
-      setResult(`✅ Verified as: ${user.username}`)
-    } catch (err) {
-      setResult(`❌ Verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-    } finally {
-      setLoading(false)
+    if (!projectPath.trim()) {
+      newErrors.projectPath = 'Project path is required (e.g., username/project)'
+    }
+
+    if (!token.trim()) {
+      newErrors.token = 'Personal Access Token is required'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handlePushClick = () => {
+    if (validateForm()) {
+      setShowConfirm(true)
     }
   }
 
-  const handlePush = async () => {
+  const handleConfirmedPush = async () => {
     if (!generationId) {
-      setResult('❌ No project selected. Please open a project first.')
-      return
-    }
-    if (!token) {
-      setResult('❌ Please verify token first')
-      return
-    }
-    if (!projectPath) {
-      setResult('❌ Please enter project path')
+      toast.error('No project selected')
       return
     }
 
     try {
       setLoading(true)
-      setResult('⏳ Pushing to GitLab...')
+      toast.info('Pushing to GitLab...', { duration: -1 })
 
-      const response = await postGenerationPushGitlab(
-        generationId,
-        {
-          gitlabUrl,
-          projectPath,
-          branch,
-          commitMessage: message || 'feat: AI-generated UI',
-          autoCreate: true,
-          personalAccessToken: token,
-        },
-        accessToken,
-      )
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
 
-      if (response.success) {
-        setResult(`✅ Success! Pushed to ${response.projectUrl}`)
+      const res = await fetch(`/api/generations/${encodeURIComponent(generationId)}/push-to-gitlab`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          gitlabUrl: gitlabUrl.trim(),
+          projectPath: projectPath.trim(),
+          personalAccessToken: token.trim(),
+          branch: branch.trim() || 'main',
+          commitMessage: message.trim() || 'feat: AI-generated UI',
+          forceOverwrite: true,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        toast.success(`Successfully pushed to ${data.projectUrl}!`, {
+          title: '🚀 Push Complete',
+        })
+
+        // Reset form and close after success
         setTimeout(() => {
+          resetForm()
           onClose()
-        }, 2000)
+        }, 1500)
       } else {
-        setResult(`❌ ${response.message}`)
+        toast.error(data.message || 'Failed to push to GitLab')
       }
     } catch (err) {
-      setResult(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred'
+      toast.error(errorMsg, { title: 'Push Failed' })
     } finally {
       setLoading(false)
     }
   }
 
-  if (!isOpen) return null
+  const resetForm = () => {
+    setGitlabUrl('https://gitlab.com')
+    setProjectPath('')
+    setToken('')
+    setBranch('main')
+    setMessage('')
+    setErrors({})
+  }
+
+  const handleClose = () => {
+    resetForm()
+    onClose()
+  }
+
+  const footer = (
+    <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+      <Button
+        variant="ghost"
+        onClick={handleClose}
+        disabled={loading}
+      >
+        Cancel
+      </Button>
+      <Button
+        variant="primary"
+        onClick={handlePushClick}
+        loading={loading}
+        disabled={loading || !projectPath.trim() || !token.trim()}
+      >
+        🚀 Push to GitLab
+      </Button>
+    </div>
+  )
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2000,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          backgroundColor: '#fff',
-          borderRadius: 12,
-          padding: 32,
-          maxWidth: 500,
-          width: '90%',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        }}
-        onClick={(e) => e.stopPropagation()}
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={handleClose}
+        title="🚀 Push to GitLab"
+        size="md"
+        footer={footer}
+        closeOnBackdropClick={!loading}
+        closeOnEscape={!loading}
       >
-        <h2 style={{ marginBottom: 24, fontSize: 22, fontWeight: 700 }}>Push to GitLab</h2>
-
-        {result && (
-          <div
-            style={{
-              marginBottom: 16,
-              padding: 12,
-              backgroundColor: result.includes('✅') ? '#efe' : '#fee',
-              color: result.includes('✅') ? '#080' : '#c00',
-              borderRadius: 8,
-              fontSize: 13,
-            }}
-          >
-            {result}
-          </div>
-        )}
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: 12, fontWeight: 600 }}>
-            GitLab URL
-          </label>
-          <input
-            type="url"
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <FormField
+            id="gitlab-url"
+            label="GitLab URL"
+            type="text"
             value={gitlabUrl}
-            onChange={(e) => setGitlabUrl(e.target.value)}
-            style={{
-              width: '100%',
-              padding: 10,
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              fontSize: 13,
-              boxSizing: 'border-box',
+            onChange={(e) => {
+              setGitlabUrl(e.target.value)
+              if (errors.gitlabUrl) {
+                setErrors(prev => {
+                  const newErrors = { ...prev }
+                  delete newErrors.gitlabUrl
+                  return newErrors
+                })
+              }
             }}
+            placeholder="https://gitlab.com"
+            error={errors.gitlabUrl}
+            required
           />
-        </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: 12, fontWeight: 600 }}>
-            Personal Access Token
-          </label>
-          <input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="glpat-..."
-            style={{
-              width: '100%',
-              padding: 10,
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              fontSize: 13,
-              boxSizing: 'border-box',
-            }}
-          />
-          <button
-            onClick={handleVerify}
-            disabled={loading}
-            style={{
-              width: '100%',
-              marginTop: 8,
-              padding: 8,
-              background: '#5480ba',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 600,
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            {loading ? 'Verifying...' : 'Verify Token'}
-          </button>
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: 12, fontWeight: 600 }}>
-            Project Path (e.g., username/project)
-          </label>
-          <input
+          <FormField
+            id="project-path"
+            label="Project Path"
             type="text"
             value={projectPath}
-            onChange={(e) => setProjectPath(e.target.value)}
-            placeholder="MeryemBoukraa/test-push"
-            style={{
-              width: '100%',
-              padding: 10,
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              fontSize: 13,
-              boxSizing: 'border-box',
+            onChange={(e) => {
+              setProjectPath(e.target.value)
+              if (errors.projectPath) {
+                setErrors(prev => {
+                  const newErrors = { ...prev }
+                  delete newErrors.projectPath
+                  return newErrors
+                })
+              }
             }}
+            placeholder="username/project"
+            hint="The path to your GitLab project"
+            error={errors.projectPath}
+            required
           />
-        </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: 12, fontWeight: 600 }}>
-            Branch
-          </label>
-          <input
+          <FormField
+            id="token"
+            label="Personal Access Token"
+            type="password"
+            value={token}
+            onChange={(e) => {
+              setToken(e.target.value)
+              if (errors.token) {
+                setErrors(prev => {
+                  const newErrors = { ...prev }
+                  delete newErrors.token
+                  return newErrors
+                })
+              }
+            }}
+            placeholder="glpat-xxxxx"
+            hint="Create a PAT at: Settings → Access Tokens"
+            error={errors.token}
+            required
+          />
+
+          <FormField
+            id="branch"
+            label="Branch"
             type="text"
             value={branch}
             onChange={(e) => setBranch(e.target.value)}
-            style={{
-              width: '100%',
-              padding: 10,
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              fontSize: 13,
-              boxSizing: 'border-box',
-            }}
+            placeholder="main"
+            hint="The branch to push to (defaults to 'main')"
           />
-        </div>
 
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: 12, fontWeight: 600 }}>
-            Commit Message (optional)
-          </label>
-          <input
+          <FormField
+            id="message"
+            label="Commit Message"
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="feat: AI-generated UI"
-            style={{
-              width: '100%',
-              padding: 10,
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              fontSize: 13,
-              boxSizing: 'border-box',
-            }}
+            hint="Optional. Defaults to 'feat: AI-generated UI'"
           />
         </div>
+      </Modal>
 
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button
-            onClick={onClose}
-            style={{
-              flex: 1,
-              padding: 10,
-              background: '#f0f0f0',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handlePush}
-            disabled={loading || !token || !projectPath}
-            style={{
-              flex: 1,
-              padding: 10,
-              background: token && projectPath && !loading ? '#5480ba' : '#ccc',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 6,
-              cursor: token && projectPath && !loading ? 'pointer' : 'not-allowed',
-              fontSize: 13,
-              fontWeight: 600,
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            {loading ? 'Pushing...' : '🚀 Push to GitLab'}
-          </button>
-        </div>
-      </div>
-    </div>
+      <ConfirmDialog
+        isOpen={showConfirm}
+        title="Push to GitLab?"
+        message={`This will push the code to GitLab project "${projectPath}" on branch "${branch || 'main'}". This action cannot be undone.`}
+        confirmText="Yes, Push"
+        cancelText="Cancel"
+        isDangerous={false}
+        isLoading={loading}
+        onConfirm={handleConfirmedPush}
+        onCancel={() => setShowConfirm(false)}
+      />
+    </>
   )
 }

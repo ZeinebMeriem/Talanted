@@ -12,6 +12,7 @@ import {
   getAdminUserProjects,
   getAdminUsers,
   getGenerationCode,
+  getGeneration,
   getGenerationVersions,
   getMe,
   getUserStats,
@@ -22,7 +23,6 @@ import {
   rollbackGeneration,
   setAdminUserEnabled,
   getChatHistory,
-  postGenerationPushGitlab,
   type AdminStats,
   type AdminUser,
   type AuditEventListItem,
@@ -34,13 +34,9 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, HistoryPanel, AuditEventsPanel, PushGitLabModal, TedChatBot, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, HistoryPanel, AuditEventsPanel, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
-type Framework =
-  | 'HTML/CSS'
-  | 'React'
-
-type CenterTab = 'preview' | 'code' | 'terminal'
+type CenterTab = 'preview' | 'code' | 'quality' | 'terminal'
 
 type RightTab = 'chat' | 'console' | 'logs' | 'versions'
 
@@ -130,7 +126,6 @@ function findNode(nodes: FileNode[], id: string): FileNode | null {
 }
 
 export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, roles = [], onLogout, initialGenerationId, initialHomeTab }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; roles?: string[]; onLogout?: () => void; initialGenerationId?: string | null; initialHomeTab?: 'create' | 'projects' | 'profile' | 'admin' }) {
-  const [selectedFw, setSelectedFw] = useState<Framework | null>(null)
   const [projectName, setProjectName] = useState('my-awesome-app')
   const [customPrompt, setCustomPrompt] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
@@ -147,14 +142,14 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const autoDetectedDomain = useMemo(() => {
     const p = customPrompt.toLowerCase()
     const keywords: Record<string, string[]> = {
-      ecommerce:  ['shop', 'store', 'product', 'cart', 'checkout', 'price', 'buy', 'boutique', 'catalogue', 'panier'],
-      medical:    ['patient', 'doctor', 'appointment', 'medical', 'health', 'clinic', 'hospital', 'médecin', 'santé'],
-      dashboard:  ['dashboard', 'analytics', 'metrics', 'chart', 'graph', 'stats', 'kpi', 'tableau de bord'],
-      education:  ['course', 'lesson', 'student', 'teacher', 'quiz', 'learning', 'cours', 'formation', 'élève'],
-      saas:       ['saas', 'subscription', 'plan', 'api', 'integration', 'enterprise', 'abonnement', 'plateforme'],
-      portfolio:  ['portfolio', 'skill', 'designer', 'developer', 'creative', 'réalisation', 'compétence'],
+      ecommerce: ['shop', 'store', 'product', 'cart', 'checkout', 'price', 'buy', 'boutique', 'catalogue', 'panier'],
+      medical: ['patient', 'doctor', 'appointment', 'medical', 'health', 'clinic', 'hospital', 'médecin', 'santé'],
+      dashboard: ['dashboard', 'analytics', 'metrics', 'chart', 'graph', 'stats', 'kpi', 'tableau de bord'],
+      education: ['course', 'lesson', 'student', 'teacher', 'quiz', 'learning', 'cours', 'formation', 'élève'],
+      saas: ['saas', 'subscription', 'plan', 'api', 'integration', 'enterprise', 'abonnement', 'plateforme'],
+      portfolio: ['portfolio', 'skill', 'designer', 'developer', 'creative', 'réalisation', 'compétence'],
       restaurant: ['restaurant', 'menu', 'food', 'reservation', 'chef', 'dish', 'cuisine', 'repas'],
-      real_estate:['property', 'house', 'apartment', 'rent', 'immobilier', 'appartement', 'maison', 'agence'],
+      real_estate: ['property', 'house', 'apartment', 'rent', 'immobilier', 'appartement', 'maison', 'agence'],
     }
     let best: string | null = null
     let bestScore = 0
@@ -166,14 +161,14 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   }, [customPrompt])
 
   const DOMAINS = [
-    { value: 'ecommerce',  emoji: '🛒', label: 'E-commerce' },
-    { value: 'dashboard',  emoji: '📊', label: 'Dashboard' },
-    { value: 'medical',    emoji: '🏥', label: 'Médical' },
-    { value: 'education',  emoji: '🎓', label: 'Éducation' },
-    { value: 'saas',       emoji: '💼', label: 'SaaS' },
-    { value: 'portfolio',  emoji: '🎨', label: 'Portfolio' },
+    { value: 'ecommerce', emoji: '🛒', label: 'E-commerce' },
+    { value: 'dashboard', emoji: '📊', label: 'Dashboard' },
+    { value: 'medical', emoji: '🏥', label: 'Médical' },
+    { value: 'education', emoji: '🎓', label: 'Éducation' },
+    { value: 'saas', emoji: '💼', label: 'SaaS' },
+    { value: 'portfolio', emoji: '🎨', label: 'Portfolio' },
     { value: 'restaurant', emoji: '🍽️', label: 'Restaurant' },
-    { value: 'real_estate',emoji: '🏠', label: 'Immobilier' },
+    { value: 'real_estate', emoji: '🏠', label: 'Immobilier' },
   ]
 
   const activeDomain = selectedDomain ?? autoDetectedDomain
@@ -182,6 +177,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
   // Navigation — admin lands directly on admin dashboard
   const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>(initialHomeTab || (isAdmin ? 'admin' : 'create'))
+  const [showCreateForm, setShowCreateForm] = useState(true)
   const [createMode, setCreateMode] = useState<'scratch' | 'jira'>('scratch')
 
   // User profile
@@ -237,6 +233,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [showAllProjects, setShowAllProjects] = useState(false)
 
   const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null)
+  const [selectedGeneration, setSelectedGeneration] = useState<any>(null)
   const [auditEvents, setAuditEvents] = useState<AuditEventListItem[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditError, setAuditError] = useState<string | null>(null)
@@ -256,10 +253,10 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   // Handle style change from visual editor
   const handleStyleChange = useCallback((change: StyleChange) => {
     // Build a natural language description of the change
-    const elementDesc = change.element.textContent 
+    const elementDesc = change.element.textContent
       ? `the ${change.element.tagName} with text "${change.element.textContent.slice(0, 30)}..."`
       : `the ${change.element.tagName}${change.element.className ? `.${change.element.className.split(' ')[0]}` : ''}`;
-    
+
     const propNames: Record<string, string> = {
       'color': 'text color',
       'background-color': 'background color',
@@ -271,7 +268,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       'border-radius': 'border radius',
       'text-align': 'text alignment'
     };
-    
+
     // Handle multiple style changes from "Apply to Code" button
     if (change.property === 'multiple') {
       setChatPrefill(`Change ${elementDesc}: ${change.newValue}`);
@@ -286,12 +283,10 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     try {
       setHistoryError(null)
       setHistoryLoading(true)
-      console.log('📦 Loading projects... Token:', accessToken ? '✅ Present' : '❌ Missing')
       const items = await listGenerations(accessToken)
-      console.log('📦 Projects loaded:', items.length, items)
       setHistory(items)
     } catch (e: any) {
-      console.error('❌ Failed to load projects:', e)
+      console.error('Failed to load projects:', e)
       setHistoryError(e?.message ?? 'Unable to load history')
     } finally {
       setHistoryLoading(false)
@@ -301,11 +296,13 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const loadGeneration = useCallback(async (generationId: string) => {
     try {
       setLoadingProjectId(generationId)
-      const [bundle, history] = await Promise.all([
+      const [bundle, history, generation] = await Promise.all([
         getGenerationCode(generationId, accessToken),
         getChatHistory(generationId, accessToken),
+        getGeneration(generationId, accessToken),
       ])
       setApiResult({ generationId, codeBundle: bundle, uiSpec: undefined, aiReport: undefined })
+      setSelectedGeneration(generation)
       setSelectedGenerationId(generationId)  // Enable chat editing
       setChatMessages(history.map((m: ApiChatMessage) => ({
         role: m.role === 'user' ? 'user' : 'ai',
@@ -596,9 +593,9 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     const cssBlocks: string[] = cssRefs.length > 0
       ? cssRefs.flatMap(r => { const f = effectiveFileContents.get(r); return f?.content ? [f.content] : [] })
       : Array.from(effectiveFileContents.entries())
-          .filter(([p]) => p.endsWith('.css'))
-          .map(([, f]) => f.content)
-          .filter(Boolean) as string[]
+        .filter(([p]) => p.endsWith('.css'))
+        .map(([, f]) => f.content)
+        .filter(Boolean) as string[]
 
     const jsBlocks: string[] = jsRefs.length > 0
       ? jsRefs.flatMap(r => { const f = effectiveFileContents.get(r); return f?.content ? [f.content] : [] })
@@ -717,13 +714,7 @@ document.addEventListener('click', function(e) {
     ? `http://localhost:8000/projects/${apiResult.generationId}/dist/index.html`
     : null
 
-  // Debug logging
-  console.log('AiEditor Debug:', { 
-    generationId: apiResult?.generationId, 
-    builtProjectUrl, 
-    hasCodeBundle: !!apiResult?.codeBundle,
-    filesCount: apiResult?.codeBundle?.files?.length 
-  })
+
 
   const previewKey = useMemo(() => {
     if (!builtProjectUrl && !previewSrcDoc) return 'no-preview'
@@ -880,15 +871,15 @@ document.addEventListener('click', function(e) {
 
   // ── Inspect mode helpers ────────────────────────────────────────────────
   const INSPECT_ZONES = [
-    { top: '0%',  height: '10%', left: '0%', width: '100%', label: 'header / navbar',   description: 'the header navigation bar'     },
-    { top: '10%', height: '20%', left: '0%', width: '100%', label: 'hero section',       description: 'the hero section'              },
-    { top: '30%', height: '22%', left: '0%', width: '100%', label: 'features / content', description: 'the features or content area'  },
-    { top: '52%', height: '23%', left: '0%', width: '100%', label: 'cards / grid',       description: 'the cards or data grid'        },
-    { top: '75%', height: '25%', left: '0%', width: '100%', label: 'footer',             description: 'the footer section'            },
+    { top: '0%', height: '10%', left: '0%', width: '100%', label: 'header / navbar', description: 'the header navigation bar' },
+    { top: '10%', height: '20%', left: '0%', width: '100%', label: 'hero section', description: 'the hero section' },
+    { top: '30%', height: '22%', left: '0%', width: '100%', label: 'features / content', description: 'the features or content area' },
+    { top: '52%', height: '23%', left: '0%', width: '100%', label: 'cards / grid', description: 'the cards or data grid' },
+    { top: '75%', height: '25%', left: '0%', width: '100%', label: 'footer', description: 'the footer section' },
   ]
   const INSPECT_ZONES_SIDEBAR = [
-    { top: '0%',  height: '100%', left: '0%',  width: '16%', label: 'sidebar',       description: 'the sidebar navigation'    },
-    { top: '0%',  height: '100%', left: '84%', width: '16%', label: 'right panel',   description: 'the right side panel'      },
+    { top: '0%', height: '100%', left: '0%', width: '16%', label: 'sidebar', description: 'the sidebar navigation' },
+    { top: '0%', height: '100%', left: '84%', width: '16%', label: 'right panel', description: 'the right side panel' },
   ]
 
   const detectZone = (relX: number, relY: number) => {
@@ -896,8 +887,8 @@ document.addEventListener('click', function(e) {
     if (relX > 0.84) return INSPECT_ZONES_SIDEBAR[1]
     return (
       INSPECT_ZONES.find((_, i) => {
-        const topPct  = parseFloat(INSPECT_ZONES[i].top)  / 100
-        const botPct  = topPct + parseFloat(INSPECT_ZONES[i].height) / 100
+        const topPct = parseFloat(INSPECT_ZONES[i].top) / 100
+        const botPct = topPct + parseFloat(INSPECT_ZONES[i].height) / 100
         return relY >= topPct && relY < botPct
       }) ?? INSPECT_ZONES[INSPECT_ZONES.length - 1]
     )
@@ -1044,150 +1035,150 @@ document.addEventListener('click', function(e) {
       const p = (prompt || '').toLowerCase()
       if (p.includes('dashboard') || p.includes('analytics') || p.includes('admin')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc"/>
-          <rect x="0" y="0" width="56" height="180" fill="#ffffff"/>
-          <rect x="8" y="16" width="40" height="6" rx="3" fill="#e2e8f0"/>
-          <rect x="8" y="30" width="40" height="6" rx="3" fill="#6366f1" opacity="0.8"/>
-          <rect x="8" y="44" width="40" height="6" rx="3" fill="#e2e8f0"/>
-          <rect x="8" y="58" width="40" height="6" rx="3" fill="#e2e8f0"/>
-          <rect x="8" y="72" width="40" height="6" rx="3" fill="#e2e8f0"/>
-          <rect x="64" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="70" y="16" width="24" height="4" rx="2" fill="#6366f1" opacity="0.7"/>
-          <rect x="70" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
-          <rect x="132" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="138" y="16" width="24" height="4" rx="2" fill="#10b981" opacity="0.7"/>
-          <rect x="138" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
-          <rect x="200" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="206" y="16" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.7"/>
-          <rect x="206" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
-          <rect x="268" y="10" width="44" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="274" y="16" width="20" height="4" rx="2" fill="#8b5cf6" opacity="0.7"/>
-          <rect x="274" y="24" width="12" height="8" rx="2" fill="#1f2937" opacity="0.8"/>
-          <rect x="64" y="52" width="168" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="72" y="60" width="50" height="4" rx="2" fill="#e2e8f0"/>
-          <rect x="72" y="115" width="10" height="14" rx="2" fill="#6366f1" opacity="0.5"/>
-          <rect x="86" y="105" width="10" height="24" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="100" y="95" width="10" height="34" rx="2" fill="#6366f1" opacity="0.7"/>
-          <rect x="114" y="100" width="10" height="29" rx="2" fill="#6366f1" opacity="0.65"/>
-          <rect x="128" y="85" width="10" height="44" rx="2" fill="#6366f1" opacity="0.9"/>
-          <rect x="142" y="92" width="10" height="37" rx="2" fill="#6366f1" opacity="0.75"/>
-          <rect x="156" y="78" width="10" height="51" rx="2" fill="#6366f1"/>
-          <rect x="170" y="88" width="10" height="41" rx="2" fill="#6366f1" opacity="0.8"/>
-          <rect x="184" y="97" width="10" height="32" rx="2" fill="#6366f1" opacity="0.7"/>
-          <rect x="198" y="82" width="10" height="47" rx="2" fill="#6366f1" opacity="0.85"/>
-          <rect x="240" y="52" width="72" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <circle cx="276" cy="90" r="22" fill="none" stroke="#6366f1" strokeWidth="8" strokeDasharray="69 30" opacity="0.7"/>
-          <circle cx="276" cy="90" r="22" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray="20 79" strokeDashoffset="-69" opacity="0.7"/>
-          <rect x="64" y="142" width="248" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="72" y="149" width="40" height="4" rx="2" fill="#e2e8f0"/>
-          <rect x="72" y="158" width="30" height="4" rx="2" fill="#e2e8f0"/>
-          <rect x="140" y="149" width="30" height="4" rx="2" fill="#e2e8f0"/>
-          <rect x="140" y="158" width="24" height="4" rx="2" fill="#e2e8f0"/>
-          <rect x="220" y="149" width="20" height="4" rx="2" fill="#10b981" opacity="0.6"/>
+          <rect width="320" height="180" fill="#f8fafc" />
+          <rect x="0" y="0" width="56" height="180" fill="#ffffff" />
+          <rect x="8" y="16" width="40" height="6" rx="3" fill="#e2e8f0" />
+          <rect x="8" y="30" width="40" height="6" rx="3" fill="#6366f1" opacity="0.8" />
+          <rect x="8" y="44" width="40" height="6" rx="3" fill="#e2e8f0" />
+          <rect x="8" y="58" width="40" height="6" rx="3" fill="#e2e8f0" />
+          <rect x="8" y="72" width="40" height="6" rx="3" fill="#e2e8f0" />
+          <rect x="64" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="70" y="16" width="24" height="4" rx="2" fill="#6366f1" opacity="0.7" />
+          <rect x="70" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
+          <rect x="132" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="138" y="16" width="24" height="4" rx="2" fill="#10b981" opacity="0.7" />
+          <rect x="138" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
+          <rect x="200" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="206" y="16" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.7" />
+          <rect x="206" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
+          <rect x="268" y="10" width="44" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="274" y="16" width="20" height="4" rx="2" fill="#8b5cf6" opacity="0.7" />
+          <rect x="274" y="24" width="12" height="8" rx="2" fill="#1f2937" opacity="0.8" />
+          <rect x="64" y="52" width="168" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="72" y="60" width="50" height="4" rx="2" fill="#e2e8f0" />
+          <rect x="72" y="115" width="10" height="14" rx="2" fill="#6366f1" opacity="0.5" />
+          <rect x="86" y="105" width="10" height="24" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="100" y="95" width="10" height="34" rx="2" fill="#6366f1" opacity="0.7" />
+          <rect x="114" y="100" width="10" height="29" rx="2" fill="#6366f1" opacity="0.65" />
+          <rect x="128" y="85" width="10" height="44" rx="2" fill="#6366f1" opacity="0.9" />
+          <rect x="142" y="92" width="10" height="37" rx="2" fill="#6366f1" opacity="0.75" />
+          <rect x="156" y="78" width="10" height="51" rx="2" fill="#6366f1" />
+          <rect x="170" y="88" width="10" height="41" rx="2" fill="#6366f1" opacity="0.8" />
+          <rect x="184" y="97" width="10" height="32" rx="2" fill="#6366f1" opacity="0.7" />
+          <rect x="198" y="82" width="10" height="47" rx="2" fill="#6366f1" opacity="0.85" />
+          <rect x="240" y="52" width="72" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <circle cx="276" cy="90" r="22" fill="none" stroke="#6366f1" strokeWidth="8" strokeDasharray="69 30" opacity="0.7" />
+          <circle cx="276" cy="90" r="22" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray="20 79" strokeDashoffset="-69" opacity="0.7" />
+          <rect x="64" y="142" width="248" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="72" y="149" width="40" height="4" rx="2" fill="#e2e8f0" />
+          <rect x="72" y="158" width="30" height="4" rx="2" fill="#e2e8f0" />
+          <rect x="140" y="149" width="30" height="4" rx="2" fill="#e2e8f0" />
+          <rect x="140" y="158" width="24" height="4" rx="2" fill="#e2e8f0" />
+          <rect x="220" y="149" width="20" height="4" rx="2" fill="#10b981" opacity="0.6" />
         </svg>
       )
       if (p.includes('landing') || p.includes('saas') || p.includes('marketing')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc"/>
-          <rect x="0" y="0" width="320" height="28" fill="#ffffff"/>
-          <rect x="16" y="10" width="40" height="8" rx="4" fill="#6366f1" opacity="0.8"/>
-          <rect x="120" y="12" width="24" height="5" rx="2" fill="#94a3b8"/>
-          <rect x="152" y="12" width="24" height="5" rx="2" fill="#94a3b8"/>
-          <rect x="184" y="12" width="24" height="5" rx="2" fill="#94a3b8"/>
-          <rect x="264" y="9" width="40" height="10" rx="5" fill="#6366f1" opacity="0.8"/>
-          <rect x="80" y="42" width="160" height="10" rx="5" fill="#1f2937" opacity="0.9"/>
-          <rect x="96" y="58" width="128" height="6" rx="3" fill="#64748b" opacity="0.5"/>
-          <rect x="108" y="68" width="104" height="5" rx="2" fill="#94a3b8" opacity="0.3"/>
-          <rect x="120" y="82" width="36" height="12" rx="6" fill="#6366f1" opacity="0.9"/>
-          <rect x="164" y="82" width="36" height="12" rx="6" fill="#e2e8f0"/>
-          <rect x="32" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="40" y="116" width="24" height="4" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="40" y="124" width="48" height="3" rx="1" fill="#cbd5e1"/>
-          <rect x="40" y="130" width="40" height="3" rx="1" fill="#cbd5e1"/>
-          <rect x="124" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="132" y="116" width="24" height="4" rx="2" fill="#10b981" opacity="0.6"/>
-          <rect x="132" y="124" width="48" height="3" rx="1" fill="#cbd5e1"/>
-          <rect x="132" y="130" width="40" height="3" rx="1" fill="#cbd5e1"/>
-          <rect x="216" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="224" y="116" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.6"/>
-          <rect x="224" y="124" width="48" height="3" rx="1" fill="#cbd5e1"/>
-          <rect x="224" y="130" width="40" height="3" rx="1" fill="#cbd5e1"/>
+          <rect width="320" height="180" fill="#f8fafc" />
+          <rect x="0" y="0" width="320" height="28" fill="#ffffff" />
+          <rect x="16" y="10" width="40" height="8" rx="4" fill="#6366f1" opacity="0.8" />
+          <rect x="120" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
+          <rect x="152" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
+          <rect x="184" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
+          <rect x="264" y="9" width="40" height="10" rx="5" fill="#6366f1" opacity="0.8" />
+          <rect x="80" y="42" width="160" height="10" rx="5" fill="#1f2937" opacity="0.9" />
+          <rect x="96" y="58" width="128" height="6" rx="3" fill="#64748b" opacity="0.5" />
+          <rect x="108" y="68" width="104" height="5" rx="2" fill="#94a3b8" opacity="0.3" />
+          <rect x="120" y="82" width="36" height="12" rx="6" fill="#6366f1" opacity="0.9" />
+          <rect x="164" y="82" width="36" height="12" rx="6" fill="#e2e8f0" />
+          <rect x="32" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="40" y="116" width="24" height="4" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="40" y="124" width="48" height="3" rx="1" fill="#cbd5e1" />
+          <rect x="40" y="130" width="40" height="3" rx="1" fill="#cbd5e1" />
+          <rect x="124" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="132" y="116" width="24" height="4" rx="2" fill="#10b981" opacity="0.6" />
+          <rect x="132" y="124" width="48" height="3" rx="1" fill="#cbd5e1" />
+          <rect x="132" y="130" width="40" height="3" rx="1" fill="#cbd5e1" />
+          <rect x="216" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="224" y="116" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.6" />
+          <rect x="224" y="124" width="48" height="3" rx="1" fill="#cbd5e1" />
+          <rect x="224" y="130" width="40" height="3" rx="1" fill="#cbd5e1" />
         </svg>
       )
       if (p.includes('ecommerce') || p.includes('shop') || p.includes('store') || p.includes('product')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc"/>
-          <rect x="0" y="0" width="320" height="24" fill="#ffffff"/>
-          <rect x="12" y="8" width="32" height="8" rx="4" fill="#6366f1" opacity="0.8"/>
-          <rect x="260" y="8" width="20" height="8" rx="4" fill="#e2e8f0"/>
-          <rect x="286" y="8" width="20" height="8" rx="4" fill="#e2e8f0"/>
-          <rect x="0" y="24" width="70" height="156" fill="#ffffff"/>
-          <rect x="8" y="32" width="54" height="5" rx="2" fill="#e2e8f0"/>
-          <rect x="8" y="44" width="40" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="8" y="52" width="44" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="8" y="60" width="36" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="8" y="76" width="54" height="5" rx="2" fill="#e2e8f0"/>
-          <rect x="8" y="88" width="40" height="4" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="8" y="96" width="44" height="4" rx="2" fill="#cbd5e1"/>
-          {[0,1,2].map(col => [0,1].map(row => (
+          <rect width="320" height="180" fill="#f8fafc" />
+          <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
+          <rect x="12" y="8" width="32" height="8" rx="4" fill="#6366f1" opacity="0.8" />
+          <rect x="260" y="8" width="20" height="8" rx="4" fill="#e2e8f0" />
+          <rect x="286" y="8" width="20" height="8" rx="4" fill="#e2e8f0" />
+          <rect x="0" y="24" width="70" height="156" fill="#ffffff" />
+          <rect x="8" y="32" width="54" height="5" rx="2" fill="#e2e8f0" />
+          <rect x="8" y="44" width="40" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="8" y="52" width="44" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="8" y="60" width="36" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="8" y="76" width="54" height="5" rx="2" fill="#e2e8f0" />
+          <rect x="8" y="88" width="40" height="4" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="8" y="96" width="44" height="4" rx="2" fill="#cbd5e1" />
+          {[0, 1, 2].map(col => [0, 1].map(row => (
             <g key={`${col}-${row}`}>
-              <rect x={78 + col * 84} y={30 + row * 74} width="76" height="64" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-              <rect x={82 + col * 84} y={34 + row * 74} width="68" height="38" rx="4" fill="#f1f5f9"/>
-              <rect x={86 + col * 84} y={76 + row * 74} width="40" height="4" rx="2" fill="#cbd5e1"/>
-              <rect x={86 + col * 84} y={83 + row * 74} width="28" height="4" rx="2" fill="#6366f1" opacity="0.7"/>
+              <rect x={78 + col * 84} y={30 + row * 74} width="76" height="64" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+              <rect x={82 + col * 84} y={34 + row * 74} width="68" height="38" rx="4" fill="#f1f5f9" />
+              <rect x={86 + col * 84} y={76 + row * 74} width="40" height="4" rx="2" fill="#cbd5e1" />
+              <rect x={86 + col * 84} y={83 + row * 74} width="28" height="4" rx="2" fill="#6366f1" opacity="0.7" />
             </g>
           )))}
         </svg>
       )
       if (p.includes('portfolio') || p.includes('resume') || p.includes('personal')) return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc"/>
-          <rect x="0" y="0" width="320" height="24" fill="#ffffff"/>
-          <rect x="16" y="8" width="40" height="8" rx="4" fill="#1f2937" opacity="0.8"/>
-          <rect x="220" y="10" width="20" height="5" rx="2" fill="#cbd5e1"/>
-          <rect x="248" y="10" width="20" height="5" rx="2" fill="#cbd5e1"/>
-          <rect x="276" y="10" width="20" height="5" rx="2" fill="#cbd5e1"/>
-          <circle cx="160" cy="64" r="22" fill="#f1f5f9" stroke="#6366f1" strokeWidth="2" opacity="0.8"/>
-          <rect x="124" y="92" width="72" height="8" rx="4" fill="#1f2937" opacity="0.8"/>
-          <rect x="136" y="105" width="48" height="5" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="86" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="92" y="131" width="32" height="18" rx="4" fill="#f1f5f9"/>
-          <rect x="92" y="152" width="24" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="138" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="144" y="131" width="32" height="18" rx="4" fill="#f1f5f9"/>
-          <rect x="144" y="152" width="24" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="190" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="196" y="131" width="32" height="18" rx="4" fill="#f1f5f9"/>
-          <rect x="196" y="152" width="24" height="4" rx="2" fill="#cbd5e1"/>
+          <rect width="320" height="180" fill="#f8fafc" />
+          <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
+          <rect x="16" y="8" width="40" height="8" rx="4" fill="#1f2937" opacity="0.8" />
+          <rect x="220" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
+          <rect x="248" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
+          <rect x="276" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
+          <circle cx="160" cy="64" r="22" fill="#f1f5f9" stroke="#6366f1" strokeWidth="2" opacity="0.8" />
+          <rect x="124" y="92" width="72" height="8" rx="4" fill="#1f2937" opacity="0.8" />
+          <rect x="136" y="105" width="48" height="5" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="86" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="92" y="131" width="32" height="18" rx="4" fill="#f1f5f9" />
+          <rect x="92" y="152" width="24" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="138" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="144" y="131" width="32" height="18" rx="4" fill="#f1f5f9" />
+          <rect x="144" y="152" width="24" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="190" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="196" y="131" width="32" height="18" rx="4" fill="#f1f5f9" />
+          <rect x="196" y="152" width="24" height="4" rx="2" fill="#cbd5e1" />
         </svg>
       )
       return (
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc"/>
-          <rect x="0" y="0" width="320" height="24" fill="#ffffff"/>
-          <rect x="16" y="8" width="48" height="8" rx="4" fill="#6366f1" opacity="0.8"/>
-          <rect x="246" y="9" width="58" height="7" rx="3" fill="#6366f1" opacity="0.5"/>
-          <rect x="20" y="36" width="130" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="30" y="46" width="60" height="6" rx="3" fill="#1f2937" opacity="0.8"/>
-          <rect x="30" y="58" width="100" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="30" y="66" width="80" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="30" y="74" width="90" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="30" y="85" width="36" height="10" rx="5" fill="#6366f1" opacity="0.8"/>
-          <rect x="164" y="36" width="136" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="174" y="52" width="10" height="28" rx="2" fill="#6366f1" opacity="0.5"/>
-          <rect x="190" y="44" width="10" height="36" rx="2" fill="#6366f1" opacity="0.6"/>
-          <rect x="206" y="50" width="10" height="30" rx="2" fill="#6366f1" opacity="0.7"/>
-          <rect x="222" y="40" width="10" height="40" rx="2" fill="#6366f1" opacity="0.8"/>
-          <rect x="238" y="46" width="10" height="34" rx="2" fill="#6366f1" opacity="0.65"/>
-          <rect x="254" y="36" width="10" height="44" rx="2" fill="#6366f1"/>
-          <rect x="20" y="108" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1"/>
-          <rect x="30" y="118" width="50" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="30" y="127" width="60" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="30" y="136" width="40" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="120" y="118" width="50" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="120" y="127" width="40" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="120" y="136" width="55" height="4" rx="2" fill="#cbd5e1"/>
-          <rect x="260" y="122" width="28" height="10" rx="5" fill="#6366f1" opacity="0.6"/>
+          <rect width="320" height="180" fill="#f8fafc" />
+          <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
+          <rect x="16" y="8" width="48" height="8" rx="4" fill="#6366f1" opacity="0.8" />
+          <rect x="246" y="9" width="58" height="7" rx="3" fill="#6366f1" opacity="0.5" />
+          <rect x="20" y="36" width="130" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="30" y="46" width="60" height="6" rx="3" fill="#1f2937" opacity="0.8" />
+          <rect x="30" y="58" width="100" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="30" y="66" width="80" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="30" y="74" width="90" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="30" y="85" width="36" height="10" rx="5" fill="#6366f1" opacity="0.8" />
+          <rect x="164" y="36" width="136" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="174" y="52" width="10" height="28" rx="2" fill="#6366f1" opacity="0.5" />
+          <rect x="190" y="44" width="10" height="36" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="206" y="50" width="10" height="30" rx="2" fill="#6366f1" opacity="0.7" />
+          <rect x="222" y="40" width="10" height="40" rx="2" fill="#6366f1" opacity="0.8" />
+          <rect x="238" y="46" width="10" height="34" rx="2" fill="#6366f1" opacity="0.65" />
+          <rect x="254" y="36" width="10" height="44" rx="2" fill="#6366f1" />
+          <rect x="20" y="108" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="30" y="118" width="50" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="30" y="127" width="60" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="30" y="136" width="40" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="120" y="118" width="50" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="120" y="127" width="40" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="120" y="136" width="55" height="4" rx="2" fill="#cbd5e1" />
+          <rect x="260" y="122" width="28" height="10" rx="5" fill="#6366f1" opacity="0.6" />
         </svg>
       )
     }
@@ -1219,8 +1210,10 @@ document.addEventListener('click', function(e) {
         </div>
 
         {/* ── SIDEBAR ── */}
-        <aside style={{ width: 260, background: '#ffffff', borderRight
-          : '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto' }}>
+        <aside style={{
+          width: 260, background: '#ffffff', borderRight
+            : '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto'
+        }}>
 
           {/* Logo */}
           <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #e5e7eb' }}>
@@ -1311,8 +1304,26 @@ document.addEventListener('click', function(e) {
         {/* ── MAIN CONTENT ── */}
         <main style={{ marginLeft: 260, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4 }}>
 
+          {/* ── HOME PAGE ── */}
+          {homeTab === 'create' && !showCreateForm && (
+            <HomePage
+              isAuthenticated={true}
+              username={username}
+              email={email}
+              firstName={firstName}
+              recentProjects={history.slice(0, 6).map(item => ({
+                id: item.generationId || item.sessionId || '',
+                name: `Session ${item.sessionId?.slice(0, 8) || 'Unknown'}`,
+                createdAt: item.createdAt || new Date().toISOString()
+              }))}
+              onCreateProject={() => setShowCreateForm(true)}
+              onViewProjects={() => setHomeTab('projects')}
+              onLogout={onLogout}
+            />
+          )}
+
           {/* ── NEW PROJECT ── */}
-          {homeTab === 'create' && createMode === 'scratch' && (
+          {homeTab === 'create' && (showCreateForm || createMode !== 'scratch') && createMode === 'scratch' && (
             <div className="home-container"
               onMouseMove={e => {
                 const el = e.currentTarget as HTMLElement
@@ -1324,61 +1335,91 @@ document.addEventListener('click', function(e) {
               }}>
 
               {/* ── MODE TOGGLE: Scratch vs Jira ── */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
-                <div style={{ display: 'inline-flex', gap: 2, background: 'rgba(255,255,255,.5)', borderRadius: 12, padding: 4, backdropFilter: 'blur(8px)', border: '1px solid rgba(84,128,186,.15)' }}>
-                  {[
-                    { value: 'scratch' as const, label: '✨ Create from Scratch', emoji: '✨' },
-                    { value: 'jira' as const, label: '📋 Import from Jira', emoji: '📋' },
-                  ].map(mode => (
-                    <button
-                      key={mode.value}
-                      onClick={() => {
-                        if (mode.value === 'jira') {
-                          window.location.href = '/jira'
-                        } else {
-                          setCreateMode('scratch')
-                        }
-                      }}
-                      style={{
-                        padding: '10px 16px',
-                        borderRadius: 10,
-                        border: 'none',
-                        background: createMode === mode.value ? 'linear-gradient(135deg, #5480ba 0%, #3d6494 100%)' : 'transparent',
-                        color: createMode === mode.value ? '#fff' : '#5480ba',
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        boxShadow: createMode === mode.value ? '0 4px 15px -3px rgba(84,128,186,.4)' : 'none',
-                      }}
-                      title={mode.label}
-                    >
-                      {mode.emoji} {mode.label.split(' ').slice(1).join(' ')}
-                    </button>
-                  ))}
+              <div style={{ maxWidth: 1240, margin: '0 auto 14px', padding: '0 20px', position: 'relative', zIndex: 2 }}>
+                <div style={{
+                  borderRadius: 16,
+                  border: '1px solid rgba(84,128,186,.18)',
+                  background: 'linear-gradient(135deg, rgba(255,255,255,.95) 0%, rgba(246,248,255,.92) 100%)',
+                  boxShadow: '0 14px 40px rgba(84,128,186,.14)',
+                  padding: 14,
+                  backdropFilter: 'blur(10px)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'inline-flex', gap: 6, background: '#eef3fb', border: '1px solid #d7e1f0', borderRadius: 12, padding: 4 }}>
+                      <button
+                        onClick={() => setCreateMode('scratch')}
+                        style={{
+                          border: 'none',
+                          borderRadius: 9,
+                          background: '#ffffff',
+                          color: '#20304a',
+                          padding: '9px 13px',
+                          fontSize: 13,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 8px rgba(15,23,42,.08)',
+                        }}
+                      >
+                        ✨ Create from Scratch
+                      </button>
+                      <button
+                        onClick={() => { window.location.href = '/jira' }}
+                        style={{
+                          border: 'none',
+                          borderRadius: 9,
+                          background: 'linear-gradient(135deg, #efe6f9, #e6ecff)',
+                          color: '#4c2e67',
+                          padding: '9px 13px',
+                          fontSize: 13,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        📋 Import from Jira
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {['Connect Jira', 'Select stories', 'Generate mapped UI'].map((step, idx) => (
+                        <span key={step} style={{ fontSize: 11, fontWeight: 700, color: '#5f4c73', background: 'rgba(111,53,157,.08)', border: '1px solid rgba(111,53,157,.18)', borderRadius: 999, padding: '4px 10px' }}>
+                          {idx + 1}. {step}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* ── Hero — compact ── */}
-              <div className="home-hero">
-                <div className="home-badge">Talan AI Platform</div>
-                <h1 className="home-title">
-                  What should we <span className="gradient-text">build</span> today?
-                </h1>
-                <p className="home-subtitle">
-                  Describe your idea and our AI agents will build it in seconds.
-                </p>
+              {/* ── Compact header ── */}
+              <div style={{ maxWidth: 1240, margin: '0 auto 10px', padding: '0 20px', position: 'relative', zIndex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#5480ba', background: 'rgba(84,128,186,.08)', border: '1px solid rgba(84,128,186,.18)', borderRadius: 999, padding: '5px 10px', marginBottom: 8 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#5480ba' }} />
+                      Talan AI Platform
+                    </div>
+                    <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.08, fontWeight: 900, color: '#18233a' }}>
+                      What should we <span style={{ color: '#4f46e5' }}>build</span> today?
+                    </h1>
+                    <p style={{ margin: '6px 0 0', fontSize: 14, color: '#667085', fontWeight: 500 }}>
+                      Describe your idea and generate production-ready UI in seconds.
+                    </p>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, background: 'rgba(255,255,255,.72)', border: '1px solid rgba(84,128,186,.16)', borderRadius: 10, padding: '6px 10px' }}>
+                    Structured flow: Brief {'->'} Generate {'->'} Refine
+                  </div>
+                </div>
               </div>
 
               {/* ── Stats strip ── */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap', position: 'relative', zIndex: 1, padding: '0 20px' }}>
                 {[
                   { icon: '🤖', label: '4 AI Agents', sub: 'in sequence' },
                   { icon: '⚛', label: 'React & Tailwind', sub: 'production code' },
                   { icon: '⚡', label: 'Live Preview', sub: 'instant render' },
                   { icon: '📦', label: 'Export Ready', sub: 'download ZIP' },
                 ].map((s, i) => (
-                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 10, background: 'rgba(255,255,255,.72)', border: '1px solid rgba(84,128,186,.15)', backdropFilter: 'blur(8px)', animation: `fadeUp .5s ease ${i * 0.08}s both`, transition: 'transform .2s, box-shadow .2s' }}
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(255,255,255,.78)', border: '1px solid rgba(84,128,186,.15)', backdropFilter: 'blur(8px)', animation: `fadeUp .5s ease ${i * 0.08}s both`, transition: 'transform .2s, box-shadow .2s' }}
                     onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 6px 20px rgba(84,128,186,.18)' }}
                     onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = '' }}>
                     <span style={{ fontSize: 15 }}>{s.icon}</span>
@@ -1391,13 +1432,23 @@ document.addEventListener('click', function(e) {
               </div>
 
               {/* ── 2-column layout ── */}
-              <div style={{ maxWidth: 1260, margin: '0 auto', padding: '0 24px 32px', display: 'grid', gridTemplateColumns: '1fr 360px', gap: 22, position: 'relative', zIndex: 1 }}>
+              <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 20px 18px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 350px', alignItems: 'start', gap: 14, position: 'relative', zIndex: 1 }}>
 
                 {/* LEFT — Form */}
-                <div className="home-form-card" style={{ marginBottom: 0, borderLeft: '3px solid #5480ba' }}>
+                <div className="home-form-card" style={{
+                  marginBottom: 0,
+                  borderLeft: '3px solid #5480ba',
+                  maxWidth: 'none',
+                  width: '100%',
+                  padding: '24px 24px 20px',
+                  borderRadius: 18,
+                  background: '#ffffff',
+                  border: '1px solid #dbe5f2',
+                  boxShadow: '0 8px 24px rgba(15,23,42,.08)',
+                }}>
 
                   {/* Name + Stack */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 14 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5 }}>Project Name</label>
                       <input
@@ -1406,17 +1457,6 @@ document.addEventListener('click', function(e) {
                         value={projectName}
                         onChange={e => setProjectName(e.target.value)}
                       />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5 }}>Stack</label>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {[{ id: 'HTML/CSS', label: 'Vanilla' }, { id: 'React', label: 'React' }].map(fw => (
-                          <button key={fw.id} onClick={() => setSelectedFw(fw.id as any)}
-                            className={`stack-btn ${selectedFw === fw.id ? 'active' : 'inactive'}`}>
-                            {fw.label}
-                          </button>
-                        ))}
-                      </div>
                     </div>
                   </div>
 
@@ -1460,7 +1500,18 @@ document.addEventListener('click', function(e) {
                     </div>
                     <textarea
                       className="home-textarea"
-                      style={{ minHeight: 96 }}
+                      style={{
+                        minHeight: 128,
+                        width: '100%',
+                        borderRadius: 12,
+                        border: '1.5px solid #d1d5db',
+                        padding: '12px 14px',
+                        fontSize: 14,
+                        lineHeight: 1.55,
+                        color: '#334155',
+                        background: '#ffffff',
+                        resize: 'vertical',
+                      }}
                       placeholder="E.g. Build a modern dashboard with sidebar navigation, KPI cards, charts, and a data table…"
                       value={customPrompt}
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomPrompt(e.target.value)}
@@ -1521,6 +1572,12 @@ document.addEventListener('click', function(e) {
                     </label>
                   </div>
 
+                  {!isBuilding && (!projectName || !customPrompt) && (
+                    <p style={{ margin: '8px 0 0', fontSize: 11, color: '#64748b', fontWeight: 600 }}>
+                      Add a project name and a prompt to enable generation.
+                    </p>
+                  )}
+
                   {/* Attached files chips */}
                   {attachedFiles.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
@@ -1558,8 +1615,14 @@ document.addEventListener('click', function(e) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                   {/* Agent Pipeline — compact */}
-                  <div className="home-agent-card">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div className="home-agent-card" style={{
+                    background: '#ffffff',
+                    border: '1px solid #dbe5f2',
+                    borderRadius: 16,
+                    padding: 14,
+                    boxShadow: '0 6px 16px rgba(15,23,42,.06)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                       <p style={{ fontSize: 10, fontWeight: 800, color: '#5480ba', textTransform: 'uppercase', letterSpacing: '0.14em', margin: 0 }}>Agent Pipeline</p>
                       <span style={{ fontSize: 11, color: 'rgba(0,0,0,.3)', fontWeight: 500 }}>4 in sequence</span>
                     </div>
@@ -1575,7 +1638,7 @@ document.addEventListener('click', function(e) {
                         const active = buildPct >= a.pct
                         const running = active && buildPct < (a.pct + 25) && isBuilding
                         return (
-                          <div key={a.agent} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: idx === 0 ? '10px 10px 10px 12px' : '6px 10px 10px 12px', borderRadius: 10, background: active ? a.bg : 'transparent', border: `1px solid ${active ? a.color + '35' : 'transparent'}`, transition: 'all .4s', marginBottom: 2 }}>
+                          <div key={a.agent} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: idx === 0 ? '8px 9px 8px 10px' : '5px 9px 8px 10px', borderRadius: 9, background: active ? a.bg : 'transparent', border: `1px solid ${active ? a.color + '35' : 'transparent'}`, transition: 'all .4s', marginBottom: 1 }}>
                             <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: active ? a.color : 'rgba(0,0,0,.07)', color: active ? '#fff' : 'rgba(0,0,0,.25)', transition: 'all .4s', position: 'relative', zIndex: 1, boxShadow: active ? `0 0 0 3px ${a.color}25` : 'none' }}>
                               {a.icon}
                             </div>
@@ -1596,8 +1659,14 @@ document.addEventListener('click', function(e) {
 
                   {/* Recent Projects — compact list */}
                   {validProjects.length > 0 && (
-                    <div className="home-agent-card">
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div className="home-agent-card" style={{
+                      background: '#ffffff',
+                      border: '1px solid #dbe5f2',
+                      borderRadius: 16,
+                      padding: 14,
+                      boxShadow: '0 6px 16px rgba(15,23,42,.06)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                         <p style={{ fontSize: 10, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Recent</p>
                         <button onClick={() => setHomeTab('projects')}
                           style={{ background: 'none', border: 'none', color: '#5480ba', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
@@ -1607,7 +1676,7 @@ document.addEventListener('click', function(e) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {validProjects.slice(0, 4).map(g => (
                           <div key={g.generationId}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', transition: 'background .15s', background: loadingProjectId === g.generationId ? 'rgba(84,128,186,.08)' : 'transparent' }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', borderRadius: 8, cursor: 'pointer', transition: 'background .15s', background: loadingProjectId === g.generationId ? 'rgba(84,128,186,.08)' : 'transparent' }}
                             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.04)' }}
                             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = loadingProjectId === g.generationId ? 'rgba(84,128,186,.08)' : 'transparent' }}
                             onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
@@ -1664,9 +1733,11 @@ document.addEventListener('click', function(e) {
                   <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
                     {adminActivity.map((g, i) => (
                       <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
                           background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
-                          color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
+                          color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24'
+                        }}>
                           {g.status}
                         </span>
                         <p style={{ flex: 1, fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
@@ -1679,7 +1750,7 @@ document.addEventListener('click', function(e) {
                 )
               ) : historyLoading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
-                  {[1,2,3,4,5,6].map(i => (
+                  {[1, 2, 3, 4, 5, 6].map(i => (
                     <div key={i} style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}>
                       <div style={{ height: 200, background: 'linear-gradient(90deg, rgba(0,0,0,.02) 0%, rgba(0,0,0,.04) 50%, rgba(0,0,0,.02) 100%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
                       <div style={{ padding: 16 }}>
@@ -1829,19 +1900,19 @@ document.addEventListener('click', function(e) {
                   {adminDailyChart.length === 0
                     ? <p style={{ color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No data yet</p>
                     : (() => {
-                        const max = Math.max(...adminDailyChart.map(d => d.count), 1)
-                        return (
-                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 140 }}>
-                            {adminDailyChart.map(d => (
-                              <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: '#5480ba' }}>{d.count || ''}</span>
-                                <div style={{ width: '100%', background: 'linear-gradient(to top,#6366f1,#a78bfa)', borderRadius: '6px 6px 0 0', height: `${Math.max((d.count / max) * 100, d.count ? 4 : 0)}px`, minHeight: d.count ? 4 : 0, transition: 'height .3s' }} />
-                                <span style={{ fontSize: 10, color: 'rgba(0,0,0,.35)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      })()
+                      const max = Math.max(...adminDailyChart.map(d => d.count), 1)
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 140 }}>
+                          {adminDailyChart.map(d => (
+                            <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#5480ba' }}>{d.count || ''}</span>
+                              <div style={{ width: '100%', background: 'linear-gradient(to top,#6366f1,#a78bfa)', borderRadius: '6px 6px 0 0', height: `${Math.max((d.count / max) * 100, d.count ? 4 : 0)}px`, minHeight: d.count ? 4 : 0, transition: 'height .3s' }} />
+                              <span style={{ fontSize: 10, color: 'rgba(0,0,0,.35)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()
                   }
                 </div>
               )}
@@ -1923,9 +1994,11 @@ document.addEventListener('click', function(e) {
                   {!adminLoading && adminActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No activity yet</div>}
                   {!adminLoading && adminActivity.map((g, i) => (
                     <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
                         background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
-                        color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
+                        color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24'
+                      }}>
                         {g.status}
                       </span>
                       <p style={{ flex: 1, fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
@@ -1965,14 +2038,14 @@ document.addEventListener('click', function(e) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                   {adminHealth
                     ? Object.entries(adminHealth).map(([svc, status]) => (
-                        <div key={svc} style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-                          <div style={{ width: 12, height: 12, borderRadius: '50%', background: status === 'UP' ? '#34d399' : '#f87171', boxShadow: status === 'UP' ? '0 0 8px #34d399' : '0 0 8px #f87171', flexShrink: 0 }} />
-                          <div>
-                            <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
-                            <p style={{ fontSize: 13, color: status === 'UP' ? '#34d399' : '#f87171', margin: 0, fontWeight: 600 }}>{status}</p>
-                          </div>
+                      <div key={svc} style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: status === 'UP' ? '#34d399' : '#f87171', boxShadow: status === 'UP' ? '0 0 8px #34d399' : '0 0 8px #f87171', flexShrink: 0 }} />
+                        <div>
+                          <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
+                          <p style={{ fontSize: 13, color: status === 'UP' ? '#34d399' : '#f87171', margin: 0, fontWeight: 600 }}>{status}</p>
                         </div>
-                      ))
+                      </div>
+                    ))
                     : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading health status…</div>
                   }
                 </div>
@@ -2018,9 +2091,11 @@ document.addEventListener('click', function(e) {
                   {!userProjectsLoading && selectedUserProjects.map((p, i) => (
                     <div key={p.generationId || i} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                           background: p.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : p.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
-                          color: p.status === 'COMPLETED' ? '#34d399' : p.status === 'FAILED' ? '#f87171' : '#fbbf24' }}>
+                          color: p.status === 'COMPLETED' ? '#34d399' : p.status === 'FAILED' ? '#f87171' : '#fbbf24'
+                        }}>
                           {p.status}
                         </span>
                         <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)' }}>
@@ -2175,525 +2250,539 @@ document.addEventListener('click', function(e) {
 
   // IDE UI
   return (
-    <div id="ide" className="flex flex-col" style={{ height: '100vh' }}>
-      <div
-        className="flex items-center gap-3 px-4 shrink-0"
-        style={{ height: 56, background: 'rgba(255,255,255,.95)', borderBottom: '1px solid rgba(226,232,240,.8)', boxShadow: '0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.02)', backdropFilter: 'blur(8px)' }}
-      >
-        {/* Home button */}
-        <button
-          onClick={() => setIdeVisible(false)}
-          style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #fff 0%, #f8fafc 100%)', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .25s', boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}
-          onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.12)'; e.currentTarget.style.borderColor = '#cbd5e1' }}
-          onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.borderColor = '#e2e8f0' }}
-          type="button"
-          title="Back to Home"
-        >
-          ← Home
-        </button>
-        <div className="w-px h-6" style={{ background: 'linear-gradient(to bottom, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '0 8px' }} />
-        <span style={{ fontSize: 16, fontWeight: 800, background: 'linear-gradient(135deg, #5480ba 0%, #6ba3d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
-          AIEditor
-        </span>
-        <span className="mono" style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginLeft: 4 }}>
-          {projectName}
-        </span>
-        <div className="flex-1" />
-        <span className="mono" style={{ fontSize: 11, padding: '6px 12px', borderRadius: 8, background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', color: '#3b82f6', fontWeight: 600, boxShadow: '0 1px 2px rgba(59,130,246,.08)' }}>
-          {previewSrcDoc ? 'HTML/CSS' : `${selectedFw ?? 'React'} + Vite`}
-        </span>
-        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981', marginLeft: 12, boxShadow: '0 0 0 3px rgba(16,185,129,.15)' }} />
-        <span className="mono" style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>
-          localhost:5173
-        </span>
-
-        {/* TED Button */}
-        <button
-          onClick={() => setIsTedOpen(true)}
-          style={{
-            padding: '8px 16px',
-            marginLeft: 12,
-            borderRadius: 10,
-            border: '1px solid #dbeafe',
-            background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-            color: '#3b82f6',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all .25s',
-            boxShadow: '0 1px 2px rgba(59,130,246,.08)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.transform = 'translateY(-1px)'
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(59,130,246,.15)'
-            e.currentTarget.style.borderColor = '#93c5fd'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform = 'none'
-            e.currentTarget.style.boxShadow = '0 1px 2px rgba(59,130,246,.08)'
-            e.currentTarget.style.borderColor = '#dbeafe'
-          }}
-          type="button"
-          title="Open TED Assistant"
-        >
-          🤖 TED
-        </button>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        <div
-          className="flex flex-col shrink-0"
-          style={{ width: 280, borderRight: '1px solid rgba(226,232,240,.6)', background: 'linear-gradient(to bottom, #fafbfc 0%, #f8fafc 100%)', boxShadow: '2px 0 8px rgba(0,0,0,.02)' }}
-        >
-          <div className="flex items-center px-4 pt-4 pb-3">
-            <span
-              className="mono uppercase"
-              style={{ fontSize: 10, color: '#64748b', fontWeight: 700, letterSpacing: '0.1em' }}
-            >
-              Explorer
-            </span>
-          </div>
-          <div className="flex-1 overflow-y-auto py-2 px-3 custom-scrollbar">{renderTreeNodes(effectiveTree, 0)}</div>
-          <div className="px-4 py-3" style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
-            <span className="mono" style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>
-              {fileCount} files
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-col flex-1 overflow-hidden" style={{ borderRight: '1px solid rgba(226,232,240,.6)', background: '#ffffff' }}>
+    <ErrorBoundary>
+      <ToastProvider>
+        <div id="ide" className="flex flex-col" style={{ height: '100vh' }}>
           <div
-            style={{ height: 54, borderBottom: '1px solid rgba(226,232,240,.6)', background: 'rgba(255,255,255,.95)', display: 'flex', alignItems: 'center', gap: 2, padding: '0 20px', boxShadow: '0 1px 2px rgba(0,0,0,.02)' }}
+            className="flex items-center gap-3 px-4 shrink-0"
+            style={{ height: 56, background: 'rgba(255,255,255,.95)', borderBottom: '1px solid rgba(226,232,240,.8)', boxShadow: '0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.02)', backdropFilter: 'blur(8px)' }}
           >
-            {([
-              { id: 'preview', label: 'Preview', icon: '👁' },
-              { id: 'code', label: 'Code', icon: '⚡' },
-              { id: 'terminal', label: 'Terminal', icon: '▶' },
-            ] as const).map((t) => {
-              const active = centerTab === t.id
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setCenterTab(t.id)}
-                  type="button"
-                  style={{
-                    position: 'relative', padding: '0 20px', height: 38, border: 'none', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
-                    background: active ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : 'transparent',
-                    color: active ? '#5480ba' : '#94a3b8',
-                    transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                    borderRadius: 10,
-                    boxShadow: active ? '0 2px 8px rgba(84,128,186,.1)' : 'none'
-                  }}
-                  onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
-                  onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
-                >
-                  {t.label}
-                  {active && (
-                    <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #5480ba, #6ba3d9)', borderRadius: 3, boxShadow: '0 0 8px rgba(84,128,186,.3)' }} />
-                  )}
-                </button>
-              )
-            })}
-
+            {/* Home button */}
+            <button
+              onClick={() => setIdeVisible(false)}
+              style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #fff 0%, #f8fafc 100%)', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .25s', boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.12)'; e.currentTarget.style.borderColor = '#cbd5e1' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.borderColor = '#e2e8f0' }}
+              type="button"
+              title="Back to Home"
+            >
+              ← Home
+            </button>
+            <div className="w-px h-6" style={{ background: 'linear-gradient(to bottom, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '0 8px' }} />
+            <span style={{ fontSize: 16, fontWeight: 800, background: 'linear-gradient(135deg, #5480ba 0%, #6ba3d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
+              AIEditor
+            </span>
+            <span className="mono" style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginLeft: 4 }}>
+              {projectName}
+            </span>
             <div className="flex-1" />
+            <span className="mono" style={{ fontSize: 11, padding: '6px 12px', borderRadius: 8, background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', color: '#3b82f6', fontWeight: 600, boxShadow: '0 1px 2px rgba(59,130,246,.08)' }}>
+              {previewSrcDoc ? 'HTML/CSS' : 'React + Vite'}
+            </span>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981', marginLeft: 12, boxShadow: '0 0 0 3px rgba(16,185,129,.15)' }} />
+            <span className="mono" style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>
+              localhost:5173
+            </span>
 
-            <div style={{ display: 'flex', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', padding: 4, borderRadius: 10, gap: 3, border: '1px solid #e2e8f0' }}>
-              {(['desktop', 'tablet', 'mobile'] as const).map((device) => {
-                const active = deviceMode === device
-                const icons = { desktop: '🖥', tablet: '📱', mobile: '📱' }
-                return (
-                  <button
-                    key={device}
-                    style={{
-                      padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 700, letterSpacing: '.02em',
-                      background: active ? 'linear-gradient(135deg, #5480ba 0%, #4a6fa5 100%)' : 'transparent',
-                      color: active ? '#fff' : '#64748b',
-                      border: 'none', cursor: 'pointer', textTransform: 'uppercase', transition: 'all .25s',
-                      boxShadow: active ? '0 2px 6px rgba(84,128,186,.25)' : 'none',
-                      display: 'flex', alignItems: 'center', gap: 6
-                    }}
-                    onClick={() => setDeviceMode(device)}
-                    type="button"
-                    title={`${device.charAt(0).toUpperCase() + device.slice(1)} preview${device === 'desktop' ? ' (100%)' : device === 'tablet' ? ' (768px)' : ' (375px)'}`}
-                  >
-                    <span style={{ fontSize: 14 }}>{icons[device]}</span>
-                    {device.charAt(0).toUpperCase() + device.slice(1)}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Zoom controls */}
-            <div className="flex items-center gap-2" style={{ marginLeft: 8 }}>
-              <button
-                style={{
-                  width: 32, height: 32, borderRadius: 8, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: previewScale <= 0.3 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
-                  border: '1px solid #e2e8f0', color: previewScale <= 0.3 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
-                }}
-                onClick={() => {
-                  setPreviewScale(s => Math.max(0.3, s - 0.1));
-                  setUserScale(Math.max(0.3, previewScale - 0.1));
-                }}
-                disabled={previewScale <= 0.3}
-                title="Zoom out"
-                type="button"
-              >
-                −
-              </button>
-              <span style={{ 
-                fontSize: 12, fontWeight: 600, color: '#64748b', minWidth: 45, textAlign: 'center',
-                background: '#f1f5f9', padding: '4px 8px', borderRadius: 6
-              }}>
-                {Math.round(previewScale * 100)}%
-              </span>
-              <button
-                style={{
-                  width: 32, height: 32, borderRadius: 8, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: previewScale >= 1.5 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
-                  border: '1px solid #e2e8f0', color: previewScale >= 1.5 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
-                }}
-                onClick={() => {
-                  setPreviewScale(s => Math.min(1.5, s + 0.1));
-                  setUserScale(Math.min(1.5, previewScale + 0.1));
-                }}
-                disabled={previewScale >= 1.5}
-                title="Zoom in"
-                type="button"
-              >
-                +
-              </button>
-            </div>
-
-            <div className="w-px h-6" style={{ background: 'linear-gradient(to bottom, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '0 12px' }} />
-
+            {/* TED Button */}
             <button
+              onClick={() => setIsTedOpen(true)}
               style={{
-                width: 38, height: 38, borderRadius: 10, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', border: '1px solid #e2e8f0', color: '#64748b', transition: 'all .25s',
-                boxShadow: '0 1px 2px rgba(0,0,0,.04)'
-              }}
-              onClick={() => setPreviewReloadCount(c => c + 1)}
-              title="Reload preview"
-              type="button"
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.15)'; e.currentTarget.style.color = '#5480ba' }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.color = '#64748b' }}
-            >
-              ↻
-            </button>
-
-            {/* Inspect Mode Toggle */}
-            <button
-              style={{
-                padding: '0 14px', height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer', 
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: inspectMode 
-                  ? 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)' 
-                  : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
-                border: inspectMode ? '1px solid #c084fc' : '1px solid #e2e8f0', 
-                color: inspectMode ? '#9333ea' : '#64748b', 
+                padding: '8px 16px',
+                marginLeft: 12,
+                borderRadius: 10,
+                border: '1px solid #dbeafe',
+                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                color: '#3b82f6',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
                 transition: 'all .25s',
-                boxShadow: inspectMode ? '0 2px 8px rgba(147,51,234,.2)' : '0 1px 2px rgba(0,0,0,.04)'
+                boxShadow: '0 1px 2px rgba(59,130,246,.08)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
               }}
-              onClick={() => setInspectMode(!inspectMode)}
-              title="Toggle inspect mode"
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-1px)'
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(59,130,246,.15)'
+                e.currentTarget.style.borderColor = '#93c5fd'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'none'
+                e.currentTarget.style.boxShadow = '0 1px 2px rgba(59,130,246,.08)'
+                e.currentTarget.style.borderColor = '#dbeafe'
+              }}
               type="button"
+              title="Open TED Assistant"
             >
-              🎯 {inspectMode ? 'Inspecting' : 'Inspect'}
+              🤖 TED
             </button>
-
-            {apiResult?.generationId && (
-              <button
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                  background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', border: '1px solid #86efac', color: '#16a34a',
-                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: '0 2px 6px rgba(34,197,94,.15)'
-                }}
-                onClick={() => downloadGenerationZip(apiResult!.generationId!, accessToken)}
-                title="Download project as ZIP"
-                type="button"
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(34,197,94,.25)' }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(34,197,94,.15)' }}
-              >
-                ⬇ ZIP
-              </button>
-            )}
-
-            {apiResult?.generationId && (
-              <button
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                  background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)', border: '1px solid #93c5fd', color: '#2563eb',
-                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: '0 2px 6px rgba(37,99,235,.15)'
-                }}
-                onClick={async () => {
-                  console.log('🔵 FORK button clicked, generationId:', apiResult?.generationId)
-                  try {
-                    console.log('🔵 Calling duplicateGeneration...')
-                    const result = await duplicateGeneration(apiResult!.generationId!, accessToken)
-                    console.log('🔵 Fork result:', result)
-                    if (result.newGenerationId) {
-                      console.log('🔵 Redirecting to /?gen=' + result.newGenerationId)
-                      window.location.href = `/?gen=${result.newGenerationId}`
-                    } else {
-                      console.error('🔴 No newGenerationId in response:', result)
-                      alert('Fork failed: No generation ID returned')
-                    }
-                  } catch (err) {
-                    console.error('🔴 Fork error:', err)
-                    alert(`Duplicate failed: ${err}`)
-                  }
-                }}
-                title="Duplicate this project"
-                type="button"
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(37,99,235,.25)' }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(37,99,235,.15)' }}
-              >
-                📋 FORK
-              </button>
-            )}
-
-            {apiResult?.generationId && (
-              <button
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                  background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)', border: '1px solid #f472b6', color: '#db2777',
-                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: '0 2px 6px rgba(219,39,119,.15)'
-                }}
-                onClick={() => setIsPushGitLabModalOpen(true)}
-                title="Push code to GitLab repository"
-                type="button"
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(219,39,119,.25)' }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(219,39,119,.15)' }}
-              >
-                📤 GITLAB
-              </button>
-            )}
-
-            {apiResult?.generationId && (
-              <button
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                  fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                  background: 'linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%)', border: '1px solid #a5b4fc', color: '#4f46e5',
-                  cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: '0 2px 6px rgba(79,70,229,.15)'
-                }}
-                onClick={() => setIsTedOpen(true)}
-                title="Open TED AI Assistant"
-                type="button"
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(79,70,229,.25)' }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(79,70,229,.15)' }}
-              >
-                🤖 TED
-              </button>
-            )}
           </div>
 
-          <div className="flex-1 overflow-auto relative" style={{ background: '#e8edf2' }}>
-            {centerTab === 'preview' ? (
-              <Preview
-                deviceMode={deviceMode}
-                setDeviceMode={setDeviceMode}
-                previewScale={previewScale}
-                setPreviewScale={setPreviewScale}
-                previewSrcDoc={previewSrcDoc}
-                builtProjectUrl={builtProjectUrl}
-                buildPct={buildPct}
-                isBuilding={isBuilding}
-                buildMsg={buildMsg}
-                buildError={buildError}
-                inspectMode={inspectMode}
-                setInspectMode={setInspectMode}
-                selectedZone={selectedZone}
-                hoverZoneBox={hoverZoneBox}
-                previewReloadCount={previewReloadCount}
-                onElementSelected={handleElementSelected}
-                onStyleChange={handleStyleChange}
-              />
-            ) : null}
-
-            {centerTab === 'code' ? (
-              <CodeViewer
-                tree={tree}
-                setTree={setTree}
-                activeFileId={activeFileId}
-                setActiveFileId={setActiveFileId}
-                effectiveFileContents={effectiveFileContents}
-              />
-            ) : null}
-
-            {centerTab === 'terminal' ? (
-              <div className="h-full p-6 mono leading-relaxed" style={{ fontSize: 12, background: '#0f172a', color: '#e2e8f0' }}>
-                <div style={{ color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ opacity: 0.5 }}>▶</span>
-                  <span>npm run dev</span>
-                </div>
-                <div className="text-slate-500 mb-1">&gt; {projectName}@1.0.0 dev</div>
-                <div className="text-slate-500 mb-4">&gt; vite</div>
-                <div className="text-purple-400 font-bold mb-4">VITE v5.x ready in 312 ms</div>
-                <div className="flex flex-col gap-1 mb-8">
-                  <div className="flex gap-4">
-                    <span className="text-slate-500 w-16">Local:</span>
-                    <span className="text-indigo-400 underline underline-offset-4 decoration-indigo-500/30">http://localhost:5173/</span>
-                  </div>
-                  <div className="flex gap-4">
-                    <span className="text-slate-500 w-16">Network:</span>
-                    <span className="text-indigo-400">http://192.168.1.5:5173/</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-indigo-500 font-bold">❯</span>
-                  <div className="blink w-2 h-4 bg-indigo-500/70"></div>
-                </div>
+          <div className="flex flex-1 overflow-hidden">
+            <div
+              className="flex flex-col shrink-0"
+              style={{ width: 280, borderRight: '1px solid rgba(226,232,240,.6)', background: 'linear-gradient(to bottom, #fafbfc 0%, #f8fafc 100%)', boxShadow: '2px 0 8px rgba(0,0,0,.02)' }}
+            >
+              <div className="flex items-center px-4 pt-4 pb-3">
+                <span
+                  className="mono uppercase"
+                  style={{ fontSize: 10, color: '#64748b', fontWeight: 700, letterSpacing: '0.1em' }}
+                >
+                  Explorer
+                </span>
               </div>
-            ) : null}
-          </div>
-        </div>
+              <div className="flex-1 overflow-y-auto py-2 px-3 custom-scrollbar">{renderTreeNodes(effectiveTree, 0)}</div>
+              <div className="px-4 py-3" style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+                <span className="mono" style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>
+                  {fileCount} files
+                </span>
+              </div>
+            </div>
 
-        <div className="flex flex-col shrink-0" style={{ width: 360, background: '#ffffff', borderLeft: '1px solid #e2e8f0', height: '100%', overflow: 'hidden' }}>
-          <div style={{ height: 50, borderBottom: '1px solid #e2e8f0', background: '#fff', display: 'flex', alignItems: 'center' }}>
-            {([
-              { id: 'chat', label: 'Chat' },
-              { id: 'console', label: 'Console' },
-              { id: 'logs', label: 'History' },
-              { id: 'versions', label: 'Versions' },
-            ] as const).map((t) => {
-              const active = rightTab === t.id
-              return (
+            <div className="flex flex-col flex-1 overflow-hidden" style={{ borderRight: '1px solid rgba(226,232,240,.6)', background: '#ffffff' }}>
+              <div
+                style={{ height: 54, borderBottom: '1px solid rgba(226,232,240,.6)', background: 'rgba(255,255,255,.95)', display: 'flex', alignItems: 'center', gap: 2, padding: '0 20px', boxShadow: '0 1px 2px rgba(0,0,0,.02)' }}
+              >
+                {([
+                  { id: 'preview', label: 'Preview', icon: '👁' },
+                  { id: 'code', label: 'Code', icon: '⚡' },
+                  { id: 'quality', label: 'Quality', icon: '⭐' },
+                  { id: 'terminal', label: 'Terminal', icon: '▶' },
+                ] as const).map((t) => {
+                  const active = centerTab === t.id
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setCenterTab(t.id)}
+                      type="button"
+                      style={{
+                        position: 'relative', padding: '0 20px', height: 38, border: 'none', cursor: 'pointer',
+                        fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
+                        background: active ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : 'transparent',
+                        color: active ? '#5480ba' : '#94a3b8',
+                        transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                        borderRadius: 10,
+                        boxShadow: active ? '0 2px 8px rgba(84,128,186,.1)' : 'none'
+                      }}
+                      onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
+                      onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
+                    >
+                      {t.label}
+                      {active && (
+                        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #5480ba, #6ba3d9)', borderRadius: 3, boxShadow: '0 0 8px rgba(84,128,186,.3)' }} />
+                      )}
+                    </button>
+                  )
+                })}
+
+                <div className="flex-1" />
+
+                <div style={{ display: 'flex', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', padding: 4, borderRadius: 10, gap: 3, border: '1px solid #e2e8f0' }}>
+                  {(['desktop', 'tablet', 'mobile'] as const).map((device) => {
+                    const active = deviceMode === device
+                    const icons = { desktop: '🖥', tablet: '📱', mobile: '📱' }
+                    return (
+                      <button
+                        key={device}
+                        style={{
+                          padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 700, letterSpacing: '.02em',
+                          background: active ? 'linear-gradient(135deg, #5480ba 0%, #4a6fa5 100%)' : 'transparent',
+                          color: active ? '#fff' : '#64748b',
+                          border: 'none', cursor: 'pointer', textTransform: 'uppercase', transition: 'all .25s',
+                          boxShadow: active ? '0 2px 6px rgba(84,128,186,.25)' : 'none',
+                          display: 'flex', alignItems: 'center', gap: 6
+                        }}
+                        onClick={() => setDeviceMode(device)}
+                        type="button"
+                        title={`${device.charAt(0).toUpperCase() + device.slice(1)} preview${device === 'desktop' ? ' (100%)' : device === 'tablet' ? ' (768px)' : ' (375px)'}`}
+                      >
+                        <span style={{ fontSize: 14 }}>{icons[device]}</span>
+                        {device.charAt(0).toUpperCase() + device.slice(1)}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Zoom controls */}
+                <div className="flex items-center gap-2" style={{ marginLeft: 8 }}>
+                  <button
+                    style={{
+                      width: 32, height: 32, borderRadius: 8, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: previewScale <= 0.3 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                      border: '1px solid #e2e8f0', color: previewScale <= 0.3 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
+                    }}
+                    onClick={() => {
+                      setPreviewScale(s => Math.max(0.3, s - 0.1));
+                      setUserScale(Math.max(0.3, previewScale - 0.1));
+                    }}
+                    disabled={previewScale <= 0.3}
+                    title="Zoom out"
+                    type="button"
+                  >
+                    −
+                  </button>
+                  <span style={{
+                    fontSize: 12, fontWeight: 600, color: '#64748b', minWidth: 45, textAlign: 'center',
+                    background: '#f1f5f9', padding: '4px 8px', borderRadius: 6
+                  }}>
+                    {Math.round(previewScale * 100)}%
+                  </span>
+                  <button
+                    style={{
+                      width: 32, height: 32, borderRadius: 8, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: previewScale >= 1.5 ? '#f1f5f9' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                      border: '1px solid #e2e8f0', color: previewScale >= 1.5 ? '#cbd5e1' : '#64748b', transition: 'all .2s'
+                    }}
+                    onClick={() => {
+                      setPreviewScale(s => Math.min(1.5, s + 0.1));
+                      setUserScale(Math.min(1.5, previewScale + 0.1));
+                    }}
+                    disabled={previewScale >= 1.5}
+                    title="Zoom in"
+                    type="button"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <div className="w-px h-6" style={{ background: 'linear-gradient(to bottom, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '0 12px' }} />
+
                 <button
-                  key={t.id}
                   style={{
-                    flex: 1, height: '100%', border: 'none', cursor: 'pointer', position: 'relative',
-                    fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
-                    background: active ? '#f8fafc' : 'transparent',
-                    color: active ? '#5480ba' : '#94a3b8',
-                    borderBottom: active ? '3px solid #5480ba' : '3px solid transparent',
-                    transition: 'all .2s',
+                    width: 38, height: 38, borderRadius: 10, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', border: '1px solid #e2e8f0', color: '#64748b', transition: 'all .25s',
+                    boxShadow: '0 1px 2px rgba(0,0,0,.04)'
                   }}
-                  onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
-                  onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
-                  onClick={() => setRightTab(t.id)}
+                  onClick={() => setPreviewReloadCount(c => c + 1)}
+                  title="Reload preview"
+                  type="button"
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.15)'; e.currentTarget.style.color = '#5480ba' }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.color = '#64748b' }}
+                >
+                  ↻
+                </button>
+
+                {/* Inspect Mode Toggle */}
+                <button
+                  style={{
+                    padding: '0 14px', height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: inspectMode
+                      ? 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)'
+                      : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                    border: inspectMode ? '1px solid #c084fc' : '1px solid #e2e8f0',
+                    color: inspectMode ? '#9333ea' : '#64748b',
+                    transition: 'all .25s',
+                    boxShadow: inspectMode ? '0 2px 8px rgba(147,51,234,.2)' : '0 1px 2px rgba(0,0,0,.04)'
+                  }}
+                  onClick={() => setInspectMode(!inspectMode)}
+                  title="Toggle inspect mode"
                   type="button"
                 >
-                  {t.label}
+                  🎯 {inspectMode ? 'Inspecting' : 'Inspect'}
                 </button>
-              )
-            })}
-          </div>
 
-          {rightTab === 'chat' ? (
-            <ChatPanel
-              chatMessages={chatMessages}
-              chatInput={chatInput}
-              setChatInput={setChatInput}
-              isChatLoading={isChatLoading}
-              selectedGenerationId={selectedGenerationId}
-              selectedZone={selectedZone}
-              diffVisible={diffVisible}
-              setDiffVisible={setDiffVisible}
-              diffEdits={diffEdits}
-              setDiffEdits={setDiffEdits}
-              accessToken={accessToken || ''}
-              selectedModel={selectedModel}
-              onFileUpdated={(newMessages, edits) => {
-                setChatMessages(newMessages)
-                setDiffEdits(edits)
-              }}
-              prefillMessage={chatPrefill}
-              onPrefillUsed={() => setChatPrefill('')}
-            />
-          ) : (
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {rightTab === 'console' ? (
-              <div className="py-1">
-                {logs.map((l, idx) => (
-                  <div key={idx} className="flex gap-2 items-start px-3 py-1" style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}>
-                    <span className="mono shrink-0 mt-0.5" style={{ fontSize: 10, color: 'rgba(255,255,255,.25)' }}>
-                      {l.t}
-                    </span>
-                    <span className="mono leading-relaxed" style={{ fontSize: 11, color: logColor[l.type] ?? logColor.info }}>
-                      {l.msg}
-                    </span>
-                  </div>
-                ))}
+                {apiResult?.generationId && (
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', border: '1px solid #86efac', color: '#16a34a',
+                      cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 6px rgba(34,197,94,.15)'
+                    }}
+                    onClick={() => downloadGenerationZip(apiResult!.generationId!, accessToken)}
+                    title="Download project as ZIP"
+                    type="button"
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(34,197,94,.25)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(34,197,94,.15)' }}
+                  >
+                    ⬇ ZIP
+                  </button>
+                )}
+
+                {apiResult?.generationId && (
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)', border: '1px solid #93c5fd', color: '#2563eb',
+                      cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 6px rgba(37,99,235,.15)'
+                    }}
+                    onClick={async () => {
+                      try {
+                        const result = await duplicateGeneration(apiResult!.generationId!, accessToken)
+                        if (result.newGenerationId) {
+                          window.location.href = `/?gen=${result.newGenerationId}`
+                        } else {
+                          alert('Fork failed: No generation ID returned')
+                        }
+                      } catch (err) {
+                        alert(`Duplicate failed: ${err}`)
+                      }
+                    }}
+                    title="Duplicate this project"
+                    type="button"
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(37,99,235,.25)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(37,99,235,.15)' }}
+                  >
+                    📋 FORK
+                  </button>
+                )}
+
+                {apiResult?.generationId && (
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)', border: '1px solid #f472b6', color: '#db2777',
+                      cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 6px rgba(219,39,119,.15)'
+                    }}
+                    onClick={() => setIsPushGitLabModalOpen(true)}
+                    title="Push code to GitLab"
+                    type="button"
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(219,39,119,.25)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(219,39,119,.15)' }}
+                  >
+                    📤 GITLAB
+                  </button>
+                )}
+
+                {apiResult?.generationId && (
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%)', border: '1px solid #a5b4fc', color: '#4f46e5',
+                      cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 6px rgba(79,70,229,.15)'
+                    }}
+                    onClick={() => setIsTedOpen(true)}
+                    title="Open TED AI Assistant"
+                    type="button"
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(79,70,229,.25)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(79,70,229,.15)' }}
+                  >
+                    🤖 TED
+                  </button>
+                )}
               </div>
-            ) : null}
 
-            {rightTab === 'logs' ? (
-              <>
-                <HistoryPanel
-                  history={history}
-                  historyLoading={historyLoading}
-                  historyError={historyError}
-                  selectedGenerationId={selectedGenerationId}
-                  loadingProjectId={loadingProjectId}
-                  onRefresh={() => void loadHistory()}
-                  onSelectGeneration={(id) => {
-                    setSelectedGenerationId(id)
-                    void loadAudit(id)
-                    void loadVersions(id)
-                  }}
-                  onLoadGeneration={(id) => void loadGeneration(id)}
-                />
-
-                <AuditEventsPanel
-                  selectedGenerationId={selectedGenerationId}
-                  auditEvents={auditEvents}
-                  auditLoading={auditLoading}
-                  auditError={auditError}
-                  onRefresh={(id) => void loadAudit(id)}
-                />
-
-                {selectedGenerationId ? (
-                  <VersionHistory
-                    versions={versions}
-                    versionsLoading={versionsLoading}
-                    versionsError={versionsError}
-                    selectedGenerationId={selectedGenerationId}
-                    onRollback={doRollback}
-                    onRefresh={() => void loadVersions(selectedGenerationId)}
+              <div className="flex-1 overflow-auto relative" style={{ background: '#e8edf2' }}>
+                {centerTab === 'preview' ? (
+                  <Preview
+                    deviceMode={deviceMode}
+                    setDeviceMode={setDeviceMode}
+                    previewScale={previewScale}
+                    setPreviewScale={setPreviewScale}
+                    previewSrcDoc={previewSrcDoc}
+                    builtProjectUrl={builtProjectUrl}
+                    buildPct={buildPct}
+                    isBuilding={isBuilding}
+                    buildMsg={buildMsg}
+                    buildError={buildError}
+                    inspectMode={inspectMode}
+                    setInspectMode={setInspectMode}
+                    selectedZone={selectedZone}
+                    hoverZoneBox={hoverZoneBox}
+                    previewReloadCount={previewReloadCount}
+                    onElementSelected={handleElementSelected}
+                    onStyleChange={handleStyleChange}
                   />
                 ) : null}
-              </>
-            ) : null}
+
+                {centerTab === 'code' ? (
+                  <CodeViewer
+                    tree={tree}
+                    setTree={setTree}
+                    activeFileId={activeFileId}
+                    setActiveFileId={setActiveFileId}
+                    effectiveFileContents={effectiveFileContents}
+                  />
+                ) : null}
+
+                {centerTab === 'quality' ? (
+                  <div style={{ height: '100%', overflow: 'auto', padding: 20, background: '#ffffff' }}>
+                    <QualityScores
+                      scores={{
+                        globalScore: selectedGeneration?.globalScore,
+                        semanticFidelity: selectedGeneration?.semanticFidelity,
+                        codeQuality: selectedGeneration?.codeQuality,
+                        completeness: selectedGeneration?.completeness,
+                        accessibility: selectedGeneration?.accessibility,
+                        visualRichness: selectedGeneration?.visualRichness,
+                      }}
+                    />
+                  </div>
+                ) : null}
+
+                {centerTab === 'terminal' ? (
+                  <div className="h-full p-6 mono leading-relaxed" style={{ fontSize: 12, background: '#0f172a', color: '#e2e8f0' }}>
+                    <div style={{ color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ opacity: 0.5 }}>▶</span>
+                      <span>npm run dev</span>
+                    </div>
+                    <div className="text-slate-500 mb-1">&gt; {projectName}@1.0.0 dev</div>
+                    <div className="text-slate-500 mb-4">&gt; vite</div>
+                    <div className="text-purple-400 font-bold mb-4">VITE v5.x ready in 312 ms</div>
+                    <div className="flex flex-col gap-1 mb-8">
+                      <div className="flex gap-4">
+                        <span className="text-slate-500 w-16">Local:</span>
+                        <span className="text-indigo-400 underline underline-offset-4 decoration-indigo-500/30">http://localhost:5173/</span>
+                      </div>
+                      <div className="flex gap-4">
+                        <span className="text-slate-500 w-16">Network:</span>
+                        <span className="text-indigo-400">http://192.168.1.5:5173/</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-indigo-500 font-bold">❯</span>
+                      <div className="blink w-2 h-4 bg-indigo-500/70"></div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-col shrink-0" style={{ width: 360, background: '#ffffff', borderLeft: '1px solid #e2e8f0', height: '100%', overflow: 'hidden' }}>
+              <div style={{ height: 50, borderBottom: '1px solid #e2e8f0', background: '#fff', display: 'flex', alignItems: 'center' }}>
+                {([
+                  { id: 'chat', label: 'Chat' },
+                  { id: 'console', label: 'Console' },
+                  { id: 'logs', label: 'History' },
+                  { id: 'versions', label: 'Versions' },
+                ] as const).map((t) => {
+                  const active = rightTab === t.id
+                  return (
+                    <button
+                      key={t.id}
+                      style={{
+                        flex: 1, height: '100%', border: 'none', cursor: 'pointer', position: 'relative',
+                        fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
+                        background: active ? '#f8fafc' : 'transparent',
+                        color: active ? '#5480ba' : '#94a3b8',
+                        borderBottom: active ? '3px solid #5480ba' : '3px solid transparent',
+                        transition: 'all .2s',
+                      }}
+                      onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
+                      onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
+                      onClick={() => setRightTab(t.id)}
+                      type="button"
+                    >
+                      {t.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {rightTab === 'chat' ? (
+                <ChatPanel
+                  chatMessages={chatMessages}
+                  chatInput={chatInput}
+                  setChatInput={setChatInput}
+                  isChatLoading={isChatLoading}
+                  selectedGenerationId={selectedGenerationId}
+                  selectedZone={selectedZone}
+                  diffVisible={diffVisible}
+                  setDiffVisible={setDiffVisible}
+                  diffEdits={diffEdits}
+                  setDiffEdits={setDiffEdits}
+                  accessToken={accessToken || ''}
+                  selectedModel={selectedModel}
+                  onFileUpdated={(newMessages, edits) => {
+                    setChatMessages(newMessages)
+                    setDiffEdits(edits)
+                  }}
+                  prefillMessage={chatPrefill}
+                  onPrefillUsed={() => setChatPrefill('')}
+                />
+              ) : (
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  {rightTab === 'console' ? (
+                    <div className="py-1">
+                      {logs.map((l, idx) => (
+                        <div key={idx} className="flex gap-2 items-start px-3 py-1" style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}>
+                          <span className="mono shrink-0 mt-0.5" style={{ fontSize: 10, color: 'rgba(255,255,255,.25)' }}>
+                            {l.t}
+                          </span>
+                          <span className="mono leading-relaxed" style={{ fontSize: 11, color: logColor[l.type] ?? logColor.info }}>
+                            {l.msg}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {rightTab === 'logs' ? (
+                    <>
+                      <HistoryPanel
+                        history={history}
+                        historyLoading={historyLoading}
+                        historyError={historyError}
+                        selectedGenerationId={selectedGenerationId}
+                        loadingProjectId={loadingProjectId}
+                        onRefresh={() => void loadHistory()}
+                        onSelectGeneration={(id) => {
+                          setSelectedGenerationId(id)
+                          void loadAudit(id)
+                          void loadVersions(id)
+                        }}
+                        onLoadGeneration={(id) => void loadGeneration(id)}
+                      />
+
+                      <AuditEventsPanel
+                        selectedGenerationId={selectedGenerationId}
+                        auditEvents={auditEvents}
+                        auditLoading={auditLoading}
+                        auditError={auditError}
+                        onRefresh={(id) => void loadAudit(id)}
+                      />
+
+                      {selectedGenerationId ? (
+                        <VersionHistory
+                          versions={versions}
+                          versionsLoading={versionsLoading}
+                          versionsError={versionsError}
+                          selectedGenerationId={selectedGenerationId}
+                          onRollback={doRollback}
+                          onRefresh={() => void loadVersions(selectedGenerationId)}
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
-          )}
+
+          {/* TED Chatbot */}
+          <TedChatBot
+            isOpen={isTedOpen}
+            onClose={() => setIsTedOpen(false)}
+            accessToken={accessToken}
+            generationId={selectedGenerationId || undefined}
+            currentFile={currentEditingFile || undefined}
+            fileCount={apiResult?.codeBundle?.files?.length ?? 0}
+            fileContent={effectiveFileContents.get(currentEditingFile || '')?.content || ''}
+            allFiles={Array.from(effectiveFileContents.entries()).map(([path, file]) => ({
+              path,
+              content: file.content || '',
+            }))}
+          />
+
+          <PushGitLabModal
+            isOpen={isPushGitLabModalOpen}
+            onClose={() => setIsPushGitLabModalOpen(false)}
+            generationId={selectedGenerationId || ''}
+            accessToken={accessToken}
+          />
+
         </div>
-      </div>
-
-      <PushGitLabModal
-        isOpen={isPushGitLabModalOpen}
-        onClose={() => setIsPushGitLabModalOpen(false)}
-        generationId={selectedGenerationId || ''}
-        accessToken={accessToken}
-      />
-
-      {/* TED Chatbot */}
-      <TedChatBot
-        isOpen={isTedOpen}
-        onClose={() => setIsTedOpen(false)}
-        accessToken={accessToken}
-        generationId={selectedGenerationId || undefined}
-        currentFile={currentEditingFile || undefined}
-        fileCount={apiResult?.codeBundle?.files?.length ?? 0}
-        fileContent={effectiveFileContents.get(currentEditingFile || '')?.content || ''}
-        allFiles={Array.from(effectiveFileContents.entries()).map(([path, file]) => ({
-          path,
-          content: file.content || '',
-        }))}
-      />
-
-    </div>
+      </ToastProvider>
+    </ErrorBoundary>
   )
 }

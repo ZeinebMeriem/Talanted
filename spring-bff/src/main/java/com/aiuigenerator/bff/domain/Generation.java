@@ -38,6 +38,14 @@ public class Generation {
 
     private Instant gitlabPushedAt; // timestamp when pushed to GitLab
 
+    // Quality evaluation scores (from UIEvaluatorAgent)
+    private Integer globalScore; // 0-100 overall quality
+    private Integer semanticFidelity; // 0-100
+    private Integer codeQuality; // 0-100
+    private Integer completeness; // 0-100
+    private Integer accessibility; // 0-100
+    private Integer visualRichness; // 0-100
+
     public String getGenerationId() {
         return generationId;
     }
@@ -148,5 +156,53 @@ public class Generation {
 
     public void setGitlabPushedAt(Instant gitlabPushedAt) {
         this.gitlabPushedAt = gitlabPushedAt;
+    }
+
+    public Integer getGlobalScore() {
+        return globalScore;
+    }
+
+    public void setGlobalScore(Integer globalScore) {
+        this.globalScore = globalScore;
+    }
+
+    public Integer getSemanticFidelity() {
+        return semanticFidelity;
+    }
+
+    public void setSemanticFidelity(Integer semanticFidelity) {
+        this.semanticFidelity = semanticFidelity;
+    }
+
+    public Integer getCodeQuality() {
+        return codeQuality;
+    }
+
+    public void setCodeQuality(Integer codeQuality) {
+        this.codeQuality = codeQuality;
+    }
+
+    public Integer getCompleteness() {
+        return completeness;
+    }
+
+    public void setCompleteness(Integer completeness) {
+        this.completeness = completeness;
+    }
+
+    public Integer getAccessibility() {
+        return accessibility;
+    }
+
+    public void setAccessibility(Integer accessibility) {
+        this.accessibility = accessibility;
+    }
+
+    public Integer getVisualRichness() {
+        return visualRichness;
+    }
+
+    public void setVisualRichness(Integer visualRichness) {
+        this.visualRichness = visualRichness;
     }
 }

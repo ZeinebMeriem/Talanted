@@ -342,9 +342,6 @@ export const Preview: React.FC<PreviewProps> = ({
     setIframeLoading(false)
   }
 
-  // Debug: log the preview URL
-  console.log('Preview Debug:', { builtProjectUrl, previewSrcDoc: previewSrcDoc?.length, previewReloadCount })
-
   return (
     <div className="flex flex-col h-full" style={{ background: '#e8edf2' }}>
       {/* Build Status / Error */}

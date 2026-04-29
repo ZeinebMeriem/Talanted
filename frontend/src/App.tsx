@@ -421,31 +421,30 @@ function LandingPage() {
 
 export default function App() {
   const auth = useSafeAuth()
-  const hasRedirected = useRef(false)
+  const [recentProjects, setRecentProjects] = useState<Array<{ id: string; name: string; createdAt: string }>>([])
+  const [projectsLoading, setProjectsLoading] = useState(true)
 
-  // Auto-redirect to Keycloak when not authenticated
+  // Fetch recent projects when authenticated
   useEffect(() => {
-    if (!auth.isLoading && !auth.isAuthenticated && !auth.error && !hasRedirected.current) {
-      hasRedirected.current = true
-      auth.signinRedirect()
-    }
-  }, [auth])
-
-  // Debug: expose auth state to console
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (window as any).__AUTH_DEBUG = {
-        isLoading: auth.isLoading,
-        isAuthenticated: auth.isAuthenticated,
-        error: auth.error,
-        user: auth.user ? {
-          profile: auth.user.profile,
-          access_token: auth.user.access_token ? '***masked***' : undefined,
-        } : null,
+    if (auth.isAuthenticated && auth.user?.access_token) {
+      const fetchProjects = async () => {
+        try {
+          const response = await fetch('/api/generations?limit=6', {
+            headers: { 'Authorization': `Bearer ${auth.user?.access_token}` }
+          })
+          if (response.ok) {
+            const data = await response.json()
+            setRecentProjects(Array.isArray(data) ? data : data.content || [])
+          }
+        } catch (err) {
+          console.error('Failed to fetch projects:', err)
+        } finally {
+          setProjectsLoading(false)
+        }
       }
-      console.log('🔐 Auth state updated:', (window as any).__AUTH_DEBUG)
+      fetchProjects()
     }
-  }, [auth])
+  }, [auth.isAuthenticated, auth.user?.access_token])
 
   if (auth.isLoading) {
     return (
@@ -488,34 +487,8 @@ export default function App() {
   }
 
   if (!auth.isAuthenticated) {
-    // Not authenticated - show loading while redirect happens (redirect is handled by top-level useEffect)
-    return (
-      <>
-        <style>{css}</style>
-        <div style={{
-          minHeight: '100vh', background: '#f7f7f7',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16,
-          color: '#5480ba', fontFamily: 'Inter, sans-serif', padding: '20px',
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: '50%',
-            border: '2px solid rgba(84,128,186,0.2)',
-            borderTopColor: '#5480ba',
-            animation: 'rotate-slow 0.8s linear infinite',
-          }} />
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Redirecting to Keycloak...</p>
-            <p style={{ fontSize: 13, color: '#999' }}>Please login to continue</p>
-          </div>
-          <button onClick={() => void auth.signinRedirect()} style={{
-            padding: '10px 24px', background: '#5480ba',
-            color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600,
-          }}>
-            Login with Keycloak
-          </button>
-        </div>
-      </>
-    )
+    // Not authenticated - show the original landing page (violet theme)
+    return <LandingPage />
   }
 
   // Authenticated - show the app
@@ -555,6 +528,34 @@ export default function App() {
   const generationIdFromUrl = params.get('gen')
   const initialHomeTab = params.get('mode') as 'create' | 'projects' | 'profile' | 'admin' | null
 
+  // Navigation handlers
+  const navigateToEditor = (mode?: string, genId?: string) => {
+    let url = '/editor'
+    if (mode) url += `?mode=${mode}`
+    if (genId) url += `${mode ? '&' : '?'}gen=${genId}`
+    window.history.pushState({}, '', url)
+    window.dispatchEvent(new Event('popstate'))
+  }
+
+  // Show Editor - either when accessing /editor path or by default when authenticated
+  if (path === '/' || path === '/editor' || path.startsWith('/editor/')) {
+    return (
+      <AiEditor
+        accessToken={auth.user?.access_token}
+        username={username}
+        email={email}
+        firstName={firstName}
+        lastName={lastName}
+        userSub={userSub}
+        roles={roles}
+        onLogout={doLogout}
+        initialGenerationId={generationIdFromUrl}
+        initialHomeTab={initialHomeTab || undefined}
+      />
+    )
+  }
+
+  // Fallback: Show Editor (shouldn't reach here)
   return (
     <AiEditor
       accessToken={auth.user?.access_token}

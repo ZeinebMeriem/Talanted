@@ -722,8 +722,8 @@ class FallbackProvider(LlmProvider):
                 raise
         raise last_exc or RuntimeError("FallbackProvider: all providers exhausted")
 
-    def chat(self, system: str, user: str) -> str:
-        return self._call_with_fallback("chat", system, user)
+    def chat(self, system: str, user: str, **opts: Any) -> str:
+        return self._call_with_fallback("chat", system, user, **opts)
 
     def chat_stream(self, system: str, user: str):
         # Streaming: try each provider, collect full response on fallback

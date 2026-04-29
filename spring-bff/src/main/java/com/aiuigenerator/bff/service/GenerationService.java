@@ -50,7 +50,6 @@ import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
 import com.aiuigenerator.bff.dto.JiraIssueDTO;
 import com.aiuigenerator.bff.dto.RestoreRequest;
 import com.aiuigenerator.bff.dto.CodeFileDto;
-import com.aiuigenerator.bff.dto.GitLabClientDto;
 import com.aiuigenerator.bff.repo.AiReportRepository;
 import com.aiuigenerator.bff.repo.ChatMessageRepository;
 import com.aiuigenerator.bff.repo.CodeVersionRepository;
@@ -77,8 +76,6 @@ public class GenerationService {
     private final FastApiClient fastApi;
     private final AuditService audit;
     private final JiraService jiraService;
-    private final GitLabService gitLabService;
-    private final GitLabOAuth2Service gitLabOAuth2Service;
 
     private final GenerationRepository generationRepo;
     private final GenerationFileRepository fileRepo;
@@ -93,8 +90,6 @@ public class GenerationService {
             FastApiClient fastApi,
             AuditService audit,
             JiraService jiraService,
-            GitLabService gitLabService,
-            GitLabOAuth2Service gitLabOAuth2Service,
             GenerationRepository generationRepo,
             GenerationFileRepository fileRepo,
             UiSpecVersionRepository uiSpecRepo,
@@ -106,8 +101,6 @@ public class GenerationService {
         this.fastApi = fastApi;
         this.audit = audit;
         this.jiraService = jiraService;
-        this.gitLabService = gitLabService;
-        this.gitLabOAuth2Service = gitLabOAuth2Service;
         this.generationRepo = generationRepo;
         this.fileRepo = fileRepo;
         this.uiSpecRepo = uiSpecRepo;
@@ -237,6 +230,36 @@ public class GenerationService {
 
         g.setStatus(GenerationStatus.COMPLETED);
         g.setUpdatedAt(Instant.now());
+
+        // Store quality evaluation scores from FastAPI
+        if (fastResp.aiReport != null && fastResp.aiReport.ui_evaluation != null) {
+            Map<String, Object> uiEval = fastResp.aiReport.ui_evaluation;
+            Object globalScoreObj = uiEval.get("global_score");
+            if (globalScoreObj instanceof Number) {
+                g.setGlobalScore(((Number) globalScoreObj).intValue());
+            }
+            Object semanticFidelityObj = uiEval.get("semantic_fidelity");
+            if (semanticFidelityObj instanceof Number) {
+                g.setSemanticFidelity(((Number) semanticFidelityObj).intValue());
+            }
+            Object codeQualityObj = uiEval.get("code_quality");
+            if (codeQualityObj instanceof Number) {
+                g.setCodeQuality(((Number) codeQualityObj).intValue());
+            }
+            Object completenessObj = uiEval.get("completeness");
+            if (completenessObj instanceof Number) {
+                g.setCompleteness(((Number) completenessObj).intValue());
+            }
+            Object accessibilityObj = uiEval.get("accessibility");
+            if (accessibilityObj instanceof Number) {
+                g.setAccessibility(((Number) accessibilityObj).intValue());
+            }
+            Object visualRichnessObj = uiEval.get("visual_richness");
+            if (visualRichnessObj instanceof Number) {
+                g.setVisualRichness(((Number) visualRichnessObj).intValue());
+            }
+        }
+
         generationRepo.save(g);
 
         long durationMs = System.currentTimeMillis() - started;
@@ -710,6 +733,36 @@ public class GenerationService {
 
         g.setStatus(GenerationStatus.COMPLETED);
         g.setUpdatedAt(Instant.now());
+
+        // Store quality evaluation scores from FastAPI
+        if (fastResp.aiReport != null && fastResp.aiReport.ui_evaluation != null) {
+            Map<String, Object> uiEval = fastResp.aiReport.ui_evaluation;
+            Object globalScoreObj = uiEval.get("global_score");
+            if (globalScoreObj instanceof Number) {
+                g.setGlobalScore(((Number) globalScoreObj).intValue());
+            }
+            Object semanticFidelityObj = uiEval.get("semantic_fidelity");
+            if (semanticFidelityObj instanceof Number) {
+                g.setSemanticFidelity(((Number) semanticFidelityObj).intValue());
+            }
+            Object codeQualityObj = uiEval.get("code_quality");
+            if (codeQualityObj instanceof Number) {
+                g.setCodeQuality(((Number) codeQualityObj).intValue());
+            }
+            Object completenessObj = uiEval.get("completeness");
+            if (completenessObj instanceof Number) {
+                g.setCompleteness(((Number) completenessObj).intValue());
+            }
+            Object accessibilityObj = uiEval.get("accessibility");
+            if (accessibilityObj instanceof Number) {
+                g.setAccessibility(((Number) accessibilityObj).intValue());
+            }
+            Object visualRichnessObj = uiEval.get("visual_richness");
+            if (visualRichnessObj instanceof Number) {
+                g.setVisualRichness(((Number) visualRichnessObj).intValue());
+            }
+        }
+
         generationRepo.save(g);
 
         long durationMs = System.currentTimeMillis() - started;
@@ -1838,320 +1891,5 @@ public class GenerationService {
                 Map.of("sourceId", sourceId));
 
         return fastapiResp;
-    }
-
-    /**
-     * Push generated code to GitLab using OAuth2 stored credentials
-     */
-    public GitLabClientDto.PushToGitLabResponse pushGenerationToGitLab(
-            String generationId,
-            GitLabClientDto.PushToGitLabRequest request,
-            JwtAuthenticationToken authToken) {
-        long startMs = System.currentTimeMillis();
-
-        try {
-            // 1. Validate input
-            GitLabClientDto.PushToGitLabResponse validationError = validatePushRequest(request);
-            if (validationError != null) {
-                log.warn("Push request validation failed for generation {}: {}", generationId, validationError.message);
-                return validationError;
-            }
-
-            // 2. Get userId and fetch stored OAuth2 credential
-            String userId = "dev-user";
-            String accessToken = null;
-
-            if (authToken != null && authToken.getToken() != null) {
-                userId = (String) authToken.getToken().getClaims().get("sub");
-            }
-            log.info("Pushing generation {} to GitLab for user {}", generationId, userId);
-
-            // Precedence: provided token > stored credential > dev mode mock > error
-            if (request.token != null && !request.token.isBlank()) {
-                // Use provided Personal Access Token
-                log.info("Using provided Personal Access Token for push");
-                accessToken = request.token;
-            } else {
-                // Lookup stored OAuth2 credential
-                var credential = gitLabOAuth2Service.getCredential(userId, request.gitlabUrl);
-
-                if (credential.isPresent()) {
-                    // Found stored credential - use it
-                    var cred = credential.get();
-                    log.debug("Found stored GitLab credential for user {} on {}", userId, request.gitlabUrl);
-
-                    // Refresh token if needed
-                    if (cred.needsRefresh()) {
-                        log.info("Token needs refresh, attempting refresh");
-                        try {
-                            gitLabOAuth2Service.refreshTokenIfNeeded(cred);
-                            log.debug("Token refreshed successfully");
-                        } catch (Exception e) {
-                            log.warn("Token refresh failed, attempting push with existing token", e);
-                        }
-                    }
-                    accessToken = cred.getAccessToken();
-                } else if (devMode) {
-                    // Dev mode: create/use mock stored credential
-                    log.info("No stored credential found for user {} on {}. Creating mock credential for dev mode.", userId, request.gitlabUrl);
-                    accessToken = createMockCredentialForDevMode(userId, request.gitlabUrl);
-                } else {
-                    // Production mode but no stored credential and no provided token
-                    log.warn("No GitLab credential found for user {} on {}", userId, request.gitlabUrl);
-                    return GitLabClientDto.PushToGitLabResponse.error(
-                            "GitLab not connected. Please verify your token or authorize via OAuth.",
-                            "AUTH_FAILED",
-                            "Provide a Personal Access Token or click 'Connect to GitLab' button to authorize");
-                }
-            }
-
-            // 2. Fetch generation
-            var g = generationRepo.findById(generationId)
-                    .orElseThrow(() -> new IllegalArgumentException("generation not found"));
-
-            // 5. Get latest CodeVersion — fallback to reading files from disk via FastAPI
-            List<FileEntry> files;
-            var codeVersions = codeRepo.findByGenerationIdOrderByVersionAsc(generationId);
-            log.info("Found {} CodeVersions in DB for generation {}", codeVersions.size(), generationId);
-
-            var latestCodeVersion = codeVersions.stream()
-                    .reduce((first, second) -> second); // Get the last (latest version)
-            if (latestCodeVersion.isPresent()) {
-                files = latestCodeVersion.get().getFiles();
-                log.info("Using CodeVersion #{} from DB for generation {}, {} files",
-                        latestCodeVersion.get().getVersion(), generationId, files.size());
-            } else {
-                log.info("No CodeVersion in DB for generation {}, fetching from FastAPI disk", generationId);
-                try {
-                    var projectFiles = fastApi.getProjectFiles(generationId);
-                    if (projectFiles == null) {
-                        log.error("FastAPI returned null for generation {}", generationId);
-                        throw new IllegalArgumentException("FastAPI connection failed");
-                    }
-                    if (projectFiles.files == null || projectFiles.files.isEmpty()) {
-                        log.error("FastAPI returned empty files for generation {}", generationId);
-                        throw new IllegalArgumentException("No code files found for this generation");
-                    }
-                    files = projectFiles.files.stream()
-                            .map(f -> new FileEntry(f.path, f.content))
-                            .collect(Collectors.toList());
-                    log.info("Fetched {} files from FastAPI for generation {}", files.size(), generationId);
-                } catch (Exception e) {
-                    log.error("Failed to fetch code from FastAPI: {}", e.getMessage(), e);
-                    // Last resort: try using CodeBundleDto.getCode method for this generation
-                    try {
-                        var codeBundle = getCode(generationId);
-                        if (codeBundle != null && codeBundle.files != null && !codeBundle.files.isEmpty()) {
-                            files = codeBundle.files.stream()
-                                    .map(f -> new FileEntry(f.path, f.content))
-                                    .collect(Collectors.toList());
-                            log.info("Fetched {} files using CodeBundleDto fallback", files.size());
-                        } else {
-                            throw e;
-                        }
-                    } catch (Exception fallbackError) {
-                        log.error("All attempts to fetch code failed for generation {}: {}", generationId, fallbackError.getMessage());
-                        throw new IllegalArgumentException(
-                            "No code found for this generation. This may happen if:\n" +
-                            "1. The generation hasn't completed successfully\n" +
-                            "2. The code files were deleted\n" +
-                            "3. The generation ID is incorrect\n" +
-                            "Try generating a new project first.");
-                    }
-                }
-            }
-
-            if (files == null || files.isEmpty()) {
-                log.error("Final files list is empty for generation {}. Cannot push.", generationId);
-                throw new IllegalArgumentException("No code files to push. Generation may not have completed successfully.");
-            }
-
-            log.info(
-                    "Pushing generation {} to GitLab: projectPath={}, branch={}, autoCreate={}",
-                    generationId,
-                    request.projectPath,
-                    request.branch,
-                    request.autoCreate);
-
-            // 3. Ensure project exists (create if autoCreate is true)
-            if (request.autoCreate) {
-                log.info("autoCreate enabled, ensuring project exists");
-                boolean projectExists = gitLabService.ensureProjectExists(
-                        request.gitlabUrl,
-                        accessToken,
-                        request.projectPath);
-
-                if (!projectExists) {
-                    log.warn("Failed to ensure project exists, but attempting push anyway");
-                }
-            }
-
-            // 4. Push to GitLab using stored credential token
-            var result = gitLabService.pushCode(
-                    request.gitlabUrl,
-                    accessToken,
-                    request.projectPath,
-                    request.branch,
-                    files,
-                    request.commitMessage);
-
-            // 8. Save GitLab metadata to Generation
-            String projectUrl = gitLabService.getProjectUrl(
-                    request.gitlabUrl,
-                    request.projectPath);
-            g.setGitlabProjectUrl(projectUrl);
-            g.setGitlabBranch(request.branch);
-            g.setGitlabCommitHash(result.commitHash);
-            g.setGitlabPushedAt(Instant.now());
-            g.setUpdatedAt(Instant.now());
-            generationRepo.save(g);
-
-            // 9. Audit
-            long durationMs = System.currentTimeMillis() - startMs;
-            audit.recordEvent(
-                    "GITLAB_PUSH",
-                    generationId,
-                    g.getSessionId(),
-                    durationMs,
-                    Map.of(
-                            "projectUrl", projectUrl,
-                            "branch", request.branch,
-                            "commitHash", result.commitHash,
-                            "gitlabUrl", request.gitlabUrl));
-
-            log.info(
-                    "Successfully pushed generation {} to {} (branch: {}, commit: {})",
-                    generationId,
-                    projectUrl,
-                    request.branch,
-                    result.commitHash);
-
-            // 10. Return response
-            boolean isMockPush = result.commitHash != null && result.commitHash.startsWith("dev-commit-");
-            String responseMessage = isMockPush
-                    ? "[DEV MODE] Mock push — not pushed to real GitLab. Configure real OAuth to push."
-                    : "Successfully pushed to GitLab";
-            return new GitLabClientDto.PushToGitLabResponse(
-                    true,
-                    projectUrl,
-                    request.branch,
-                    result.commitHash,
-                    responseMessage);
-
-        } catch (GitLabService.GitLabServiceException | IllegalArgumentException e) {
-            log.error("Failed to push generation {} to GitLab: {}", generationId, e.getMessage(), e);
-
-            long durationMs = System.currentTimeMillis() - startMs;
-            audit.recordEvent(
-                    "GITLAB_PUSH_FAILED",
-                    generationId,
-                    "unknown",
-                    durationMs,
-                    Map.of("error", e.getMessage()));
-
-            return GitLabClientDto.PushToGitLabResponse.error(e.getMessage());
-        } catch (Exception e) {
-            log.error("Unexpected error during GitLab push", e);
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "Unexpected error: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Create or retrieve mock GitLab credential for dev mode testing
-     */
-    private String createMockCredentialForDevMode(String userId, String gitlabUrl) {
-        try {
-            // Check if mock credential already exists for this user and URL
-            var existing = gitLabOAuth2Service.getCredential(userId, gitlabUrl);
-            if (existing.isPresent() && existing.get().getAccessToken() != null) {
-                log.debug("Mock credential already exists for user {} on {}", userId, gitlabUrl);
-                return existing.get().getAccessToken();
-            }
-
-            // Create new mock credential
-            String mockToken = "dev-token-" + UUID.randomUUID().toString();
-            log.info("Creating mock GitLab credential for dev mode: user={}, url={}, token=dev-token-***", userId, gitlabUrl);
-
-            // Note: In dev mode, we don't actually persist this to the database
-            // It's only used for the push operation during this request
-            return mockToken;
-
-        } catch (Exception e) {
-            log.warn("Failed to create mock credential, using fallback token", e);
-            return "dev-token-fallback";
-        }
-    }
-
-    /**
-     * Validate inputs for GitLab push
-     * Returns error response if invalid, null if valid
-     */
-    private GitLabClientDto.PushToGitLabResponse validatePushRequest(GitLabClientDto.PushToGitLabRequest request) {
-        // Validate GitLab URL
-        if (request.gitlabUrl == null || request.gitlabUrl.isBlank()) {
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "GitLab URL is required",
-                    "INVALID_INPUT",
-                    "Provide a GitLab instance URL (e.g., https://gitlab.com)");
-        }
-
-        String url = request.gitlabUrl.trim();
-        if (!url.matches("https://.*")) {
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "GitLab URL must use HTTPS protocol",
-                    "INVALID_INPUT",
-                    "Change http:// to https://");
-        }
-
-        // Validate project path (must be group/project format)
-        if (request.projectPath == null || request.projectPath.isBlank()) {
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "Project path is required",
-                    "INVALID_INPUT",
-                    "Use format: group/project (e.g., my-group/my-project)");
-        }
-
-        String[] parts = request.projectPath.trim().split("/");
-        if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "Project path must be in format: group/project",
-                    "INVALID_INPUT",
-                    "Example: my-group/my-project (no leading/trailing slashes)");
-        }
-
-        // Validate branch name
-        if (request.branch == null || request.branch.isBlank()) {
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "Branch name is required",
-                    "INVALID_INPUT",
-                    "Specify a branch name (e.g., main, develop, feature/ai-ui)");
-        }
-
-        if (!request.branch.matches("[a-zA-Z0-9_\\-/.]+")) {
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "Branch name contains invalid characters",
-                    "INVALID_INPUT",
-                    "Use only alphanumeric, dash, underscore, and slash");
-        }
-
-        // Validate commit message
-        if (request.commitMessage == null || request.commitMessage.isBlank()) {
-            return GitLabClientDto.PushToGitLabResponse.error(
-                    "Commit message is required",
-                    "INVALID_INPUT",
-                    "Provide a descriptive commit message");
-        }
-
-        return null; // Valid
-    }
-
-    public boolean validateGitLabToken(String gitlabUrl, String token) {
-        try {
-            return gitLabService.validateToken(gitlabUrl, token);
-        } catch (Exception e) {
-            log.error("Error validating GitLab token", e);
-            return false;
-        }
     }
 }

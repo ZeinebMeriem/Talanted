@@ -51,8 +51,7 @@ public class SecurityConfig {
                             .requestMatchers("/", "/error").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                            .requestMatchers(HttpMethod.POST, "/api/gitlab/verify-token").permitAll()
-                            .requestMatchers(HttpMethod.POST, "/api/generations/*/push-gitlab").permitAll()
+
                             .requestMatchers("/api/admin/**").hasRole("admin")
                             .requestMatchers("/api/**").authenticated()
                             .anyRequest().permitAll())

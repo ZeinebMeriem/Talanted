@@ -209,15 +209,12 @@ export async function* streamGeneration(
   }
 
   const url = `${BFF_BASE_URL}/api/generations/stream`
-  console.error('🔴 streamGeneration: Fetching from URL:', url, 'with auth:', !!accessToken)
 
   const res = await fetch(url, {
     method: 'POST',
     body: form,
     headers: authHeaders(accessToken) as Record<string, string>,
   })
-
-  console.error('🔴 streamGeneration: Response status:', res.status)
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
@@ -317,15 +314,11 @@ export async function createGeneration(
 
 export async function listGenerations(accessToken?: string): Promise<GenerationListItem[]> {
   const url = `${BFF_BASE_URL}/api/generations`
-  console.log('🔗 Fetching from:', url, 'Auth header:', authHeaders(accessToken))
   const res = await fetch(url, { headers: authHeaders(accessToken) })
-  console.log('🔗 Response status:', res.status, 'OK:', res.ok)
   const data: unknown = await readJsonOrNull(res)
-  console.log('🔗 Response data:', data)
 
   if (!res.ok) {
     const message = extractErrorMessage(data)
-    console.error('🔗 Error response:', message || `HTTP ${res.status}`)
     throw new Error(message || `HTTP ${res.status}`)
   }
 
@@ -376,6 +369,20 @@ export async function getGenerationCode(generationId: string, accessToken?: stri
   }
 
   return (typeof data === 'object' && data !== null ? (data as CodeBundleResponse) : {})
+}
+
+export async function getGeneration(generationId: string, accessToken?: string): Promise<any> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}`, {
+    headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+
+  return data
 }
 
 export async function downloadGenerationZip(generationId: string, accessToken?: string): Promise<void> {
@@ -591,152 +598,6 @@ export async function duplicateGeneration(
   return (typeof data === 'object' && data !== null ? (data as DuplicateResponse) : {})
 }
 
-// ─── GitLab Push types ──────────────────────────────────────────────────
-
-export type PushToGitLabRequest = {
-  gitlabUrl: string
-  projectPath: string
-  branch: string
-  commitMessage: string
-  autoCreate: boolean
-  token?: string  // GitLab Personal Access Token
-}
-
-export type PushToGitLabResponse = {
-  success: boolean
-  projectUrl?: string
-  branch?: string
-  commitHash?: string
-  message: string
-  errorCode?: string
-  nextSteps?: string
-}
-
-export async function postGenerationPushGitlab(
-  generationId: string,
-  request: Omit<PushToGitLabRequest, 'token'> & { personalAccessToken?: string },
-  accessToken?: string,
-): Promise<PushToGitLabResponse> {
-  // Convert personalAccessToken field to token field for backend API
-  const fullRequest: PushToGitLabRequest = {
-    gitlabUrl: request.gitlabUrl,
-    projectPath: request.projectPath,
-    branch: request.branch,
-    commitMessage: request.commitMessage,
-    autoCreate: request.autoCreate,
-    token: request.personalAccessToken,
-  }
-
-  const res = await fetch(
-    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/push-gitlab`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(accessToken),
-      },
-      body: JSON.stringify(fullRequest),
-    },
-  )
-  const data: unknown = await readJsonOrNull(res)
-
-  if (!res.ok) {
-    const message = extractErrorMessage(data)
-    throw new Error(message || `HTTP ${res.status}`)
-  }
-
-  return (typeof data === 'object' && data !== null ? (data as PushToGitLabResponse) : { success: false, message: 'Unknown error' })
-}
-
-// ══════════════════════════════════════════════════════════════
-// GITLAB OAUTH2 API
-// ══════════════════════════════════════════════════════════════
-
-export type GitLabCredential = {
-  gitlabUrl: string
-  gitlabUsername: string
-  connectedAt: string
-  isActive: boolean
-  scope: string
-}
-
-export async function gitlabAuthorizeSendRequest(
-  gitlabUrl: string = 'https://gitlab.com',
-  accessToken?: string,
-  force: boolean = false,
-): Promise<{ authorizationUrl: string; state: string } | { success: boolean; gitlabUrl: string; gitlabUsername: string; message: string }> {
-  const forceParam = force ? '&force=true' : ''
-  const res = await fetch(
-    `${BFF_BASE_URL}/api/gitlab/auth/authorize?gitlabUrl=${encodeURIComponent(gitlabUrl)}${forceParam}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(accessToken),
-      },
-    },
-  )
-  const data: unknown = await readJsonOrNull(res)
-
-  if (!res.ok) {
-    const message = extractErrorMessage(data)
-    throw new Error(message || `HTTP ${res.status}`)
-  }
-
-  return data as { authorizationUrl: string; state: string } | { success: boolean; gitlabUrl: string; gitlabUsername: string; message: string }
-}
-
-export async function gitlabCredentialsGetRequest(
-  accessToken?: string,
-): Promise<GitLabCredential[]> {
-  const res = await fetch(
-    `${BFF_BASE_URL}/api/gitlab/credentials`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(accessToken),
-      },
-    },
-  )
-  const data: unknown = await readJsonOrNull(res)
-
-  if (!res.ok) {
-    const message = extractErrorMessage(data)
-    throw new Error(message || `HTTP ${res.status}`)
-  }
-
-  return Array.isArray(data) ? data : []
-}
-
-export async function verifyGitLabToken(
-  gitlabUrl: string,
-  personalAccessToken: string,
-  accessToken?: string,
-): Promise<{ username: string }> {
-  const res = await fetch(
-    `${BFF_BASE_URL}/api/gitlab/verify-token`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(accessToken),
-      },
-      body: JSON.stringify({
-        gitlabUrl,
-        personalAccessToken,
-      }),
-    },
-  )
-  const data: unknown = await readJsonOrNull(res)
-
-  if (!res.ok) {
-    const message = extractErrorMessage(data)
-    throw new Error(message || `HTTP ${res.status}`)
-  }
-
-  return (typeof data === 'object' && data !== null ? (data as { username: string }) : { username: '' })
-}
 
 // ══════════════════════════════════════════════════════════════
 // TED CHATBOT API

@@ -31,9 +31,10 @@ import com.aiuigenerator.bff.dto.EditFileResponse;
 import com.aiuigenerator.bff.dto.GenerationCreateResponse;
 import com.aiuigenerator.bff.dto.GenerationRollbackResponse;
 import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
-import com.aiuigenerator.bff.dto.GitLabClientDto;
+import com.aiuigenerator.bff.dto.GitLabPushDto;
 import com.aiuigenerator.bff.service.AuditService;
 import com.aiuigenerator.bff.service.GenerationService;
+import com.aiuigenerator.bff.service.SimpleGitLabService;
 
 @RestController
 @RequestMapping("/api/generations")
@@ -42,13 +43,15 @@ public class GenerationController {
     private static final Logger log = LoggerFactory.getLogger(GenerationController.class);
     private final GenerationService service;
     private final AuditService audit;
+    private final SimpleGitLabService gitLabService;
 
     @Value("${app.security.dev-mode:false}")
     private boolean devMode;
 
-    public GenerationController(GenerationService service, AuditService audit) {
+    public GenerationController(GenerationService service, AuditService audit, SimpleGitLabService gitLabService) {
         this.service = service;
         this.audit = audit;
+        this.gitLabService = gitLabService;
     }
 
     /**
@@ -234,68 +237,52 @@ public class GenerationController {
     /**
      * Push generated code to GitLab repository
      */
-    @PostMapping("/{id}/push-gitlab")
+    @PostMapping("/{id}/push-to-gitlab")
     public ResponseEntity<?> pushToGitLab(
             @PathVariable("id") String generationId,
-            @RequestBody GitLabClientDto.PushToGitLabRequest request,
-            JwtAuthenticationToken token) {
+            @RequestBody GitLabPushDto.PushRequest request) {
 
-        log.info(
-                "POST /api/generations/{}/push-gitlab: projectPath={}, branch={}, autoCreate={}, tokenProvided={}",
-                generationId,
-                request.projectPath,
-                request.branch,
-                request.autoCreate,
-                request.token != null && !request.token.isBlank());
+        log.info("POST /api/generations/{}/push-to-gitlab: project={}", generationId, request.projectPath);
 
         try {
-            log.debug("Calling service.pushGenerationToGitLab for generation: {}", generationId);
-            GitLabClientDto.PushToGitLabResponse response = service.pushGenerationToGitLab(
-                    generationId,
-                    request,
-                    token);
+            // 1. Validate inputs
+            if (request.gitlabUrl == null || request.gitlabUrl.isBlank()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("GitLab URL is required"));
+            }
+            if (request.projectPath == null || request.projectPath.isBlank()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("Project path is required"));
+            }
+            if (request.personalAccessToken == null || request.personalAccessToken.isBlank()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("Personal access token is required"));
+            }
+            if (request.branch == null || request.branch.isBlank()) {
+                request.branch = "main";
+            }
+            if (request.commitMessage == null || request.commitMessage.isBlank()) {
+                request.commitMessage = "feat: initial commit";
+            }
 
-            log.info("Push response for {}: success={}, message={}", generationId, response.success, response.message);
+            // 2. Get code content
+            CodeBundleDto code = service.getCode(generationId);
+            if (code == null || code.files == null || code.files.isEmpty()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("No code found for this generation"));
+            }
 
-            // Return 200 for both success and validation errors (error is in response body)
+            // 3. Push to GitLab — files are written to their real paths in the repo
+            GitLabPushDto.PushResponse response = gitLabService.pushCode(
+                    request.gitlabUrl,
+                    request.personalAccessToken,
+                    request.projectPath,
+                    request.branch,
+                    request.commitMessage,
+                    code.files,
+                    request.forceOverwrite);
+
             return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            log.error("Validation error for generation {}: {}", generationId, e.getMessage());
-            return ResponseEntity.ok(GitLabClientDto.PushToGitLabResponse.error(
-                    e.getMessage(),
-                    "VALIDATION_FAILED",
-                    "Check that generation exists and code has been generated"));
+
         } catch (Exception e) {
-            log.error("Failed to push to GitLab for generation {}: {}", generationId, e.getMessage(), e);
-            return ResponseEntity.ok(GitLabClientDto.PushToGitLabResponse.error(
-                    "Failed to push to GitLab: " + e.getMessage(),
-                    "GIT_PUSH_FAILED",
-                    "Check logs for details. The generation may still be valid for editing."));
-        }
-    }
-
-    /**
-     * Validate GitLab token
-     */
-    @PostMapping("/validate-gitlab-token")
-    public ResponseEntity<?> validateGitLabToken(
-            @RequestBody GitLabClientDto.ValidateTokenRequest request,
-            JwtAuthenticationToken token) {
-
-        log.info("POST /api/generations/validate-gitlab-token: gitlabUrl={}", request.gitlabUrl);
-
-        // Dev mode: validation not supported without authentication
-        if (token == null || token.getToken() == null) {
-            return ResponseEntity.badRequest().body(
-                    new GitLabClientDto.ValidateTokenResponse(false));
-        }
-
-        try {
-            boolean isValid = service.validateGitLabToken(request.gitlabUrl, request.token);
-            return ResponseEntity.ok(new GitLabClientDto.ValidateTokenResponse(isValid));
-        } catch (Exception e) {
-            log.error("Failed to validate GitLab token", e);
-            return ResponseEntity.ok(new GitLabClientDto.ValidateTokenResponse(false));
+            log.error("Error pushing to GitLab: {}", e.getMessage(), e);
+            return ResponseEntity.ok(GitLabPushDto.PushResponse.error("Error: " + e.getMessage()));
         }
     }
 }
