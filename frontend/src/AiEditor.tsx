@@ -3,7 +3,11 @@ import {
   streamGeneration,
   createGeneration,
   downloadGenerationZip,
-  duplicateGeneration,
+  repairGeneration,
+  generateDocs,
+  downloadCleanZip,
+  deleteGeneration,
+  renameGeneration,
   getAdminActivity,
   getAdminDailyChart,
   getAdminFailed,
@@ -14,6 +18,7 @@ import {
   getGenerationCode,
   getGeneration,
   getGenerationVersions,
+  getGenerationQuality,
   getMe,
   getUserStats,
   listAuditEvents,
@@ -34,11 +39,11 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, HistoryPanel, AuditEventsPanel, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
-type CenterTab = 'preview' | 'code' | 'quality' | 'terminal'
+type CenterTab = 'preview' | 'code' | 'quality'
 
-type RightTab = 'chat' | 'console' | 'logs' | 'versions'
+type RightTab = 'chat' | 'console' | 'versions'
 
 
 type CodeFile = { path: string; content: string }
@@ -132,6 +137,14 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [dragOver, setDragOver] = useState(false)
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('gemini')
+  const [selectedTheme, setSelectedTheme] = useState<string | null>(null)
+
+  // Quality / repair / docs state
+  const [liveScores, setLiveScores] = useState<{ globalScore?: number; semanticFidelity?: number; codeQuality?: number; completeness?: number; accessibility?: number; visualRichness?: number } | null>(null)
+  const [liveReasoning, setLiveReasoning] = useState<Record<string, string> | null>(null)
+  const [isRepairing, setIsRepairing] = useState(false)
+  const [isGeneratingDocs, setIsGeneratingDocs] = useState(false)
+  const [docsGenerated, setDocsGenerated] = useState(false)
 
   // TED Chatbot state
   const [isTedOpen, setIsTedOpen] = useState(false)
@@ -211,18 +224,25 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [previewReloadCount, setPreviewReloadCount] = useState(0)
   const previewContainerRef = useRef<HTMLDivElement>(null)
-  const [previewScale, setPreviewScale] = useState(0.7)
+  const [previewScale, setPreviewScale] = useState(1.0)
 
   const [buildMsg, setBuildMsg] = useState('Scaffolding project…')
   const [buildPct, setBuildPct] = useState(0)
   const [isBuilding, setIsBuilding] = useState(false)
   const [buildError, setBuildError] = useState<string | null>(null)
 
+  // ── Preview CSS override (live suggestion hover) ───────────────────────
+  const [previewOverrideCSS, setPreviewOverrideCSS] = useState<string | null>(null)
+
   // ── Inspect mode (click-to-select element in preview) ──────────────────
   const [inspectMode, setInspectMode] = useState(false)
   const [selectedZone, setSelectedZone] = useState<{ label: string; description: string } | null>(null)
   const [hoverZoneBox, setHoverZoneBox] = useState<{ top: string; height: string; left: string; width: string } | null>(null)
   const [chatPrefill, setChatPrefill] = useState('')  // Pre-filled chat message from inspect
+  const [inspectModal, setInspectModal] = useState<{ zone: { label: string; description: string } } | null>(null)
+  const [inspectInstruction, setInspectInstruction] = useState('')
+  const [isApplyingEdit, setIsApplyingEdit] = useState(false)
+  const [lastVersionSaved, setLastVersionSaved] = useState<number | null>(null)
 
   const [apiResult, setApiResult] = useState<GenerationApiResponse | null>(null)
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false)
@@ -250,34 +270,32 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     // Don't auto-switch to chat anymore - let them use the visual editor
   }, []);
 
-  // Handle style change from visual editor
-  const handleStyleChange = useCallback((change: StyleChange) => {
-    // Build a natural language description of the change
+  // Stable ref so handleStyleChange can call loadVersions without ordering issues
+  const loadVersionsRef = useRef<((id: string) => Promise<void>) | null>(null)
+
+  // Handle style change from visual editor — only fires when user clicks "Apply to Code"
+  const handleStyleChange = useCallback(async (change: StyleChange) => {
+    const generationId = selectedGenerationId
+    if (!generationId) return
+
     const elementDesc = change.element.textContent
-      ? `the ${change.element.tagName} with text "${change.element.textContent.slice(0, 30)}..."`
-      : `the ${change.element.tagName}${change.element.className ? `.${change.element.className.split(' ')[0]}` : ''}`;
+      ? `the ${change.element.tagName} element with text "${change.element.textContent.slice(0, 40)}"`
+      : `the ${change.element.tagName}${change.element.className ? `.${change.element.className.split(' ')[0]}` : ''} element`
 
-    const propNames: Record<string, string> = {
-      'color': 'text color',
-      'background-color': 'background color',
-      'font-size': 'font size',
-      'font-family': 'font',
-      'font-weight': 'font weight',
-      'padding': 'padding',
-      'margin': 'margin',
-      'border-radius': 'border radius',
-      'text-align': 'text alignment'
-    };
+    const instruction = change.property === 'multiple'
+      ? `Update ${elementDesc}: change ${change.newValue}. Apply these exact CSS property values directly to the component's inline styles or CSS class.`
+      : `Change the ${change.property} of ${elementDesc} to "${change.newValue}". Apply this exact value in the source code.`
 
-    // Handle multiple style changes from "Apply to Code" button
-    if (change.property === 'multiple') {
-      setChatPrefill(`Change ${elementDesc}: ${change.newValue}`);
-    } else {
-      const propName = propNames[change.property] || change.property;
-      setChatPrefill(`Change ${propName} of ${elementDesc} to ${change.newValue}`);
+    try {
+      const resp = await editFile(generationId, '', instruction, selectedModel, accessToken || '')
+      if (resp.buildSuccess) {
+        setPreviewReloadCount(c => c + 1)
+        void loadVersionsRef.current?.(generationId)
+      }
+    } catch (err) {
+      console.error('Style apply failed:', err)
     }
-    setRightTab('chat');
-  }, []);
+  }, [selectedGenerationId, selectedModel, accessToken])
 
   const loadHistory = useCallback(async () => {
     try {
@@ -296,14 +314,35 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const loadGeneration = useCallback(async (generationId: string) => {
     try {
       setLoadingProjectId(generationId)
-      const [bundle, history, generation] = await Promise.all([
+      // Clear stale data from any previously selected project
+      setVersions(null)
+      setVersionsError(null)
+      setAuditEvents([])
+      setAuditError(null)
+      setLiveScores(null)
+      setLiveReasoning(null)
+      const [bundle, history, generation, quality] = await Promise.all([
         getGenerationCode(generationId, accessToken),
         getChatHistory(generationId, accessToken),
         getGeneration(generationId, accessToken),
+        getGenerationQuality(generationId, undefined, accessToken),
       ])
       setApiResult({ generationId, codeBundle: bundle, uiSpec: undefined, aiReport: undefined })
       setSelectedGeneration(generation)
-      setSelectedGenerationId(generationId)  // Enable chat editing
+      setSelectedGenerationId(generationId)
+      // Use fetched quality scores if available, otherwise fall back to generation-level scores
+      const hasQuality = quality && Object.values(quality).some(v => v != null && typeof v === 'number')
+      if (hasQuality) {
+        setLiveScores({
+          globalScore: quality.globalScore,
+          semanticFidelity: quality.semanticFidelity,
+          codeQuality: quality.codeQuality,
+          completeness: quality.completeness,
+          accessibility: quality.accessibility,
+          visualRichness: quality.visualRichness,
+        })
+        setLiveReasoning(quality.reasoning ?? null)
+      }
       setChatMessages(history.map((m: ApiChatMessage) => ({
         role: m.role === 'user' ? 'user' : 'ai',
         text: m.content,
@@ -352,6 +391,9 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     [accessToken],
   )
 
+  // Keep ref in sync so handleStyleChange can call loadVersions without ordering issues
+  loadVersionsRef.current = loadVersions
+
   // Auto-load generation from URL query param (?gen=...) on component mount
   useEffect(() => {
     if (initialGenerationId && !apiResult) {
@@ -364,7 +406,26 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       try {
         setVersionsError(null)
         await rollbackGeneration(generationId, version, accessToken)
+        // Reload metadata and force the preview iframe to re-fetch the restored build
         await Promise.all([loadHistory(), loadAudit(generationId), loadVersions(generationId)])
+        setPreviewReloadCount(c => c + 1)
+        // Load quality scores specific to the restored version
+        const quality = await getGenerationQuality(generationId, version, accessToken)
+        const hasQuality = quality && Object.values(quality).some(v => v != null && typeof v === 'number')
+        if (hasQuality) {
+          setLiveScores({
+            globalScore: quality.globalScore,
+            semanticFidelity: quality.semanticFidelity,
+            codeQuality: quality.codeQuality,
+            completeness: quality.completeness,
+            accessibility: quality.accessibility,
+            visualRichness: quality.visualRichness,
+          })
+          setLiveReasoning(quality.reasoning ?? null)
+        } else {
+          setLiveScores(null)
+          setLiveReasoning(null)
+        }
       } catch (e: any) {
         setVersionsError(e?.message ?? 'Rollback failed')
       }
@@ -445,10 +506,10 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   }, [homeTab, adminUsers.length, adminLoading, loadAdminDashboard])
 
   useEffect(() => {
-    if (ideVisible && rightTab === 'logs') {
+    if (ideVisible) {
       void loadHistory()
     }
-  }, [ideVisible, rightTab, loadHistory])
+  }, [ideVisible, loadHistory])
 
   const defaultTree = useMemo<FileNode[]>(
     () => [
@@ -693,6 +754,13 @@ document.addEventListener('click', function(e) {
     return () => window.removeEventListener('keydown', handleKey)
   }, [inspectMode])
 
+  // Auto-dismiss the "version saved" toast after 3 s
+  useEffect(() => {
+    if (!lastVersionSaved) return
+    const t = setTimeout(() => setLastVersionSaved(null), 3000)
+    return () => clearTimeout(t)
+  }, [lastVersionSaved])
+
   const [userScale, setUserScale] = useState<number | null>(null)
 
   // Auto-scale preview like Lovable: observe container width and scale to fit 1280px
@@ -703,7 +771,7 @@ document.addEventListener('click', function(e) {
       if (userScale !== null) return // don't auto-scale if user manually zoomed
       const width = entries[0].contentRect.width
       // Scale to fit visually, but cap it so it doesn't get ridiculously small or too large
-      if (width > 0) setPreviewScale(Math.min(1.0, Math.max(0.6, width / 1280)))
+      if (width > 0 && userScale === null) setPreviewScale(Math.min(1.0, Math.max(0.85, width / 1280)))
     })
     obs.observe(el)
     return () => obs.disconnect()
@@ -711,7 +779,7 @@ document.addEventListener('click', function(e) {
 
   // Derived — always in sync with apiResult, no separate state needed
   const builtProjectUrl = apiResult?.generationId
-    ? `http://localhost:8000/projects/${apiResult.generationId}/dist/index.html`
+    ? `/preview/${apiResult.generationId}/dist/index.html`
     : null
 
 
@@ -908,10 +976,45 @@ document.addEventListener('click', function(e) {
     const relY = (e.clientY - rect.top) / rect.height
     const zone = detectZone(relX, relY)
     setSelectedZone({ label: zone.label, description: zone.description })
-    setChatInput(`Modify ${zone.description}: `)
-    setRightTab('chat')
-    setInspectMode(false)
     setHoverZoneBox(null)
+    setRightTab('chat')
+  }
+
+  const applyInspectEdit = async () => {
+    if (!inspectInstruction.trim() || isApplyingEdit) return
+    const generationId = apiResult?.generationId
+    if (!generationId) return
+    setIsApplyingEdit(true)
+    try {
+      const instruction = `Modify ${inspectModal!.zone.description}: ${inspectInstruction}`
+      const resp = await editFile(generationId, '', instruction, accessToken, selectedModel)
+      if (resp.content && apiResult?.codeBundle?.files) {
+        const updatedFiles = apiResult.codeBundle.files.map((f) =>
+          f.path === activeFileId || f.path === activeFileName
+            ? { ...f, content: resp.content! }
+            : f
+        )
+        setApiResult(prev => prev ? { ...prev, codeBundle: { files: updatedFiles } } : prev)
+      }
+      if (resp.buildSuccess) {
+        setPreviewReloadCount(c => c + 1)
+      }
+      // Reload versions so the new version appears
+      if (selectedGenerationId) {
+        void loadVersions(selectedGenerationId)
+        if (resp.buildSuccess) {
+          setLastVersionSaved(Date.now())
+          setRightTab('versions')
+        }
+      }
+      setInspectModal(null)
+      setInspectInstruction('')
+      setInspectMode(false)
+    } catch (err: any) {
+      console.error('Inspect edit failed:', err)
+    } finally {
+      setIsApplyingEdit(false)
+    }
   }
 
   const startBuild = async () => {
@@ -923,7 +1026,9 @@ document.addEventListener('click', function(e) {
     try {
       const prompt = customPrompt.trim() || `New project: ${projectName}`
 
-      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel)) {
+      setLiveScores(null)
+      setDocsGenerated(false)
+      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel, undefined, undefined, selectedTheme)) {
         if (event.type === 'progress') {
           setBuildPct(event.progress)
           setBuildMsg(event.message)
@@ -932,6 +1037,19 @@ document.addEventListener('click', function(e) {
           setAttachedFiles([])
           setApiResult(result)
           const r: any = (result as any)?.aiReport
+          // Wire live quality scores from SSE complete event
+          const uiEval = r?.ui_evaluation
+          if (uiEval) {
+            setLiveScores({
+              globalScore: uiEval.global_score,
+              semanticFidelity: uiEval.semantic_fidelity,
+              codeQuality: uiEval.code_quality,
+              completeness: uiEval.completeness,
+              accessibility: uiEval.accessibility,
+              visualRichness: uiEval.visual_richness,
+            })
+            setLiveReasoning(uiEval.reasoning ?? null)
+          }
           const fileCount = (result as any)?.codeBundle?.files?.length ?? 1
           const totalMs = r?.durations?.total_ms
           const summary = (result as any)?.uiSpec?.meta?.summary
@@ -955,6 +1073,58 @@ document.addEventListener('click', function(e) {
       setIsBuilding(false)
       setBuildError(e?.message ?? 'Build failed')
       void loadHistory().then(() => setHomeTab('projects'))
+    }
+  }
+
+  const handleRepair = async () => {
+    const id = apiResult?.generationId
+    if (!id || isRepairing) return
+    setIsRepairing(true)
+    try {
+      const result = await repairGeneration(id, accessToken)
+      // Update quality scores and reasoning from repair response
+      setLiveScores({
+        globalScore: result.globalScore,
+        semanticFidelity: result.semanticFidelity,
+        codeQuality: result.codeQuality,
+        completeness: result.completeness,
+        accessibility: result.accessibility,
+        visualRichness: result.visualRichness,
+      })
+      if (result.reasoning) setLiveReasoning(result.reasoning)
+      // Reload the code bundle so Code tab reflects any repaired files
+      try {
+        const updatedBundle = await getGenerationCode(id, accessToken)
+        setApiResult(prev => prev ? { ...prev, codeBundle: updatedBundle } : prev)
+      } catch (_) {}
+      // Refresh the preview so the user sees the result of the repair
+      setPreviewReloadCount(c => c + 1)
+      setCenterTab('preview')
+    } catch (e: any) {
+      console.error('Repair failed:', e)
+    } finally {
+      setIsRepairing(false)
+    }
+  }
+
+  const handleGenerateDocs = async () => {
+    const id = apiResult?.generationId
+    if (!id || isGeneratingDocs || docsGenerated) return
+    setIsGeneratingDocs(true)
+    try {
+      await generateDocs(id, accessToken)
+      setDocsGenerated(true)
+      // Reload code bundle so the Code tab shows JSDoc-annotated files
+      try {
+        const updatedBundle = await getGenerationCode(id, accessToken)
+        setApiResult(prev => prev ? { ...prev, codeBundle: updatedBundle } : prev)
+      } catch (_) {}
+      // Switch to Code tab so user sees the JSDoc comments immediately
+      setCenterTab('code')
+    } catch (e: any) {
+      console.error('Docs generation failed:', e)
+    } finally {
+      setIsGeneratingDocs(false)
     }
   }
 
@@ -1183,6 +1353,148 @@ document.addEventListener('click', function(e) {
       )
     }
 
+    const ProjectThumbnail = ({ generationId, prompt }: { generationId: string; prompt?: string }) => {
+      const [failed, setFailed] = React.useState(false)
+      if (failed) return (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}>
+          <CardThumbnail prompt={prompt} />
+        </div>
+      )
+      return (
+        <iframe
+          src={`http://localhost:8000/projects/${generationId}/dist/index.html`}
+          style={{
+            position: 'absolute', top: 0, left: 0,
+            width: 1280, height: 900,
+            border: 'none',
+            transform: 'scale(0.222)',
+            transformOrigin: 'top left',
+            pointerEvents: 'none',
+            background: '#fff',
+          }}
+          sandbox="allow-scripts allow-same-origin"
+          tabIndex={-1}
+          aria-hidden="true"
+          onError={() => setFailed(true)}
+        />
+      )
+    }
+
+    const CardFooter = ({
+      g, displayName,
+    }: {
+      g: typeof validProjects[0]
+      displayName: string
+    }) => {
+      const [editing, setEditing] = React.useState(false)
+      const [nameValue, setNameValue] = React.useState(g.name || projectName2(g.prompt))
+      const [saving, setSaving] = React.useState(false)
+      const [confirmDelete, setConfirmDelete] = React.useState(false)
+      const [deleting, setDeleting] = React.useState(false)
+      const inputRef = React.useRef<HTMLInputElement>(null)
+
+      React.useEffect(() => {
+        if (editing) setTimeout(() => inputRef.current?.select(), 30)
+      }, [editing])
+
+      // Sync nameValue when server data changes (after rename + reload)
+      React.useEffect(() => {
+        if (!editing) setNameValue(g.name || projectName2(g.prompt))
+      }, [g.name, g.prompt, editing])
+
+      const saveName = async () => {
+        const trimmed = nameValue.trim()
+        if (!trimmed || !g.generationId) { setEditing(false); return }
+        if (trimmed === (g.name || projectName2(g.prompt))) { setEditing(false); return }
+        setSaving(true)
+        try {
+          await renameGeneration(g.generationId, trimmed, accessToken)
+          // Reload history so the name persists from the server into React state
+          await loadHistory()
+        } catch {
+          // revert on failure
+          setNameValue(g.name || projectName2(g.prompt))
+        } finally {
+          setSaving(false)
+          setEditing(false)
+        }
+      }
+
+      const doDelete = async () => {
+        if (!g.generationId) return
+        setDeleting(true)
+        try {
+          await deleteGeneration(g.generationId, accessToken)
+          await loadHistory()
+        } catch { /* ignore */ }
+        finally { setDeleting(false); setConfirmDelete(false) }
+      }
+
+      return (
+        <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, background: '#ffffff' }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            {editing ? (
+              <input
+                ref={inputRef}
+                value={nameValue}
+                onChange={e => setNameValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void saveName()
+                  if (e.key === 'Escape') { setEditing(false); setNameValue(g.name || projectName2(g.prompt)) }
+                }}
+                onBlur={() => void saveName()}
+                style={{ width: '100%', fontSize: 14, fontWeight: 700, color: '#111827', border: 'none', borderBottom: '2px solid #6366f1', outline: 'none', background: 'transparent', padding: '1px 0' }}
+              />
+            ) : (
+              <p
+                style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
+                title="Click to rename"
+                onClick={() => setEditing(true)}
+              >
+                {saving ? '…' : (g.name || projectName2(g.prompt))}
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 5, verticalAlign: 'middle', opacity: 0.6 }}>
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </p>
+            )}
+            <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+          </div>
+
+          {/* Delete */}
+          {confirmDelete ? (
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              <button
+                onClick={doDelete}
+                disabled={deleting}
+                style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer' }}>
+                {deleting ? '…' : 'Delete'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              title="Delete project"
+              style={{ flexShrink: 0, width: 28, height: 28, borderRadius: 7, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#fca5a5'; e.currentTarget.style.color = '#ef4444' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#9ca3af' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      )
+    }
+
     const projectName2 = (prompt?: string) => {
       if (!prompt) return 'Untitled Project'
       const p = prompt.toLowerCase()
@@ -1200,13 +1512,13 @@ document.addEventListener('click', function(e) {
     return (
       <div id="onboarding" style={{ display: 'flex', minHeight: '100vh' }}>
 
-        {/* Talan color bar */}
+        {/* Brand color bar */}
         <div className="talan-color-bar">
-          <span style={{ background: '#5480ba' }} />
-          <span style={{ background: '#8f9424' }} />
-          <span style={{ background: '#e04580' }} />
-          <span style={{ background: '#6b367d' }} />
-          <span style={{ background: '#1d662e' }} />
+          <span style={{ background: '#6366f1' }} />
+          <span style={{ background: '#818cf8' }} />
+          <span style={{ background: '#a855f7' }} />
+          <span style={{ background: '#c084fc' }} />
+          <span style={{ background: '#ec4899' }} />
         </div>
 
         {/* ── SIDEBAR ── */}
@@ -1216,17 +1528,31 @@ document.addEventListener('click', function(e) {
         }}>
 
           {/* Logo */}
-          <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #e5e7eb' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src="/talan-logo.svg" alt="Talan" style={{ height: 28, flexShrink: 0 }} />
-              <span style={{ fontWeight: 600, fontSize: 13, color: 'rgba(0,0,0,0.4)', fontFamily: "'Inter',sans-serif", letterSpacing: '0.3px' }}>UI Generator</span>
-            </div>
+          <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid #e5e7eb', background: 'linear-gradient(135deg, #faf5ff 0%, #f0f4ff 100%)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <svg width="32" height="32" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+              <defs>
+                <linearGradient id="slg" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#6366f1" />
+                  <stop offset="100%" stopColor="#a855f7" />
+                </linearGradient>
+              </defs>
+              <rect width="44" height="44" rx="12" fill="url(#slg)" />
+              <rect x="8" y="13" width="28" height="5" rx="2.5" fill="white" />
+              <rect x="19.5" y="13" width="5" height="22" rx="2.5" fill="white" />
+              <circle cx="38" cy="8" r="5" fill="#f0abfc" />
+              <circle cx="38" cy="8" r="2.5" fill="white" opacity="0.8" />
+            </svg>
+            <span style={{
+              fontWeight: 800, fontSize: 16, letterSpacing: '-0.3px',
+              background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+            }}>Talanted</span>
           </div>
 
           {/* Workspace */}
           <div style={{ padding: '12px 12px', borderBottom: '1px solid #e5e7eb' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, background: 'rgba(0,0,0,.03)' }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                 {displayName.charAt(0)}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -1253,8 +1579,8 @@ document.addEventListener('click', function(e) {
             ))}
             {apiResult && (
               <button onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: 'transparent', color: '#5480ba', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(84,128,186,.08)'}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: 'transparent', color: '#6366f1', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>✦</span>
                 Open Editor
@@ -1270,10 +1596,10 @@ document.addEventListener('click', function(e) {
                 <button key={g.generationId}
                   onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', borderRadius: 9, marginBottom: 1, background: 'transparent', color: 'rgba(0,0,0,.45)', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', transition: 'all .15s' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(84,128,186,.07)'; el.style.color = '#1f2937' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(99,102,241,.07)'; el.style.color = '#1f2937' }}
                   onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = 'rgba(0,0,0,.45)' }}>
                   <span style={{ fontSize: 13, opacity: 0.4, flexShrink: 0 }}>□</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{projectName2(g.prompt)}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{g.name || projectName2(g.prompt)}</span>
                 </button>
               ))}
             </div>
@@ -1283,7 +1609,7 @@ document.addEventListener('click', function(e) {
 
           {/* Bottom: user + sign out */}
           <div style={{ padding: '12px 14px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
+            <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
               {displayName.charAt(0)}
             </div>
             <div onClick={() => setHomeTab('profile')} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
@@ -1394,9 +1720,9 @@ document.addEventListener('click', function(e) {
               <div style={{ maxWidth: 1240, margin: '0 auto 10px', padding: '0 20px', position: 'relative', zIndex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#5480ba', background: 'rgba(84,128,186,.08)', border: '1px solid rgba(84,128,186,.18)', borderRadius: 999, padding: '5px 10px', marginBottom: 8 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#5480ba' }} />
-                      Talan AI Platform
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#6366f1', background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', borderRadius: 999, padding: '5px 10px', marginBottom: 8 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'inline-block' }} />
+                      ✨ Talanted Platform
                     </div>
                     <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.08, fontWeight: 900, color: '#18233a' }}>
                       What should we <span style={{ color: '#4f46e5' }}>build</span> today?
@@ -1487,6 +1813,37 @@ document.addEventListener('click', function(e) {
                       <option value="gpt">⚡ GPT-4o (Balanced)</option>
                       <option value="groq">🚀 Llama 3.3 70B (Free)</option>
                     </select>
+                  </div>
+
+                  {/* Design Theme Selector */}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5, display: 'block' }}>Design Theme</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {([
+                        { value: null, label: '✨ Auto', desc: 'AI chooses' },
+                        { value: 'minimal', label: '⬜ Minimal', desc: 'Clean & light' },
+                        { value: 'corporate', label: '🏢 Corporate', desc: 'Professional' },
+                        { value: 'vibrant', label: '🌈 Vibrant', desc: 'Bold colors' },
+                        { value: 'dark', label: '🌙 Dark', desc: 'Dark mode' },
+                        { value: 'natural', label: '🌿 Natural', desc: 'Earth tones' },
+                      ] as { value: string | null; label: string; desc: string }[]).map(t => (
+                        <button
+                          key={t.value ?? 'auto'}
+                          type="button"
+                          onClick={() => setSelectedTheme(t.value)}
+                          title={t.desc}
+                          style={{
+                            padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                            border: selectedTheme === t.value ? '1.5px solid #6366f1' : '1.5px solid #e2e8f0',
+                            background: selectedTheme === t.value ? 'linear-gradient(135deg, #f5f3ff, #ede9fe)' : '#fff',
+                            color: selectedTheme === t.value ? '#6366f1' : '#6b7280',
+                            transition: 'all .15s',
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Prompt */}
@@ -1778,11 +2135,15 @@ document.addEventListener('click', function(e) {
                       onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.4)'; el.style.boxShadow = '0 8px 40px rgba(84,128,186,.15)'; el.style.transform = 'translateY(-2px)' }}
                       onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(0,0,0,.1)'; el.style.boxShadow = '0 2px 8px rgba(0,0,0,.04)'; el.style.transform = 'none' }}
                       onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
-                      {/* Thumbnail */}
-                      <div style={{ position: 'relative', height: 200, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', overflow: 'hidden' }}>
-                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)', backdropFilter: 'blur(8px)' }}>
-                          <CardThumbnail prompt={g.prompt} />
-                        </div>
+                      {/* Thumbnail — live scaled preview, fallback to wireframe on error */}
+                      <div style={{ position: 'relative', height: 200, background: '#f1f5f9', overflow: 'hidden' }}>
+                        {g.generationId ? (
+                          <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
+                        ) : (
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}>
+                            <CardThumbnail prompt={g.prompt} />
+                          </div>
+                        )}
                         {loadingProjectId === g.generationId && (
                           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
                             <div style={{ width: 26, height: 26, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
@@ -1795,18 +2156,7 @@ document.addEventListener('click', function(e) {
                         </div>
                       </div>
                       {/* Card footer */}
-                      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: '#ffffff' }}>
-                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                          {displayName.charAt(0).toUpperCase()}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
-                          <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
-                        </div>
-                        {g.status !== 'COMPLETED' && (
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#fbbf24', flexShrink: 0 }}>⟳</span>
-                        )}
-                      </div>
+                      <CardFooter g={g} displayName={displayName} />
                     </div>
                   ))}
                 </div>
@@ -1885,7 +2235,7 @@ document.addEventListener('click', function(e) {
                   { key: 'health', label: '◉ Health' },
                 ] as { key: typeof adminActiveTab; label: string }[]).map(t => (
                   <button key={t.key} onClick={() => setAdminActiveTab(t.key)}
-                    style={{ background: adminActiveTab === t.key ? 'rgba(99,102,241,.2)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#a5b4fc' : 'rgba(255,255,255,.4)', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ background: adminActiveTab === t.key ? 'rgba(99,102,241,.12)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#5480ba' : '#64748b', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                     {t.label}
                   </button>
                 ))}
@@ -2178,7 +2528,7 @@ document.addEventListener('click', function(e) {
                           {g.status === 'COMPLETED' ? '✓' : '⟳'}
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name || projectName2(g.prompt)}</p>
                           <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
                         </div>
                         <span style={{ fontSize: 13, color: 'rgba(0,0,0,.35)', flexShrink: 0 }}>→</span>
@@ -2220,25 +2570,110 @@ document.addEventListener('click', function(e) {
 
         {/* Build Success Overlay — only shown right after a build, dismissed on any action */}
         {showSuccessOverlay && !ideVisible && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,11,20,.85)', backdropFilter: 'blur(16px)' }}
-            onClick={() => setShowSuccessOverlay(false)}>
-            <div style={{ borderRadius: 28, padding: '48px 40px', maxWidth: 420, width: '100%', textAlign: 'center', background: 'rgba(0,0,0,.03)', border: '1px solid rgba(0,0,0,.1)', boxShadow: '0 40px 80px rgba(0,0,0,.4)' }}
-              onClick={e => e.stopPropagation()}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, background: 'rgba(84,128,186,.12)', border: '1px solid rgba(84,128,186,.3)' }}>✓</div>
-              <h2 style={{ fontSize: 26, fontWeight: 900, color: '#111827', margin: '0 0 10px' }}>App Generated!</h2>
-              <p style={{ fontSize: 15, color: 'rgba(0,0,0,.45)', margin: '0 0 28px' }}>Your project is ready to explore in the editor.</p>
-              <button onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
-                style={{ width: '100%', padding: '15px', borderRadius: 12, fontSize: 16, fontWeight: 700, background: '#5480ba', color: '#fff', border: 'none', boxShadow: '0 0 30px rgba(99,102,241,.4)', cursor: 'pointer', marginBottom: 12 }}>
-                Open Editor →
+          <div
+            onClick={() => setShowSuccessOverlay(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(2,6,23,.88)', backdropFilter: 'blur(20px)' }}
+          >
+            {/* Ambient glow */}
+            <div style={{ position: 'absolute', width: 480, height: 480, borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: 'relative', borderRadius: 24, padding: '44px 40px 36px', maxWidth: 400, width: '90%',
+                textAlign: 'center',
+                background: 'linear-gradient(145deg, rgba(15,23,42,.98), rgba(30,27,75,.95))',
+                border: '1px solid rgba(99,102,241,.25)',
+                boxShadow: '0 0 0 1px rgba(255,255,255,.04) inset, 0 32px 80px rgba(0,0,0,.6), 0 0 60px rgba(99,102,241,.12)',
+              }}
+            >
+              {/* Checkmark ring */}
+              <div style={{ position: 'relative', width: 72, height: 72, margin: '0 auto 24px' }}>
+                <svg width="72" height="72" viewBox="0 0 72 72" style={{ position: 'absolute', inset: 0 }}>
+                  <defs>
+                    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#6366f1" />
+                      <stop offset="100%" stopColor="#a855f7" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="36" cy="36" r="33" fill="rgba(99,102,241,.1)" stroke="url(#ringGrad)" strokeWidth="1.5" />
+                </svg>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#ringGrad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <defs>
+                      <linearGradient id="checkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#6366f1" />
+                        <stop offset="100%" stopColor="#a855f7" />
+                      </linearGradient>
+                    </defs>
+                    <polyline points="20 6 9 17 4 12" stroke="url(#checkGrad)" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Title */}
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#818cf8', textTransform: 'uppercase', marginBottom: 8 }}>
+                Generation Complete
+              </div>
+              <h2 style={{ fontSize: 28, fontWeight: 900, color: '#f1f5f9', margin: '0 0 8px', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+                App Generated!
+              </h2>
+              <p style={{ fontSize: 14, color: '#94a3b8', margin: '0 0 28px', lineHeight: 1.6 }}>
+                Your project is ready to explore in the editor.
+              </p>
+
+              {/* Quality score pill if available */}
+              {liveScores?.globalScore != null && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderRadius: 20, background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.25)', marginBottom: 24 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z"/></svg>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#818cf8' }}>Quality Score: {liveScores.globalScore}/100</span>
+                </div>
+              )}
+
+              {/* Primary CTA */}
+              <button
+                onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 12, fontSize: 15, fontWeight: 700,
+                  background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                  color: '#fff', border: 'none', cursor: 'pointer', marginBottom: 10,
+                  boxShadow: '0 4px 24px rgba(99,102,241,.4)',
+                  transition: 'opacity .2s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+              >
+                Open Editor
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </button>
+
+              {/* Secondary: ZIP download */}
               {apiResult?.generationId && (
-                <button onClick={() => { downloadGenerationZip(apiResult!.generationId!, accessToken); setShowSuccessOverlay(false) }}
-                  style={{ width: '100%', padding: '13px', borderRadius: 12, fontSize: 14, fontWeight: 700, background: 'rgba(52,211,153,.1)', color: '#34d399', border: '1px solid rgba(52,211,153,.25)', cursor: 'pointer', marginBottom: 12 }}>
-                  ⬇ Download Project ZIP
+                <button
+                  onClick={() => { downloadGenerationZip(apiResult!.generationId!, accessToken); setShowSuccessOverlay(false) }}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: 12, fontSize: 14, fontWeight: 600,
+                    background: 'rgba(255,255,255,.04)', color: '#cbd5e1',
+                    border: '1px solid rgba(255,255,255,.1)', cursor: 'pointer', marginBottom: 10,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    transition: 'background .2s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.08)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,.04)')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Download Project ZIP
                 </button>
               )}
-              <button onClick={() => setShowSuccessOverlay(false)}
-                style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.35)', fontSize: 13, cursor: 'pointer', marginTop: 4 }}>
+
+              {/* Dismiss */}
+              <button
+                onClick={() => setShowSuccessOverlay(false)}
+                style={{ background: 'none', border: 'none', color: '#475569', fontSize: 13, cursor: 'pointer', marginTop: 2, transition: 'color .15s' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
+                onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+              >
                 Back to workspace
               </button>
             </div>
@@ -2272,9 +2707,11 @@ document.addEventListener('click', function(e) {
             <span style={{ fontSize: 16, fontWeight: 800, background: 'linear-gradient(135deg, #5480ba 0%, #6ba3d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
               AIEditor
             </span>
-            <span className="mono" style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginLeft: 4 }}>
-              {projectName}
-            </span>
+            {selectedGeneration && (
+              <span className="mono" style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginLeft: 4, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selectedGeneration.name || (selectedGeneration.prompt ? selectedGeneration.prompt.split(' ').slice(0, 4).join(' ') + '…' : projectName)}
+              </span>
+            )}
             <div className="flex-1" />
             <span className="mono" style={{ fontSize: 11, padding: '6px 12px', borderRadius: 8, background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', color: '#3b82f6', fontWeight: 600, boxShadow: '0 1px 2px rgba(59,130,246,.08)' }}>
               {previewSrcDoc ? 'HTML/CSS' : 'React + Vite'}
@@ -2349,7 +2786,6 @@ document.addEventListener('click', function(e) {
                   { id: 'preview', label: 'Preview', icon: '👁' },
                   { id: 'code', label: 'Code', icon: '⚡' },
                   { id: 'quality', label: 'Quality', icon: '⭐' },
-                  { id: 'terminal', label: 'Terminal', icon: '▶' },
                 ] as const).map((t) => {
                   const active = centerTab === t.id
                   return (
@@ -2360,18 +2796,18 @@ document.addEventListener('click', function(e) {
                       style={{
                         position: 'relative', padding: '0 20px', height: 38, border: 'none', cursor: 'pointer',
                         fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
-                        background: active ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)' : 'transparent',
-                        color: active ? '#5480ba' : '#94a3b8',
+                        background: active ? 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)' : 'transparent',
+                        color: active ? '#6366f1' : '#94a3b8',
                         transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
                         borderRadius: 10,
-                        boxShadow: active ? '0 2px 8px rgba(84,128,186,.1)' : 'none'
+                        boxShadow: active ? '0 2px 8px rgba(99,102,241,.12)' : 'none'
                       }}
                       onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
                       onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
                     >
                       {t.label}
                       {active && (
-                        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #5480ba, #6ba3d9)', borderRadius: 3, boxShadow: '0 0 8px rgba(84,128,186,.3)' }} />
+                        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #6366f1, #a855f7)', borderRadius: 3, boxShadow: '0 0 8px rgba(99,102,241,.35)' }} />
                       )}
                     </button>
                   )
@@ -2379,31 +2815,6 @@ document.addEventListener('click', function(e) {
 
                 <div className="flex-1" />
 
-                <div style={{ display: 'flex', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', padding: 4, borderRadius: 10, gap: 3, border: '1px solid #e2e8f0' }}>
-                  {(['desktop', 'tablet', 'mobile'] as const).map((device) => {
-                    const active = deviceMode === device
-                    const icons = { desktop: '🖥', tablet: '📱', mobile: '📱' }
-                    return (
-                      <button
-                        key={device}
-                        style={{
-                          padding: '8px 14px', borderRadius: 8, fontSize: 11, fontWeight: 700, letterSpacing: '.02em',
-                          background: active ? 'linear-gradient(135deg, #5480ba 0%, #4a6fa5 100%)' : 'transparent',
-                          color: active ? '#fff' : '#64748b',
-                          border: 'none', cursor: 'pointer', textTransform: 'uppercase', transition: 'all .25s',
-                          boxShadow: active ? '0 2px 6px rgba(84,128,186,.25)' : 'none',
-                          display: 'flex', alignItems: 'center', gap: 6
-                        }}
-                        onClick={() => setDeviceMode(device)}
-                        type="button"
-                        title={`${device.charAt(0).toUpperCase() + device.slice(1)} preview${device === 'desktop' ? ' (100%)' : device === 'tablet' ? ' (768px)' : ' (375px)'}`}
-                      >
-                        <span style={{ fontSize: 14 }}>{icons[device]}</span>
-                        {device.charAt(0).toUpperCase() + device.slice(1)}
-                      </button>
-                    )
-                  })}
-                </div>
 
                 {/* Zoom controls */}
                 <div className="flex items-center gap-2" style={{ marginLeft: 8 }}>
@@ -2458,7 +2869,7 @@ document.addEventListener('click', function(e) {
                   onClick={() => setPreviewReloadCount(c => c + 1)}
                   title="Reload preview"
                   type="button"
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.15)'; e.currentTarget.style.color = '#5480ba' }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,.15)'; e.currentTarget.style.color = '#6366f1' }}
                   onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.color = '#64748b' }}
                 >
                   ↻
@@ -2487,112 +2898,90 @@ document.addEventListener('click', function(e) {
                 {apiResult?.generationId && (
                   <button
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                      background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', border: '1px solid #86efac', color: '#16a34a',
+                      display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: 'none', color: '#fff',
                       cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: '0 2px 6px rgba(34,197,94,.15)'
+                      boxShadow: '0 2px 8px rgba(34,197,94,.35)'
                     }}
                     onClick={() => downloadGenerationZip(apiResult!.generationId!, accessToken)}
                     title="Download project as ZIP"
                     type="button"
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(34,197,94,.25)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(34,197,94,.15)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(34,197,94,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(34,197,94,.35)' }}
                   >
-                    ⬇ ZIP
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    ZIP
                   </button>
                 )}
+
 
                 {apiResult?.generationId && (
                   <button
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                      background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)', border: '1px solid #93c5fd', color: '#2563eb',
+                      display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #fc6d26 0%, #e24329 100%)', border: 'none', color: '#fff',
                       cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: '0 2px 6px rgba(37,99,235,.15)'
-                    }}
-                    onClick={async () => {
-                      try {
-                        const result = await duplicateGeneration(apiResult!.generationId!, accessToken)
-                        if (result.newGenerationId) {
-                          window.location.href = `/?gen=${result.newGenerationId}`
-                        } else {
-                          alert('Fork failed: No generation ID returned')
-                        }
-                      } catch (err) {
-                        alert(`Duplicate failed: ${err}`)
-                      }
-                    }}
-                    title="Duplicate this project"
-                    type="button"
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(37,99,235,.25)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(37,99,235,.15)' }}
-                  >
-                    📋 FORK
-                  </button>
-                )}
-
-                {apiResult?.generationId && (
-                  <button
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                      background: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)', border: '1px solid #f472b6', color: '#db2777',
-                      cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: '0 2px 6px rgba(219,39,119,.15)'
+                      boxShadow: '0 2px 8px rgba(252,109,38,.35)'
                     }}
                     onClick={() => setIsPushGitLabModalOpen(true)}
                     title="Push code to GitLab"
                     type="button"
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(219,39,119,.25)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(219,39,119,.15)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(252,109,38,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(252,109,38,.35)' }}
                   >
-                    📤 GITLAB
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z"/></svg>
+                    GITLAB
                   </button>
                 )}
 
                 {apiResult?.generationId && (
                   <button
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '0 18px', height: 38, borderRadius: 10,
-                      fontSize: 11, fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase',
-                      background: 'linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%)', border: '1px solid #a5b4fc', color: '#4f46e5',
+                      display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', border: 'none', color: '#fff',
                       cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: '0 2px 6px rgba(79,70,229,.15)'
+                      boxShadow: '0 2px 8px rgba(99,102,241,.35)'
                     }}
                     onClick={() => setIsTedOpen(true)}
                     title="Open TED AI Assistant"
                     type="button"
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(79,70,229,.25)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(79,70,229,.15)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(99,102,241,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,.35)' }}
                   >
-                    🤖 TED
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6v6l4 2"/></svg>
+                    TED
                   </button>
                 )}
               </div>
 
-              <div className="flex-1 overflow-auto relative" style={{ background: '#e8edf2' }}>
+              <div className="flex-1 overflow-auto relative" style={{ background: '#f1f5f9', backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
                 {centerTab === 'preview' ? (
-                  <Preview
-                    deviceMode={deviceMode}
-                    setDeviceMode={setDeviceMode}
-                    previewScale={previewScale}
-                    setPreviewScale={setPreviewScale}
-                    previewSrcDoc={previewSrcDoc}
-                    builtProjectUrl={builtProjectUrl}
-                    buildPct={buildPct}
-                    isBuilding={isBuilding}
-                    buildMsg={buildMsg}
-                    buildError={buildError}
-                    inspectMode={inspectMode}
-                    setInspectMode={setInspectMode}
-                    selectedZone={selectedZone}
-                    hoverZoneBox={hoverZoneBox}
-                    previewReloadCount={previewReloadCount}
-                    onElementSelected={handleElementSelected}
-                    onStyleChange={handleStyleChange}
-                  />
+                  <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+                    <Preview
+                      deviceMode={deviceMode}
+                      setDeviceMode={setDeviceMode}
+                      previewScale={previewScale}
+                      setPreviewScale={setPreviewScale}
+                      previewSrcDoc={previewSrcDoc}
+                      builtProjectUrl={builtProjectUrl}
+                      buildPct={buildPct}
+                      isBuilding={isBuilding}
+                      buildMsg={buildMsg}
+                      buildError={buildError}
+                      inspectMode={inspectMode}
+                      setInspectMode={setInspectMode}
+                      selectedZone={selectedZone}
+                      hoverZoneBox={hoverZoneBox}
+                      previewReloadCount={previewReloadCount}
+                      onElementSelected={handleElementSelected}
+                      onStyleChange={handleStyleChange}
+                      previewOverrideCSS={previewOverrideCSS}
+                    />
+                    {/* No overlay — inspect mode sends events directly into the iframe via INSPECT_SCRIPT */}
+                  </div>
                 ) : null}
 
                 {centerTab === 'code' ? (
@@ -2606,45 +2995,48 @@ document.addEventListener('click', function(e) {
                 ) : null}
 
                 {centerTab === 'quality' ? (
-                  <div style={{ height: '100%', overflow: 'auto', padding: 20, background: '#ffffff' }}>
-                    <QualityScores
-                      scores={{
-                        globalScore: selectedGeneration?.globalScore,
-                        semanticFidelity: selectedGeneration?.semanticFidelity,
-                        codeQuality: selectedGeneration?.codeQuality,
-                        completeness: selectedGeneration?.completeness,
-                        accessibility: selectedGeneration?.accessibility,
-                        visualRichness: selectedGeneration?.visualRichness,
-                      }}
-                    />
+                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+                    {/* Quality action bar */}
+                    {apiResult?.generationId && (
+                      <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', flex: 1 }}>
+                          {liveScores ? 'Live audit results' : 'Latest saved scores'}
+                        </span>
+                        <button
+                          onClick={handleGenerateDocs}
+                          disabled={isGeneratingDocs || docsGenerated}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: docsGenerated ? '#ecfdf5' : '#fff', color: docsGenerated ? '#059669' : '#374151', fontSize: 12, fontWeight: 600, cursor: docsGenerated ? 'default' : isGeneratingDocs ? 'wait' : 'pointer', transition: 'all .2s', opacity: docsGenerated ? 0.85 : 1 }}
+                        >
+                          {isGeneratingDocs ? '⏳' : docsGenerated ? '✅' : '📄'} {isGeneratingDocs ? 'Generating…' : docsGenerated ? 'Docs Ready' : 'Generate Docs'}
+                        </button>
+                        <button
+                          onClick={() => downloadCleanZip(apiResult!.generationId!, accessToken)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          📦 Clean Stack ZIP
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ flex: 1, overflow: 'auto' }}>
+                      <QualityScores
+                        scores={liveScores ?? {
+                          globalScore: selectedGeneration?.globalScore,
+                          semanticFidelity: selectedGeneration?.semanticFidelity,
+                          codeQuality: selectedGeneration?.codeQuality,
+                          completeness: selectedGeneration?.completeness,
+                          accessibility: selectedGeneration?.accessibility,
+                          visualRichness: selectedGeneration?.visualRichness,
+                        }}
+                        reasoning={liveReasoning ?? undefined}
+                        generationId={apiResult?.generationId}
+                        onRepair={handleRepair}
+                        onEvaluate={handleRepair}
+                        isRepairing={isRepairing}
+                      />
+                    </div>
                   </div>
                 ) : null}
 
-                {centerTab === 'terminal' ? (
-                  <div className="h-full p-6 mono leading-relaxed" style={{ fontSize: 12, background: '#0f172a', color: '#e2e8f0' }}>
-                    <div style={{ color: '#60a5fa', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <span style={{ opacity: 0.5 }}>▶</span>
-                      <span>npm run dev</span>
-                    </div>
-                    <div className="text-slate-500 mb-1">&gt; {projectName}@1.0.0 dev</div>
-                    <div className="text-slate-500 mb-4">&gt; vite</div>
-                    <div className="text-purple-400 font-bold mb-4">VITE v5.x ready in 312 ms</div>
-                    <div className="flex flex-col gap-1 mb-8">
-                      <div className="flex gap-4">
-                        <span className="text-slate-500 w-16">Local:</span>
-                        <span className="text-indigo-400 underline underline-offset-4 decoration-indigo-500/30">http://localhost:5173/</span>
-                      </div>
-                      <div className="flex gap-4">
-                        <span className="text-slate-500 w-16">Network:</span>
-                        <span className="text-indigo-400">http://192.168.1.5:5173/</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-indigo-500 font-bold">❯</span>
-                      <div className="blink w-2 h-4 bg-indigo-500/70"></div>
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </div>
 
@@ -2653,7 +3045,6 @@ document.addEventListener('click', function(e) {
                 {([
                   { id: 'chat', label: 'Chat' },
                   { id: 'console', label: 'Console' },
-                  { id: 'logs', label: 'History' },
                   { id: 'versions', label: 'Versions' },
                 ] as const).map((t) => {
                   const active = rightTab === t.id
@@ -2670,7 +3061,10 @@ document.addEventListener('click', function(e) {
                       }}
                       onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
                       onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
-                      onClick={() => setRightTab(t.id)}
+                      onClick={() => {
+                        setRightTab(t.id)
+                        if (t.id === 'versions' && selectedGenerationId) void loadVersions(selectedGenerationId)
+                      }}
                       type="button"
                     >
                       {t.label}
@@ -2696,9 +3090,17 @@ document.addEventListener('click', function(e) {
                   onFileUpdated={(newMessages, edits) => {
                     setChatMessages(newMessages)
                     setDiffEdits(edits)
+                    if (edits.length > 0) {
+                      setPreviewReloadCount(c => c + 1)
+                      setInspectMode(false)
+                    }
+                    // Always refresh versions — backend may create one even when filePath is missing from response
+                    if (selectedGenerationId) void loadVersions(selectedGenerationId)
                   }}
                   prefillMessage={chatPrefill}
                   onPrefillUsed={() => setChatPrefill('')}
+                  onClearZone={() => setSelectedZone(null)}
+                  onPreviewOverride={setPreviewOverrideCSS}
                 />
               ) : (
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -2717,42 +3119,27 @@ document.addEventListener('click', function(e) {
                     </div>
                   ) : null}
 
-                  {rightTab === 'logs' ? (
-                    <>
-                      <HistoryPanel
-                        history={history}
-                        historyLoading={historyLoading}
-                        historyError={historyError}
-                        selectedGenerationId={selectedGenerationId}
-                        loadingProjectId={loadingProjectId}
-                        onRefresh={() => void loadHistory()}
-                        onSelectGeneration={(id) => {
-                          setSelectedGenerationId(id)
-                          void loadAudit(id)
-                          void loadVersions(id)
-                        }}
-                        onLoadGeneration={(id) => void loadGeneration(id)}
-                      />
 
-                      <AuditEventsPanel
-                        selectedGenerationId={selectedGenerationId}
-                        auditEvents={auditEvents}
-                        auditLoading={auditLoading}
-                        auditError={auditError}
-                        onRefresh={(id) => void loadAudit(id)}
-                      />
-
-                      {selectedGenerationId ? (
+                  {rightTab === 'versions' ? (
+                    <div style={{ padding: '4px 12px 16px' }}>
+                      {!selectedGenerationId ? (
+                        <div style={{ textAlign: 'center', padding: '40px 16px', color: '#94a3b8', fontSize: 13 }}>
+                          No project selected
+                        </div>
+                      ) : (
                         <VersionHistory
                           versions={versions}
                           versionsLoading={versionsLoading}
                           versionsError={versionsError}
                           selectedGenerationId={selectedGenerationId}
-                          onRollback={doRollback}
+                          onRollback={async (id, ver) => {
+                            await doRollback(id, ver)
+                            setPreviewReloadCount(c => c + 1)
+                          }}
                           onRefresh={() => void loadVersions(selectedGenerationId)}
                         />
-                      ) : null}
-                    </>
+                      )}
+                    </div>
                   ) : null}
                 </div>
               )}
@@ -2772,6 +3159,9 @@ document.addEventListener('click', function(e) {
               path,
               content: file.content || '',
             }))}
+            onFileApplied={() => {
+              if (selectedGenerationId) loadGeneration(selectedGenerationId)
+            }}
           />
 
           <PushGitLabModal
@@ -2780,6 +3170,38 @@ document.addEventListener('click', function(e) {
             generationId={selectedGenerationId || ''}
             accessToken={accessToken}
           />
+
+
+          {/* ── Version Saved Toast ─────────────────────────────────────── */}
+          {lastVersionSaved && (
+            <div
+              style={{
+                position: 'fixed', bottom: 24, right: 24, zIndex: 70,
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 16px', borderRadius: 12,
+                background: 'linear-gradient(135deg, rgba(15,23,42,.96), rgba(30,27,75,.94))',
+                border: '1px solid rgba(99,102,241,.35)',
+                boxShadow: '0 8px 32px rgba(0,0,0,.4), 0 0 24px rgba(99,102,241,.15)',
+                animation: 'fadeUp .25s ease',
+              }}
+            >
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(99,102,241,.15)', border: '1px solid rgba(99,102,241,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>Version saved</div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>View in Versions tab · rollback anytime</div>
+              </div>
+              <button
+                onClick={() => setLastVersionSaved(null)}
+                style={{ marginLeft: 4, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: 2, lineHeight: 1 }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          )}
 
         </div>
       </ToastProvider>

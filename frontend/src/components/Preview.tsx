@@ -17,7 +17,8 @@ interface PreviewProps {
   hoverZoneBox: { top: string; height: string; left: string; width: string } | null
   previewReloadCount: number
   onElementSelected?: (elementInfo: ElementInfo) => void
-  onStyleChange?: (change: StyleChange) => void
+  onStyleChange?: (change: StyleChange) => void | Promise<void>
+  previewOverrideCSS?: string | null
 }
 
 export interface ElementInfo {
@@ -60,149 +61,231 @@ const INSPECT_SCRIPT = `
 (function() {
   if (window.__inspectInitialized) return;
   window.__inspectInitialized = true;
-  
-  let highlight = null;
-  let selectedHighlight = null;
+
+  let hoverBox = null;
+  let selectBox = null;
+  let selectLabel = null;
+  let cursorTip = null;
   let inspectEnabled = false;
   let selectedEl = null;
-  
-  function createHighlight(color, zIndex) {
-    const el = document.createElement('div');
-    el.style.cssText = 'position:fixed;pointer-events:none;border:2px solid ' + color + ';background:' + color + '20;z-index:' + zIndex + ';transition:all 0.1s ease;';
-    document.body.appendChild(el);
-    return el;
+
+  // ── overlay helpers ────────────────────────────────────────────────────────
+  function mkHoverBox() {
+    const d = document.createElement('div');
+    d.style.cssText = [
+      'position:fixed;pointer-events:none;display:none',
+      'border:2px dashed #a78bfa',
+      'background:rgba(167,139,250,0.08)',
+      'box-shadow:0 0 0 1px rgba(167,139,250,0.4)',
+      'border-radius:3px',
+      'z-index:2147483645',
+      'transition:top .07s,left .07s,width .07s,height .07s',
+    ].join(';');
+    document.documentElement.appendChild(d);
+    return d;
   }
-  
-  function getSelector(el) {
-    if (!el) return '';
-    if (el.id) return '#' + el.id;
-    if (el === document.body) return 'body';
-    let path = el.tagName.toLowerCase();
-    if (el.className && typeof el.className === 'string') {
-      path += '.' + el.className.trim().split(/\\s+/).join('.');
-    }
-    return path;
+
+  function mkSelectBox() {
+    const d = document.createElement('div');
+    d.style.cssText = [
+      'position:fixed;pointer-events:none;display:none',
+      'border:2px solid #6366f1',
+      'background:rgba(99,102,241,0.1)',
+      'box-shadow:0 0 0 3px rgba(99,102,241,0.25),inset 0 0 0 1px rgba(99,102,241,0.3)',
+      'border-radius:3px',
+      'z-index:2147483646',
+    ].join(';');
+    document.documentElement.appendChild(d);
+    return d;
   }
-  
+
+  function mkSelectLabel() {
+    const d = document.createElement('div');
+    d.style.cssText = [
+      'position:fixed;pointer-events:none;display:none',
+      'background:#6366f1;color:#fff',
+      'font:600 11px/1 -apple-system,sans-serif',
+      'padding:3px 7px;border-radius:4px',
+      'white-space:nowrap',
+      'box-shadow:0 2px 8px rgba(0,0,0,.35)',
+      'z-index:2147483647',
+    ].join(';');
+    document.documentElement.appendChild(d);
+    return d;
+  }
+
+  function mkCursorTip() {
+    const d = document.createElement('div');
+    d.style.cssText = [
+      'position:fixed;pointer-events:none;display:none',
+      'background:rgba(15,15,20,0.88);color:#e2e8f0',
+      'font:500 11px/1.4 -apple-system,sans-serif',
+      'padding:4px 8px;border-radius:5px',
+      'border:1px solid rgba(255,255,255,.1)',
+      'white-space:nowrap',
+      'box-shadow:0 4px 12px rgba(0,0,0,.4)',
+      'z-index:2147483647',
+      'max-width:260px;overflow:hidden;text-overflow:ellipsis',
+    ].join(';');
+    document.documentElement.appendChild(d);
+    return d;
+  }
+
+  function shortClass(el) {
+    if (!el.className || typeof el.className !== 'string') return '';
+    const first = el.className.trim().split(/\\s+/)[0];
+    return first ? '.' + first : '';
+  }
+
+  function labelFor(el) {
+    let s = el.tagName.toLowerCase();
+    if (el.id) s += '#' + el.id;
+    else s += shortClass(el);
+    return s;
+  }
+
   function getFullPath(el) {
     const parts = [];
-    while (el && el !== document.body && parts.length < 5) {
-      parts.unshift(getSelector(el));
-      el = el.parentElement;
+    let cur = el;
+    while (cur && cur !== document.documentElement && parts.length < 4) {
+      parts.unshift(labelFor(cur));
+      cur = cur.parentElement;
     }
-    return parts.join(' > ');
+    return parts.join(' › ');
   }
-  
-  function getComputedStyles(el) {
-    const cs = window.getComputedStyle(el);
-    return {
-      color: cs.color,
-      backgroundColor: cs.backgroundColor,
-      fontSize: cs.fontSize,
-      fontFamily: cs.fontFamily,
-      fontWeight: cs.fontWeight,
-      padding: cs.padding,
-      margin: cs.margin,
-      borderRadius: cs.borderRadius,
-      textAlign: cs.textAlign
-    };
-  }
-  
-  function rgbToHex(rgb) {
-    if (!rgb || rgb === 'transparent' || rgb === 'rgba(0, 0, 0, 0)') return 'transparent';
-    const match = rgb.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
-    if (!match) return rgb;
-    const r = parseInt(match[1]).toString(16).padStart(2, '0');
-    const g = parseInt(match[2]).toString(16).padStart(2, '0');
-    const b = parseInt(match[3]).toString(16).padStart(2, '0');
-    return '#' + r + g + b;
-  }
-  
-  function updateHighlight(el, box) {
-    if (!box) return;
-    const rect = el.getBoundingClientRect();
-    box.style.top = rect.top + 'px';
-    box.style.left = rect.left + 'px';
-    box.style.width = rect.width + 'px';
+
+  function placeBox(box, rect) {
+    box.style.top    = rect.top  + window.scrollY + 'px';
+    box.style.left   = rect.left + window.scrollX + 'px';
+    box.style.width  = rect.width  + 'px';
     box.style.height = rect.height + 'px';
     box.style.display = 'block';
   }
-  
+
+  function placeSelectLabel(rect, text) {
+    if (!selectLabel) return;
+    selectLabel.textContent = text;
+    const MARGIN = 4;
+    let top = rect.top + window.scrollY - 22;
+    if (top < 4) top = rect.top + window.scrollY + rect.height + MARGIN;
+    selectLabel.style.top  = top + 'px';
+    selectLabel.style.left = Math.max(4, rect.left + window.scrollX) + 'px';
+    selectLabel.style.display = 'block';
+  }
+
+  function getComputedStyles(el) {
+    const cs = window.getComputedStyle(el);
+    return {
+      color: cs.color, backgroundColor: cs.backgroundColor,
+      fontSize: cs.fontSize, fontFamily: cs.fontFamily,
+      fontWeight: cs.fontWeight, padding: cs.padding,
+      margin: cs.margin, borderRadius: cs.borderRadius, textAlign: cs.textAlign
+    };
+  }
+
+  function rgbToHex(rgb) {
+    if (!rgb || rgb === 'transparent' || rgb === 'rgba(0, 0, 0, 0)') return 'transparent';
+    const m = rgb.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
+    if (!m) return rgb;
+    return '#' + [m[1],m[2],m[3]].map(n => parseInt(n).toString(16).padStart(2,'0')).join('');
+  }
+
+  // ── event handlers ─────────────────────────────────────────────────────────
   function handleMouseMove(e) {
     if (!inspectEnabled) return;
-    if (!highlight) highlight = createHighlight('#8b5cf6', 99998);
-    
     const el = e.target;
-    if (el === highlight || el === selectedHighlight) return;
-    
-    updateHighlight(el, highlight);
+    if (el === hoverBox || el === selectBox || el === selectLabel || el === cursorTip) return;
+
+    if (!hoverBox)   hoverBox   = mkHoverBox();
+    if (!cursorTip)  cursorTip  = mkCursorTip();
+
+    const rect = el.getBoundingClientRect();
+    placeBox(hoverBox, rect);
+
+    // cursor tooltip: tag + class + dimensions
+    const dim = Math.round(rect.width) + ' × ' + Math.round(rect.height);
+    cursorTip.textContent = labelFor(el) + '  ' + dim;
+    cursorTip.style.display = 'block';
+    // offset so it doesn't sit under the cursor
+    const TX = e.clientX + 14, TY = e.clientY + 14;
+    cursorTip.style.left = TX + 'px';
+    cursorTip.style.top  = TY + 'px';
   }
-  
+
   function handleClick(e) {
     if (!inspectEnabled) return;
     e.preventDefault();
     e.stopPropagation();
-    
+
     const el = e.target;
-    if (el === highlight || el === selectedHighlight) return;
-    
+    if (el === hoverBox || el === selectBox || el === selectLabel || el === cursorTip) return;
+
     selectedEl = el;
-    if (!selectedHighlight) selectedHighlight = createHighlight('#10b981', 99999);
-    updateHighlight(el, selectedHighlight);
-    
+    if (!selectBox)   selectBox   = mkSelectBox();
+    if (!selectLabel) selectLabel = mkSelectLabel();
+
     const rect = el.getBoundingClientRect();
+    placeBox(selectBox, rect);
+    placeSelectLabel(rect, labelFor(el));
+
     const styles = getComputedStyles(el);
-    
-    const info = {
-      tagName: el.tagName.toLowerCase(),
-      className: el.className || '',
-      id: el.id || '',
-      textContent: (el.textContent || '').slice(0, 100).trim(),
-      path: getFullPath(el),
-      rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      styles: {
-        color: rgbToHex(styles.color),
-        backgroundColor: rgbToHex(styles.backgroundColor),
-        fontSize: styles.fontSize,
-        fontFamily: styles.fontFamily,
-        fontWeight: styles.fontWeight,
-        padding: styles.padding,
-        margin: styles.margin,
-        borderRadius: styles.borderRadius,
-        textAlign: styles.textAlign
+    window.parent.postMessage({
+      type: 'element-selected',
+      payload: {
+        tagName: el.tagName.toLowerCase(),
+        className: el.className || '',
+        id: el.id || '',
+        textContent: (el.textContent || '').slice(0, 100).trim(),
+        path: getFullPath(el),
+        rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        styles: {
+          color: rgbToHex(styles.color),
+          backgroundColor: rgbToHex(styles.backgroundColor),
+          fontSize: styles.fontSize, fontFamily: styles.fontFamily,
+          fontWeight: styles.fontWeight, padding: styles.padding,
+          margin: styles.margin, borderRadius: styles.borderRadius, textAlign: styles.textAlign
+        }
       }
-    };
-    
-    window.parent.postMessage({ type: 'element-selected', payload: info }, '*');
+    }, '*');
   }
-  
+
   function handleMouseLeave() {
-    if (highlight) highlight.style.display = 'none';
+    if (hoverBox)  hoverBox.style.display  = 'none';
+    if (cursorTip) cursorTip.style.display = 'none';
   }
-  
+
+  // ── message bus ───────────────────────────────────────────────────────────
   window.addEventListener('message', function(e) {
     if (e.data.type === 'set-inspect-mode') {
       inspectEnabled = e.data.enabled;
       document.body.style.cursor = inspectEnabled ? 'crosshair' : '';
       if (!inspectEnabled) {
-        if (highlight) highlight.style.display = 'none';
-        if (selectedHighlight) selectedHighlight.style.display = 'none';
+        [hoverBox, selectBox, selectLabel, cursorTip].forEach(function(n) {
+          if (n) n.style.display = 'none';
+        });
         selectedEl = null;
       }
     } else if (e.data.type === 'apply-style') {
-      // Live preview style changes
-      if (selectedEl) {
-        const { property, value } = e.data;
-        selectedEl.style[property] = value;
+      if (selectedEl) selectedEl.style[e.data.property] = e.data.value;
+    } else if (e.data.type === 'inject-preview-css') {
+      var existing = document.getElementById('__ai_preview_override');
+      if (e.data.css) {
+        if (!existing) {
+          existing = document.createElement('style');
+          existing.id = '__ai_preview_override';
+          document.head.appendChild(existing);
+        }
+        existing.textContent = e.data.css;
+      } else if (existing) {
+        existing.parentNode.removeChild(existing);
       }
     }
   });
-  
+
   document.addEventListener('mousemove', handleMouseMove, true);
-  document.addEventListener('click', handleClick, true);
+  document.addEventListener('click',     handleClick,     true);
   document.addEventListener('mouseleave', handleMouseLeave, true);
-  
-  // Notify parent that inspect script is ready
+
   window.parent.postMessage({ type: 'inspect-ready' }, '*');
 })();
 `
@@ -225,6 +308,7 @@ export const Preview: React.FC<PreviewProps> = ({
   previewReloadCount,
   onElementSelected,
   onStyleChange,
+  previewOverrideCSS,
 }) => {
   const previewContainerRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -234,6 +318,7 @@ export const Preview: React.FC<PreviewProps> = ({
   const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null)
   const [editedStyles, setEditedStyles] = useState<Partial<ElementStyles>>({})
   const [activeTab, setActiveTab] = useState<'style' | 'layout'>('style')
+  const [isApplying, setIsApplying] = useState(false)
 
   const deviceWidth = DEVICE_SIZES[deviceMode].width
 
@@ -317,6 +402,16 @@ export const Preview: React.FC<PreviewProps> = ({
     }
   }, [inspectMode, inspectReady])
 
+  // Send preview CSS override to iframe when suggestion is hovered
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: 'inject-preview-css', css: previewOverrideCSS ?? '' },
+        '*'
+      )
+    }
+  }, [previewOverrideCSS])
+
   // Inject inspect script when iframe loads
   const handleIframeLoad = useCallback(() => {
     setIframeLoading(false)
@@ -343,7 +438,7 @@ export const Preview: React.FC<PreviewProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#e8edf2' }}>
+    <div className="flex flex-col h-full" style={{ background: '#f1f5f9' }}>
       {/* Build Status / Error */}
       {isBuilding && (
         <div className="bg-slate-700 px-4 py-2 border-b border-slate-600">
@@ -371,16 +466,9 @@ export const Preview: React.FC<PreviewProps> = ({
       )}
 
       {/* Preview Area */}
-      <div className="flex-1 overflow-auto p-4" style={{ background: '#e8edf2' }} ref={previewContainerRef}>
-        <div className="flex justify-center items-start h-full">
-          <div
-            style={{
-              width: deviceWidth,
-              transform: `scale(${previewScale})`,
-              transformOrigin: 'top center',
-              transition: 'all 0.2s ease-out',
-            }}
-            className="bg-white rounded-lg shadow-2xl overflow-hidden relative"
+      <div className="flex-1 overflow-auto" style={{ background: '#ffffff' }} ref={previewContainerRef}>
+        <div style={{ width: deviceWidth, transform: previewScale !== 1 ? `scale(${previewScale})` : 'none', transformOrigin: 'top left', transition: 'all 0.2s ease-out' }}
+            className="bg-white overflow-hidden relative"
           >
             {builtProjectUrl && !iframeError ? (
               <>
@@ -396,7 +484,7 @@ export const Preview: React.FC<PreviewProps> = ({
                 <iframe
                   ref={iframeRef}
                   key={`preview-built-${previewReloadCount}`}
-                  src={builtProjectUrl}
+                  src={previewReloadCount > 0 ? `${builtProjectUrl}?t=${previewReloadCount}` : builtProjectUrl!}
                   className="w-full h-screen border-none bg-white"
                   sandbox="allow-same-origin allow-scripts allow-forms"
                   onLoad={handleIframeLoad}
@@ -431,283 +519,237 @@ export const Preview: React.FC<PreviewProps> = ({
               </div>
             )}
 
-            {/* Inspect overlay */}
-            {inspectMode && hoverZoneBox && (
-              <div
-                className="absolute border-2 border-purple-500 bg-purple-500 bg-opacity-10 pointer-events-none"
-                style={{
-                  top: hoverZoneBox.top,
-                  height: hoverZoneBox.height,
-                  left: hoverZoneBox.left,
-                  width: hoverZoneBox.width,
-                }}
-              />
+            {/* Inspect: idle hint */}
+            {inspectMode && !selectedElement && (
+              <div style={{
+                position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+                background: 'linear-gradient(135deg,#6366f1,#a855f7)',
+                color: '#fff', padding: '8px 18px', borderRadius: 999,
+                fontSize: 12, fontWeight: 600, letterSpacing: '0.01em',
+                boxShadow: '0 4px 20px rgba(99,102,241,.45)',
+                display: 'flex', alignItems: 'center', gap: 8, zIndex: 50,
+                pointerEvents: 'none',
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff', opacity: 0.9, animation: 'pulse 1.5s ease-in-out infinite' }} />
+                Click any element to inspect &amp; edit
+              </div>
             )}
 
-            {/* Visual Style Editor Panel */}
+            {/* Inspect: floating style editor card */}
             {inspectMode && selectedElement && (
-              <div className="absolute bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 z-50 max-h-80 overflow-y-auto">
-                {/* Header */}
-                <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-purple-600 rounded text-xs font-mono text-white">{selectedElement.tagName}</span>
+              <div style={{
+                position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+                width: 'min(640px, calc(100% - 32px))',
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: 14,
+                boxShadow: '0 8px 32px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.08)',
+                zIndex: 50,
+                overflow: 'hidden',
+                fontFamily: 'inherit',
+              }}>
+                {/* ── Header ── */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 14px',
+                  background: 'linear-gradient(135deg,#f8fafc,#f1f5f9)',
+                  borderBottom: '1px solid #e2e8f0',
+                }}>
+                  {/* Element badges */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 5, background: '#6366f1', color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }}>
+                      {selectedElement.tagName}
+                    </span>
                     {selectedElement.id && (
-                      <span className="px-2 py-0.5 bg-blue-600 rounded text-xs font-mono text-white">#{selectedElement.id}</span>
+                      <span style={{ padding: '2px 7px', borderRadius: 5, background: '#3b82f6', color: '#fff', fontSize: 11, fontWeight: 600, fontFamily: 'monospace' }}>
+                        #{selectedElement.id}
+                      </span>
                     )}
                     {selectedElement.className && (
-                      <span className="px-2 py-0.5 bg-green-600 rounded text-xs font-mono text-white truncate max-w-32">
+                      <span style={{ padding: '2px 7px', borderRadius: 5, background: '#10b981', color: '#fff', fontSize: 11, fontWeight: 600, fontFamily: 'monospace', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         .{selectedElement.className.split(' ')[0]}
                       </span>
                     )}
+                    {selectedElement.path && (
+                      <span style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
+                        {selectedElement.path}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    {/* Tabs */}
-                    <div className="flex bg-slate-800 rounded-lg p-0.5">
-                      <button
-                        onClick={() => setActiveTab('style')}
-                        className={`px-3 py-1 text-xs rounded-md transition ${activeTab === 'style' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                      >
-                        🎨 Style
+                  {/* Tabs */}
+                  <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 2, gap: 2 }}>
+                    {(['style', 'layout'] as const).map(tab => (
+                      <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                        padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                        background: activeTab === tab ? '#6366f1' : 'transparent',
+                        color: activeTab === tab ? '#fff' : '#64748b',
+                        transition: 'all .15s',
+                      }}>
+                        {tab === 'style' ? '🎨 Style' : '📐 Layout'}
                       </button>
-                      <button
-                        onClick={() => setActiveTab('layout')}
-                        className={`px-3 py-1 text-xs rounded-md transition ${activeTab === 'layout' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                      >
-                        📐 Layout
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => { setSelectedElement(null); setEditedStyles({}) }}
-                      className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-400 hover:text-white text-xs"
-                    >
-                      ✕
-                    </button>
+                    ))}
                   </div>
+                  <button onClick={() => { setSelectedElement(null); setEditedStyles({}) }} style={{
+                    width: 24, height: 24, borderRadius: 6, border: '1px solid #e2e8f0',
+                    background: '#f8fafc', color: '#64748b', cursor: 'pointer', fontSize: 13,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>✕</button>
                 </div>
 
-                {/* Style Tab */}
+                {/* ── Style Tab ── */}
                 {activeTab === 'style' && (
-                  <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
                     {/* Text Color */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-400 block">Text Color</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={editedStyles.color || selectedElement.styles?.color || '#000000'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Text</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <input type="color" value={editedStyles.color || selectedElement.styles?.color || '#000000'}
                           onChange={(e) => handleStyleChange('color', e.target.value)}
-                          className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
-                        />
-                        <input
-                          type="text"
-                          value={editedStyles.color || selectedElement.styles?.color || ''}
+                          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #e2e8f0', cursor: 'pointer', padding: 2 }} />
+                        <input type="text" value={editedStyles.color || selectedElement.styles?.color || ''}
                           onChange={(e) => handleStyleChange('color', e.target.value)}
-                          className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white w-20"
-                          placeholder="#000000"
-                        />
+                          style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 6px', fontSize: 11, color: '#374151', minWidth: 0 }}
+                          placeholder="#000" />
                       </div>
                     </div>
-
-                    {/* Background Color */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-400 block">Background</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={editedStyles.backgroundColor || selectedElement.styles?.backgroundColor || '#ffffff'}
+                    {/* Background */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>BG</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <input type="color" value={editedStyles.backgroundColor || selectedElement.styles?.backgroundColor || '#ffffff'}
                           onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
-                          className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
-                        />
-                        <input
-                          type="text"
-                          value={editedStyles.backgroundColor || selectedElement.styles?.backgroundColor || ''}
+                          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #e2e8f0', cursor: 'pointer', padding: 2 }} />
+                        <input type="text" value={editedStyles.backgroundColor || selectedElement.styles?.backgroundColor || ''}
                           onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
-                          className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white w-20"
-                          placeholder="#ffffff"
-                        />
+                          style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 6px', fontSize: 11, color: '#374151', minWidth: 0 }}
+                          placeholder="#fff" />
                       </div>
                     </div>
-
                     {/* Font Size */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-400 block">Font Size</label>
-                      <select
-                        value={editedStyles.fontSize || selectedElement.styles?.fontSize || '16px'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Size</label>
+                      <select value={editedStyles.fontSize || selectedElement.styles?.fontSize || '16px'}
                         onChange={(e) => handleStyleChange('fontSize', e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                      >
-                        {fontSizes.map(size => (
-                          <option key={size} value={size}>{size}</option>
-                        ))}
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 6px', fontSize: 11, color: '#374151', background: '#fff' }}>
+                        {fontSizes.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
-
                     {/* Font Weight */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-400 block">Font Weight</label>
-                      <select
-                        value={editedStyles.fontWeight || selectedElement.styles?.fontWeight || '400'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Weight</label>
+                      <select value={editedStyles.fontWeight || selectedElement.styles?.fontWeight || '400'}
                         onChange={(e) => handleStyleChange('fontWeight', e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                      >
-                        <option value="300">Light (300)</option>
-                        <option value="400">Normal (400)</option>
-                        <option value="500">Medium (500)</option>
-                        <option value="600">Semi Bold (600)</option>
-                        <option value="700">Bold (700)</option>
-                        <option value="800">Extra Bold (800)</option>
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 6px', fontSize: 11, color: '#374151', background: '#fff' }}>
+                        {[['300','Light'],['400','Regular'],['500','Medium'],['600','SemiBold'],['700','Bold'],['800','ExtraBold']].map(([v,l]) => (
+                          <option key={v} value={v}>{l}</option>
+                        ))}
                       </select>
                     </div>
-
                     {/* Font Family */}
-                    <div className="space-y-1.5 col-span-2">
-                      <label className="text-xs text-slate-400 block">Font Family</label>
-                      <select
-                        value={editedStyles.fontFamily || selectedElement.styles?.fontFamily?.split(',')[0] || 'Inter'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: 'span 2' }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Font</label>
+                      <select value={editedStyles.fontFamily || selectedElement.styles?.fontFamily?.split(',')[0] || 'Inter'}
                         onChange={(e) => handleStyleChange('fontFamily', e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                      >
-                        {fontFamilies.map(font => (
-                          <option key={font} value={font}>{font.split(',')[0]}</option>
-                        ))}
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 6px', fontSize: 11, color: '#374151', background: '#fff' }}>
+                        {fontFamilies.map(f => <option key={f} value={f}>{f.split(',')[0]}</option>)}
                       </select>
                     </div>
-
                     {/* Text Align */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-400 block">Text Align</label>
-                      <div className="flex bg-slate-800 rounded border border-slate-600 overflow-hidden">
-                        {['left', 'center', 'right', 'justify'].map(align => (
-                          <button
-                            key={align}
-                            onClick={() => handleStyleChange('textAlign', align)}
-                            className={`flex-1 px-2 py-1.5 text-xs transition ${
-                              (editedStyles.textAlign || selectedElement.styles?.textAlign) === align 
-                                ? 'bg-purple-600 text-white' 
-                                : 'text-slate-400 hover:bg-slate-700'
-                            }`}
-                          >
-                            {align === 'left' ? '⬅' : align === 'center' ? '⬌' : align === 'right' ? '➡' : '⬌⬌'}
-                          </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Align</label>
+                      <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: 6, overflow: 'hidden' }}>
+                        {[['left','←'],['center','↔'],['right','→']].map(([a,ic]) => (
+                          <button key={a} onClick={() => handleStyleChange('textAlign', a)} style={{
+                            flex: 1, padding: '5px 0', border: 'none', cursor: 'pointer', fontSize: 12,
+                            background: (editedStyles.textAlign || selectedElement.styles?.textAlign) === a ? '#6366f1' : '#fff',
+                            color: (editedStyles.textAlign || selectedElement.styles?.textAlign) === a ? '#fff' : '#64748b',
+                          }}>{ic}</button>
                         ))}
                       </div>
                     </div>
-
                     {/* Border Radius */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-400 block">Border Radius</label>
-                      <input
-                        type="text"
-                        value={editedStyles.borderRadius || selectedElement.styles?.borderRadius || '0px'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Radius</label>
+                      <input type="text" value={editedStyles.borderRadius || selectedElement.styles?.borderRadius || '0px'}
                         onChange={(e) => handleStyleChange('borderRadius', e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                        placeholder="0px"
-                      />
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 6px', fontSize: 11, color: '#374151' }}
+                        placeholder="0px" />
                     </div>
                   </div>
                 )}
 
-                {/* Layout Tab */}
+                {/* ── Layout Tab ── */}
                 {activeTab === 'layout' && (
-                  <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {/* Padding */}
-                    <div className="space-y-1.5 col-span-2">
-                      <label className="text-xs text-slate-400 block">Padding</label>
-                      <input
-                        type="text"
-                        value={editedStyles.padding || selectedElement.styles?.padding || '0px'}
+                  <div style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Padding</label>
+                      <input type="text" value={editedStyles.padding || selectedElement.styles?.padding || '0px'}
                         onChange={(e) => handleStyleChange('padding', e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                        placeholder="0px or 10px 20px"
-                      />
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: '#374151' }}
+                        placeholder="0px or 8px 16px" />
                     </div>
-
-                    {/* Margin */}
-                    <div className="space-y-1.5 col-span-2">
-                      <label className="text-xs text-slate-400 block">Margin</label>
-                      <input
-                        type="text"
-                        value={editedStyles.margin || selectedElement.styles?.margin || '0px'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Margin</label>
+                      <input type="text" value={editedStyles.margin || selectedElement.styles?.margin || '0px'}
                         onChange={(e) => handleStyleChange('margin', e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                        placeholder="0px or 10px 20px"
-                      />
+                        style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 11, color: '#374151' }}
+                        placeholder="0px or 8px 16px" />
                     </div>
-
-                    {/* Quick Padding Presets */}
-                    <div className="col-span-4">
-                      <label className="text-xs text-slate-400 block mb-2">Quick Padding</label>
-                      <div className="flex flex-wrap gap-2">
-                        {['0px', '4px', '8px', '12px', '16px', '24px', '32px'].map(val => (
-                          <button
-                            key={val}
-                            onClick={() => handleStyleChange('padding', val)}
-                            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-xs text-white"
-                          >
-                            {val}
-                          </button>
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Quick Padding</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {['0px','4px','8px','12px','16px','24px','32px'].map(v => (
+                          <button key={v} onClick={() => handleStyleChange('padding', v)} style={{
+                            padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0',
+                            background: '#f8fafc', color: '#475569', fontSize: 11, cursor: 'pointer',
+                          }}>{v}</button>
                         ))}
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Footer with Apply button */}
-                <div className="px-4 py-3 border-t border-slate-700 bg-slate-800 flex items-center justify-between">
-                  <p className="text-slate-400 text-xs flex items-center gap-2">
-                    <span>💡</span>
-                    <span>Changes preview live. Click Apply to update your code.</span>
-                  </p>
+                {/* ── Footer ── */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
+                  background: '#f8fafc', borderTop: '1px solid #f1f5f9',
+                }}>
+                  <span style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>
+                    {Object.keys(editedStyles).length > 0
+                      ? `${Object.keys(editedStyles).length} change(s) previewing live`
+                      : 'Changes preview live in the iframe'}
+                  </span>
+                  <button onClick={() => { setSelectedElement(null); setEditedStyles({}) }} style={{
+                    padding: '5px 12px', borderRadius: 7, border: '1px solid #e2e8f0',
+                    background: '#fff', color: '#64748b', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  }}>Discard</button>
                   {Object.keys(editedStyles).length > 0 && (
-                    <button
-                      onClick={() => {
-                        // Generate a summary of all changes and send to chat
-                        const changes = Object.entries(editedStyles).map(([prop, value]) => {
-                          const propNames: Record<string, string> = {
-                            color: 'text color',
-                            backgroundColor: 'background color',
-                            fontSize: 'font size',
-                            fontFamily: 'font',
-                            fontWeight: 'font weight',
-                            padding: 'padding',
-                            margin: 'margin',
-                            borderRadius: 'border radius',
-                            textAlign: 'text alignment'
-                          };
-                          return `${propNames[prop] || prop} to ${value}`;
-                        });
-                        
-                        const elementDesc = selectedElement?.textContent 
-                          ? `the ${selectedElement.tagName} with text "${selectedElement.textContent.slice(0, 30)}..."`
-                          : `the ${selectedElement?.tagName}${selectedElement?.className ? `.${selectedElement.className.split(' ')[0]}` : ''}`;
-                        
-                        if (onStyleChange && selectedElement) {
-                          onStyleChange({
-                            element: selectedElement,
-                            property: 'multiple',
-                            oldValue: '',
-                            newValue: changes.join(', ')
-                          });
-                        }
-                      }}
-                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-sm font-medium rounded-lg shadow-lg transition-all hover:scale-105"
-                    >
-                      ✨ Apply to Code
+                    <button disabled={isApplying} onClick={async () => {
+                      if (!selectedElement || !onStyleChange) return
+                      const propNames: Record<string, string> = {
+                        color:'text color', backgroundColor:'background color', fontSize:'font size',
+                        fontFamily:'font', fontWeight:'font weight', padding:'padding',
+                        margin:'margin', borderRadius:'border radius', textAlign:'text alignment',
+                      }
+                      const changes = Object.entries(editedStyles).map(([p,v]) => `${propNames[p]||p} to ${v}`)
+                      setIsApplying(true)
+                      await Promise.resolve(onStyleChange({ element: selectedElement, property: 'multiple', oldValue: '', newValue: changes.join(', ') }))
+                      setIsApplying(false)
+                      setSelectedElement(null)
+                      setEditedStyles({})
+                    }} style={{
+                      padding: '5px 14px', borderRadius: 7, border: 'none', cursor: isApplying ? 'default' : 'pointer',
+                      background: isApplying ? '#a5b4fc' : 'linear-gradient(135deg,#6366f1,#a855f7)',
+                      color: '#fff', fontSize: 11, fontWeight: 700,
+                      display: 'flex', alignItems: 'center', gap: 6, opacity: isApplying ? 0.75 : 1,
+                    }}>
+                      {isApplying ? 'Applying…' : '✨ Apply to Code'}
                     </button>
                   )}
                 </div>
               </div>
             )}
-
-            {/* Inspect mode indicator */}
-            {inspectMode && !selectedElement && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg z-50 flex items-center gap-2">
-                <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-                Click any element to select it
-              </div>
-            )}
           </div>
-        </div>
       </div>
     </div>
   )

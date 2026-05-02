@@ -24,6 +24,8 @@ class GenerateRequest(BaseModel):
     domain: str | None = None
     # Model override (gemini|claude|gpt|groq) - if None, uses .env defaults
     model: str | None = None
+    # Theme preset for the DesignSystemAgent (minimal|corporate|vibrant|dark|natural|auto)
+    themePreset: str | None = None
 
 
 class CodeFile(BaseModel):
@@ -43,6 +45,7 @@ class UIEvaluation(BaseModel):
     completeness:       int = 0
     accessibility:      int = 0
     visual_richness:    int = 0
+    reasoning:          dict[str, str] = Field(default_factory=dict)
 
 
 class AiReport(BaseModel):

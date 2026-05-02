@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { tedSendMessage, tedGetSuggestions, type TedContext, type TedMessage as TedMessageType, type TedSuggestion as TedSuggestionType } from '../api'
+import { tedSendMessage, tedGetSuggestions, editFile, type TedContext, type TedMessage as TedMessageType, type TedSuggestion as TedSuggestionType } from '../api'
 
 export type TedMessage = TedMessageType
 export type TedSuggestion = TedSuggestionType
@@ -23,7 +23,7 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
   const [suggestions, setSuggestions] = useState<TedSuggestion[]>([])
   const [isTyping, setIsTyping] = useState(false)
   const tedContext = useRef<TedContext>({})
-  const suggestionDebounceTimer = useRef<NodeJS.Timeout | null>(null)
+  const suggestionDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /**
    * Update TED context (what user is currently doing)
@@ -160,6 +160,52 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
   }, [])
 
   /**
+   * Apply a TED suggestion directly to the code via edit-file API
+   */
+  const applyToCode = useCallback(
+    async (
+      suggestion: TedSuggestionType,
+      generationId: string,
+      onSuccess?: () => void,
+    ) => {
+      if (!suggestion.file || !suggestion.instruction || !accessToken) return
+
+      const applyingMsg: TedMessageType = {
+        id: `bot-applying-${Date.now()}`,
+        type: 'bot',
+        text: `Applying: ${suggestion.title} to \`${suggestion.file}\`...`,
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, applyingMsg])
+      setIsLoading(true)
+
+      try {
+        await editFile(generationId, suggestion.file, suggestion.instruction, accessToken)
+
+        const doneMsg: TedMessageType = {
+          id: `bot-done-${Date.now()}`,
+          type: 'bot',
+          text: `Done! \`${suggestion.file}\` has been updated. Check the editor to see the changes.`,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, doneMsg])
+        onSuccess?.()
+      } catch (err: any) {
+        const errMsg: TedMessageType = {
+          id: `bot-err-${Date.now()}`,
+          type: 'bot',
+          text: `Could not apply the change: ${err?.message ?? 'unknown error'}. You can still follow the suggestion manually.`,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, errMsg])
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [accessToken],
+  )
+
+  /**
    * Clear chat history
    */
   const clearMessages = useCallback(() => {
@@ -182,6 +228,7 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
     sendMessage,
     updateContext,
     applySuggestion,
+    applyToCode,
     clearMessages,
     playNotificationSound,
   }

@@ -32,7 +32,9 @@ class TedSuggestion(BaseModel):
     description: str
     icon: str
     action: str
-    steps: list[str] = []  # NEW: actionable steps
+    steps: list[str] = []
+    file: Optional[str] = None         # target file path for auto-apply
+    instruction: Optional[str] = None  # edit instruction for auto-apply
 
 
 class TedChatResponse(BaseModel):
@@ -64,7 +66,7 @@ class TedAssistant:
         context_str = "\n".join(context_info) if context_info else "General project development"
 
         # Build project overview (analyze all files)
-        project_overview = self._build_project_overview(all_files)
+        project_overview = self._build_project_overview(all_files, current_file)
 
         system_prompt = f"""You are TED, an expert UI developer analyzing an entire project for improvement suggestions.
 Analyze the project structure and content to suggest 3 specific, actionable improvements.
@@ -75,17 +77,17 @@ Action: {action}
 PROJECT STRUCTURE:
 {project_overview}
 
-Generate 3 targeted suggestions based on the project's actual code and structure. Focus on:
-1. Missing best practices across the project
-2. Common patterns that could be improved
-3. Performance or architectural issues
+Generate 3 targeted suggestions based on the project's actual code and structure.
+Each suggestion must be directly applicable to a specific file visible in the code above.
 
 Respond with a JSON array of exactly 3 suggestions. Each must have:
 - id: identifier (lowercase, no spaces)
 - icon: single emoji
 - title: short title (max 40 chars)
-- description: brief specific tip (max 60 chars)
-- action: what to do (max 80 chars)
+- description: one-line description of what will change (max 80 chars)
+- action: short chat-friendly version of the suggestion (max 80 chars)
+- file: EXACT path of the file to edit (must match a file listed above, e.g. "src/App.tsx")
+- instruction: detailed edit instruction for an AI code editor (2-3 sentences, specific about what to add/change/remove)
 
 Return ONLY valid JSON array, no extra text."""
 
@@ -106,7 +108,9 @@ Return ONLY valid JSON array, no extra text."""
                         icon=s.get('icon', '💡'),
                         title=s.get('title', 'Suggestion'),
                         description=s.get('description', ''),
-                        action=s.get('action', '')
+                        action=s.get('action', ''),
+                        file=s.get('file') or None,
+                        instruction=s.get('instruction') or None,
                     )
                     for i, s in enumerate(suggestions_data[:3])
                 ]
@@ -118,8 +122,8 @@ Return ONLY valid JSON array, no extra text."""
         # Fallback to static suggestions if LLM fails
         return self._get_static_suggestions(current_file, action)
 
-    def _build_project_overview(self, all_files: list) -> str:
-        """Build a summary of the project structure and files."""
+    def _build_project_overview(self, all_files: list, current_file: str = '') -> str:
+        """Build a summary of the project structure including actual code snippets."""
         if not all_files:
             return "(no files provided)"
 
@@ -132,25 +136,43 @@ Return ONLY valid JSON array, no extra text."""
                 files_by_ext[ext] = []
             files_by_ext[ext].append(path)
 
-        # Build overview
-        overview = f"Total: {len(all_files)} files\n\n"
-        overview += "Files by type:\n"
+        overview = f"Total: {len(all_files)} files\n\nFiles:\n"
         for ext in sorted(files_by_ext.keys()):
             files = files_by_ext[ext]
-            overview += f"  .{ext}: {len(files)} file(s) - {', '.join(files[:3])}"
-            if len(files) > 3:
-                overview += f", +{len(files) - 3} more"
+            overview += f"  .{ext}: {', '.join(files[:5])}"
+            if len(files) > 5:
+                overview += f" (+{len(files) - 5} more)"
             overview += "\n"
 
-        # Add file size info (rough analysis)
         total_lines = sum(len(f.get('content', '').split('\n')) for f in all_files)
-        avg_lines = total_lines // len(all_files) if all_files else 0
-        overview += f"\nCode metrics: ~{total_lines} total lines, ~{avg_lines} avg per file"
+        overview += f"\nTotal lines: ~{total_lines}"
 
-        # Analyze tech stack
         tech_stack = self._detect_tech_stack(all_files)
         if tech_stack:
-            overview += f"\n\nDetected tech: {tech_stack}"
+            overview += f"\nTech: {tech_stack}"
+
+        # Include actual code: current file first, then key entry files
+        KEY_FILES = {'src/App.tsx', 'App.tsx', 'src/main.tsx', 'src/index.tsx'}
+        priority = []
+        rest = []
+        for f in all_files:
+            path = f.get('path', '')
+            if path == current_file or path in KEY_FILES:
+                priority.append(f)
+            else:
+                rest.append(f)
+
+        snippets = (priority + rest)[:4]  # Show up to 4 files
+        if snippets:
+            overview += "\n\nCODE SNIPPETS:\n"
+            for f in snippets:
+                path = f.get('path', '')
+                content = f.get('content', '')
+                lines = content.split('\n')[:60]
+                overview += f"\n--- {path} ---\n" + '\n'.join(lines)
+                if len(content.split('\n')) > 60:
+                    overview += f"\n... ({len(content.split(chr(10))) - 60} more lines)"
+                overview += "\n"
 
         return overview
 
@@ -273,47 +295,44 @@ Return ONLY valid JSON array, no extra text."""
         context_str = "\n".join(context_info) if context_info else "General question"
 
         # Build project overview for chat awareness
-        project_overview = self._build_project_overview(all_files)
+        project_overview = self._build_project_overview(all_files, current_file)
         tech_stack = self._detect_tech_stack(all_files)
 
-        # Build conversation history context (last 5 messages)
+        # Build conversation history (last 10 messages)
         history_context = ""
         if conversation_history:
-            recent_history = conversation_history[-10:]  # Last 5 exchanges (user + bot)
+            recent_history = conversation_history[-10:]
             history_lines = []
             for msg in recent_history:
                 role = "User" if msg.get('type') == 'user' else "TED"
-                text = msg.get('text', '')[:100]  # Truncate long messages
+                text = msg.get('text', '')[:200]
                 history_lines.append(f"{role}: {text}")
             history_context = "\n".join(history_lines)
 
-        system_prompt = f"""You are TED, a friendly AI assistant helping developers build amazing UIs.
+        system_prompt = f"""You are TED, an expert frontend developer and code reviewer embedded in a UI generation tool.
 
-Your personality:
-- Helpful and encouraging
-- Brief responses (2-3 sentences max)
-- Use emojis to be engaging
-- Give actionable, practical advice
-- Reference the actual project structure when relevant
+RULES:
+- Always reference specific file names, function names, or line patterns you can see in the code
+- Be concise for simple questions, detailed for technical ones
+- Use bullet points or numbered steps when giving instructions
+- Never give generic advice — tie every suggestion to the actual code
 
-ABOUT THIS PROJECT:
+TECH STACK: {tech_stack if tech_stack else "React + TypeScript"}
+
+CURRENT FILE: {current_file or "(none selected)"}
+
+PROJECT CODE:
 {project_overview}
 
-Tech Stack: {tech_stack if tech_stack else "Not detected yet"}
-
-User Query Context:
-{context_str}
-
-CONVERSATION CONTEXT (remember what we discussed):
-{history_context if history_context else "(First message in this session)"}
-
-When answering:
-1. Reference SPECIFIC files or patterns you see
-2. Remember what was discussed before
-3. Build on previous advice if relevant
+CONVERSATION SO FAR:
+{history_context if history_context else "(new conversation)"}
 """
 
-        user_prompt = f"User asks: {message}\n\nProvide a helpful, brief response specific to their project and our previous discussion.\n\nIf your answer includes steps, format them as:\nSTEP 1: [action]\nSTEP 2: [action]\nSTEP 3: [action]"
+        user_prompt = (
+            f"User: {message}\n\n"
+            "Give a specific, actionable answer based on the actual code above. "
+            "If listing steps, use:\nSTEP 1: ...\nSTEP 2: ...\nSTEP 3: ..."
+        )
 
         try:
             response_text = self.llm.chat(system_prompt, user_prompt)

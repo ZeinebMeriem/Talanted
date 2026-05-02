@@ -229,6 +229,7 @@ public class GenerationService {
         reportRepo.save(report);
 
         g.setStatus(GenerationStatus.COMPLETED);
+        g.setActiveVersion(1);
         g.setUpdatedAt(Instant.now());
 
         // Store quality evaluation scores from FastAPI
@@ -302,6 +303,7 @@ public class GenerationService {
             List<MultipartFile> files,
             String domain,
             String model,
+            String themePreset,
             PrintWriter writer) {
 
         final ObjectMapper mapper = new ObjectMapper();
@@ -376,6 +378,7 @@ public class GenerationService {
             req.fileRefs = fileRefs;
             req.domain = (domain != null && !domain.isBlank()) ? domain : null;
             req.model = (model != null && !model.isBlank()) ? model : null;
+            req.themePreset = (themePreset != null && !themePreset.isBlank()) ? themePreset : null;
 
             final long started = System.currentTimeMillis();
             final String[] completedResultHolder = { null };
@@ -520,6 +523,7 @@ public class GenerationService {
                     reportRepo.save(report);
 
                     g.setStatus(GenerationStatus.COMPLETED);
+                    g.setActiveVersion(1);
                     g.setUpdatedAt(Instant.now());
                     generationRepo.save(g);
 
@@ -732,6 +736,7 @@ public class GenerationService {
         reportRepo.save(report);
 
         g.setStatus(GenerationStatus.COMPLETED);
+        g.setActiveVersion(1);
         g.setUpdatedAt(Instant.now());
 
         // Store quality evaluation scores from FastAPI
@@ -1040,6 +1045,7 @@ public class GenerationService {
                     reportRepo.save(report);
 
                     g.setStatus(GenerationStatus.COMPLETED);
+                    g.setActiveVersion(1);
                     g.setUpdatedAt(Instant.now());
                     generationRepo.save(g);
 
@@ -1273,6 +1279,7 @@ public class GenerationService {
         reportRepo.save(report);
 
         g.setStatus(GenerationStatus.COMPLETED);
+        g.setActiveVersion(1);
         g.setUpdatedAt(Instant.now());
         generationRepo.save(g);
 
@@ -1580,6 +1587,7 @@ public class GenerationService {
                     reportRepo.save(report);
 
                     g.setStatus(GenerationStatus.COMPLETED);
+                    g.setActiveVersion(1);
                     g.setUpdatedAt(Instant.now());
                     generationRepo.save(g);
 
@@ -1668,6 +1676,18 @@ public class GenerationService {
         return generationRepo.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
+    public void deleteGeneration(String generationId) {
+        generationRepo.deleteById(generationId);
+    }
+
+    public void renameGeneration(String generationId, String name) {
+        generationRepo.findById(generationId).ifPresent(g -> {
+            g.setName(name);
+            g.setUpdatedAt(Instant.now());
+            generationRepo.save(g);
+        });
+    }
+
     public List<Generation> listAllGenerations() {
         return generationRepo.findAll()
                 .stream()
@@ -1710,6 +1730,15 @@ public class GenerationService {
             s.score = v.getScore();
             s.llmProvider = v.getLlmProvider();
             s.createdAt = v.getCreatedAt();
+            // Populate per-dimension scores from uiEvaluation if present
+            Map<String, Object> eval = v.getUiEvaluation();
+            if (eval != null) {
+                s.semanticFidelity = numOrNull(eval.get("semantic_fidelity"));
+                s.codeQuality      = numOrNull(eval.get("code_quality"));
+                s.completeness     = numOrNull(eval.get("completeness"));
+                s.accessibility    = numOrNull(eval.get("accessibility"));
+                s.visualRichness   = numOrNull(eval.get("visual_richness"));
+            }
             return s;
         }).collect(Collectors.toList());
 
@@ -1743,39 +1772,61 @@ public class GenerationService {
 
         EditFileResponse resp = fastApi.editFile(req);
 
-        // On successful edit, create a new CodeVersion (activeVersion + 1) so that
+        // On successful edit, create a new CodeVersion so that
         // every chat edit becomes a rollback checkpoint.
         int newVersion = 0;
-        if (resp.buildSuccess) {
+        if (resp.buildSuccess && resp.filePath != null && !resp.filePath.isBlank()) {
             Generation g = generationRepo.findById(generationId).orElse(null);
             if (g != null) {
-                int currentVersion = g.getActiveVersion();
-                final int[] versionHolder = { currentVersion };
-                codeRepo.findByGenerationIdAndVersion(generationId, currentVersion)
-                        .ifPresent(currentCv -> {
-                            String editedPath = resp.filePath.startsWith("src/")
-                                    ? resp.filePath
-                                    : "src/" + resp.filePath;
-                            List<FileEntry> newFiles = new ArrayList<>(
-                                    currentCv.getFiles() == null ? List.of() : currentCv.getFiles());
-                            newFiles.removeIf(fe -> fe.path().equals(editedPath)
-                                    || fe.path().equals(resp.filePath));
-                            newFiles.add(new FileEntry(editedPath, resp.content));
+                // baseVersion = the version whose files we build on top of (what's on disk now,
+                //              e.g. v1 after a rollback to v1).
+                // newVersionNumber = strictly greater than every existing snapshot so we never
+                //              create a duplicate document (e.g. max=3 → new=4 even if active=1).
+                int activeVer = g.getActiveVersion();
+                int maxExisting = codeRepo.findByGenerationIdOrderByVersionAsc(generationId)
+                        .stream().mapToInt(CodeVersion::getVersion).max().orElse(0);
+                int newVersionNumber = Math.max(activeVer, maxExisting) + 1;
 
-                            CodeVersion newCv = new CodeVersion();
-                            newCv.setCodeVersionId(ulid.nextULID());
-                            newCv.setGenerationId(generationId);
-                            newCv.setVersion(currentVersion + 1);
-                            newCv.setFiles(newFiles);
-                            newCv.setCreatedAt(Instant.now());
-                            codeRepo.save(newCv);
+                String editedPath = resp.filePath.startsWith("src/")
+                        ? resp.filePath
+                        : "src/" + resp.filePath;
 
-                            versionHolder[0] = currentVersion + 1;
-                            g.setActiveVersion(currentVersion + 1);
-                            g.setUpdatedAt(Instant.now());
-                            generationRepo.save(g);
-                        });
-                newVersion = versionHolder[0];
+                // Load base files from the active (possibly rolled-back) version.
+                // Fall back to reading from disk when no snapshot exists yet.
+                List<FileEntry> baseFiles;
+                var existingCv = codeRepo.findByGenerationIdAndVersion(generationId, activeVer);
+                if (existingCv.isPresent() && existingCv.get().getFiles() != null
+                        && !existingCv.get().getFiles().isEmpty()) {
+                    baseFiles = new ArrayList<>(existingCv.get().getFiles());
+                } else {
+                    // No snapshot for activeVer yet — read current on-disk state (always
+                    // reflects the last restore or generation build).
+                    try {
+                        var projectFiles = fastApi.getProjectFiles(generationId);
+                        baseFiles = projectFiles.files == null ? new ArrayList<>()
+                                : new ArrayList<>(projectFiles.files.stream()
+                                        .map(f -> new FileEntry(f.path, f.content))
+                                        .toList());
+                    } catch (Exception ex) {
+                        baseFiles = new ArrayList<>();
+                    }
+                }
+
+                baseFiles.removeIf(fe -> fe.path().equals(editedPath) || fe.path().equals(resp.filePath));
+                baseFiles.add(new FileEntry(editedPath, resp.content));
+
+                CodeVersion newCv = new CodeVersion();
+                newCv.setCodeVersionId(ulid.nextULID());
+                newCv.setGenerationId(generationId);
+                newCv.setVersion(newVersionNumber);
+                newCv.setFiles(baseFiles);
+                newCv.setCreatedAt(Instant.now());
+                codeRepo.save(newCv);
+
+                g.setActiveVersion(newVersionNumber);
+                g.setUpdatedAt(Instant.now());
+                generationRepo.save(g);
+                newVersion = newVersionNumber;
             }
         }
 
@@ -1793,6 +1844,60 @@ public class GenerationService {
         chatRepo.save(assistantMsg);
 
         return resp;
+    }
+
+    public Map<String, Object> getQualityScores(String generationId, Integer version) {
+        // Try the AiReport for the requested version; fall back to latest report; then
+        // fall back to the denormalised scores on the Generation document itself.
+        Optional<AiReport> reportOpt;
+        if (version != null) {
+            reportOpt = reportRepo.findByGenerationIdAndVersion(generationId, version);
+        } else {
+            reportOpt = reportRepo.findFirstByGenerationIdOrderByVersionDesc(generationId);
+        }
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+
+        if (reportOpt.isPresent()) {
+            AiReport r = reportOpt.get();
+            Map<String, Object> eval = r.getUiEvaluation();
+            if (eval != null && !eval.isEmpty()) {
+                result.put("globalScore",       numOrNull(eval.get("global_score")));
+                result.put("semanticFidelity",  numOrNull(eval.get("semantic_fidelity")));
+                result.put("codeQuality",       numOrNull(eval.get("code_quality")));
+                result.put("completeness",      numOrNull(eval.get("completeness")));
+                result.put("accessibility",     numOrNull(eval.get("accessibility")));
+                result.put("visualRichness",    numOrNull(eval.get("visual_richness")));
+                result.put("version",           r.getVersion());
+                result.put("source",            "ai_report");
+                Object reasoning = eval.get("reasoning");
+                if (reasoning instanceof Map<?, ?>) {
+                    result.put("reasoning", reasoning);
+                }
+                return result;
+            }
+            // Report exists but uiEvaluation is empty — fall through to Generation-level scores
+        }
+
+        // Fallback: denormalised scores stored on the Generation document
+        Generation g = generationRepo.findById(generationId).orElse(null);
+        if (g != null && g.getGlobalScore() != null) {
+            result.put("globalScore",       g.getGlobalScore());
+            result.put("semanticFidelity",  g.getSemanticFidelity());
+            result.put("codeQuality",       g.getCodeQuality());
+            result.put("completeness",      g.getCompleteness());
+            result.put("accessibility",     g.getAccessibility());
+            result.put("visualRichness",    g.getVisualRichness());
+            result.put("version",           g.getActiveVersion());
+            result.put("source",            "generation");
+        }
+        // Returns empty map if no scores available anywhere
+        return result;
+    }
+
+    private static Integer numOrNull(Object o) {
+        if (o instanceof Number n) return n.intValue();
+        return null;
     }
 
     public List<ChatMessageDto> getChatHistory(String generationId) {
@@ -1816,19 +1921,67 @@ public class GenerationService {
         Generation g = generationRepo.findById(generationId)
                 .orElseThrow(() -> new IllegalArgumentException("generation not found"));
 
+        // Try to find the requested CodeVersion snapshot.
+        // For old projects that pre-date version tracking, no snapshots exist yet —
+        // in that case read files from disk and save them as the target version so
+        // the restore can proceed.
         CodeVersion cv = codeRepo.findByGenerationIdAndVersion(generationId, targetVersion)
-                .orElseThrow(() -> new IllegalArgumentException("code version not found"));
+                .orElseGet(() -> {
+                    log.warn("No snapshot for version {} of generation {} — bootstrapping from disk",
+                            targetVersion, generationId);
+                    List<FileEntry> diskFiles = new ArrayList<>();
+                    try {
+                        var projectFiles = fastApi.getProjectFiles(generationId);
+                        if (projectFiles.files != null) {
+                            projectFiles.files.forEach(f -> diskFiles.add(new FileEntry(f.path, f.content)));
+                        }
+                    } catch (Exception ex) {
+                        log.warn("Could not read disk files for {}: {}", generationId, ex.getMessage());
+                    }
+                    if (diskFiles.isEmpty()) {
+                        throw new IllegalArgumentException(
+                                "No version snapshot found for v" + targetVersion
+                                + " and no project files exist on disk. "
+                                + "Make a new edit first to create a version checkpoint.");
+                    }
+                    CodeVersion bootstrap = new CodeVersion();
+                    bootstrap.setCodeVersionId(ulid.nextULID());
+                    bootstrap.setGenerationId(generationId);
+                    bootstrap.setVersion(targetVersion);
+                    bootstrap.setFiles(diskFiles);
+                    bootstrap.setCreatedAt(Instant.now());
+                    codeRepo.save(bootstrap);
+                    return bootstrap;
+                });
 
-        // Restore files to disk and rebuild so preview + CODE tab reflect the target
-        // version
+        List<CodeFileDto> filesToRestore;
+        if (cv.getFiles() != null && !cv.getFiles().isEmpty()) {
+            filesToRestore = cv.getFiles().stream().map(fe -> {
+                CodeFileDto dto = new CodeFileDto();
+                dto.path = fe.path();
+                dto.content = fe.content();
+                return dto;
+            }).collect(Collectors.toList());
+        } else {
+            // Snapshot exists but files list empty — read from disk as fallback
+            try {
+                var projectFiles = fastApi.getProjectFiles(generationId);
+                filesToRestore = projectFiles.files == null ? List.of()
+                        : projectFiles.files.stream().map(f -> {
+                            CodeFileDto dto = new CodeFileDto();
+                            dto.path = f.path;
+                            dto.content = f.content;
+                            return dto;
+                        }).collect(Collectors.toList());
+            } catch (Exception ex) {
+                filesToRestore = List.of();
+            }
+        }
+
+        // Write the target files to disk and trigger a Vite rebuild
         RestoreRequest restoreReq = new RestoreRequest();
         restoreReq.generationId = generationId;
-        restoreReq.files = cv.getFiles() == null ? List.of() : cv.getFiles().stream().map(fe -> {
-            CodeFileDto dto = new CodeFileDto();
-            dto.path = fe.path();
-            dto.content = fe.content();
-            return dto;
-        }).collect(Collectors.toList());
+        restoreReq.files = filesToRestore;
         fastApi.restoreProject(restoreReq);
 
         int previous = g.getActiveVersion();
@@ -1892,4 +2045,70 @@ public class GenerationService {
 
         return fastapiResp;
     }
+
+    /** Proxy repair request to FastAPI and persist updated scores. */
+    @SuppressWarnings("unchecked")
+    public java.util.Map<String, Object> repairGeneration(String generationId) {
+        try {
+            String url = fastApiBaseUrl + "/internal/projects/" + generationId + "/repair";
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(120_000);
+            conn.setReadTimeout(300_000);
+            conn.setDoOutput(true);
+            conn.getOutputStream().write("{}".getBytes(StandardCharsets.UTF_8));
+            int status = conn.getResponseCode();
+            String body = new BufferedReader(new InputStreamReader(
+                    status < 400 ? conn.getInputStream() : conn.getErrorStream(), StandardCharsets.UTF_8))
+                    .lines().collect(Collectors.joining());
+            final ObjectMapper mapper = new ObjectMapper();
+            java.util.Map<String, Object> result = mapper.readValue(body, java.util.Map.class);
+            // Persist updated scores to MongoDB
+            generationRepo.findById(generationId).ifPresent(g -> {
+                Object gs = result.get("globalScore");
+                if (gs instanceof Number) g.setGlobalScore(((Number) gs).intValue());
+                Object sf = result.get("semanticFidelity");
+                if (sf instanceof Number) g.setSemanticFidelity(((Number) sf).intValue());
+                Object cq = result.get("codeQuality");
+                if (cq instanceof Number) g.setCodeQuality(((Number) cq).intValue());
+                Object co = result.get("completeness");
+                if (co instanceof Number) g.setCompleteness(((Number) co).intValue());
+                Object ac = result.get("accessibility");
+                if (ac instanceof Number) g.setAccessibility(((Number) ac).intValue());
+                Object vr = result.get("visualRichness");
+                if (vr instanceof Number) g.setVisualRichness(((Number) vr).intValue());
+                generationRepo.save(g);
+            });
+            return result;
+        } catch (Exception e) {
+            log.error("repairGeneration failed for {}: {}", generationId, e.getMessage(), e);
+            return Map.of("repaired", false, "error", e.getMessage());
+        }
+    }
+
+    /** Proxy docs generation request to FastAPI. */
+    @SuppressWarnings("unchecked")
+    public java.util.Map<String, Object> generateDocs(String generationId) {
+        try {
+            String url = fastApiBaseUrl + "/internal/projects/" + generationId + "/docs";
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(30_000);
+            conn.setReadTimeout(180_000);
+            conn.setDoOutput(true);
+            conn.getOutputStream().write("{}".getBytes(StandardCharsets.UTF_8));
+            int status = conn.getResponseCode();
+            String body = new BufferedReader(new InputStreamReader(
+                    status < 400 ? conn.getInputStream() : conn.getErrorStream(), StandardCharsets.UTF_8))
+                    .lines().collect(Collectors.joining());
+            final ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(body, java.util.Map.class);
+        } catch (Exception e) {
+            log.error("generateDocs failed for {}: {}", generationId, e.getMessage(), e);
+            return Map.of("error", e.getMessage(), "filesUpdated", 0);
+        }
+    }
 }
+

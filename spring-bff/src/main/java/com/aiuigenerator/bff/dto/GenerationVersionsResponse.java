@@ -27,5 +27,11 @@ public class GenerationVersionsResponse {
         public int score;
         public String llmProvider;
         public Instant createdAt;
+        // Per-dimension scores (nullable — populated only when uiEvaluation is present)
+        public Integer semanticFidelity;
+        public Integer codeQuality;
+        public Integer completeness;
+        public Integer accessibility;
+        public Integer visualRichness;
     }
 }

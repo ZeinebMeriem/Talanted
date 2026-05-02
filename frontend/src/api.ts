@@ -63,6 +63,7 @@ export type GenerationListItem = {
   sessionId?: string
   status?: string
   prompt?: string
+  name?: string
   activeVersion?: number
   createdAt?: string
   updatedAt?: string
@@ -137,7 +138,17 @@ export type GenerationVersionsResponse = {
   activeVersion?: number
   uiSpecVersions?: { version?: number; type?: string; createdAt?: string }[]
   codeVersions?: { version?: number; createdAt?: string }[]
-  aiReportVersions?: { version?: number; score?: number; llmProvider?: string; createdAt?: string }[]
+  aiReportVersions?: {
+    version?: number
+    score?: number
+    llmProvider?: string
+    createdAt?: string
+    semanticFidelity?: number
+    codeQuality?: number
+    completeness?: number
+    accessibility?: number
+    visualRichness?: number
+  }[]
 }
 
 export type GenerationRollbackResponse = {
@@ -194,12 +205,14 @@ export async function* streamGeneration(
   model?: string,
   jiraIssueKey?: string,
   jiraIssueKeys?: string[],
+  themePreset?: string | null,
 ): AsyncGenerator<SseEvent, void, unknown> {
   const form = new FormData()
   form.append('prompt', prompt)
   for (const f of files) form.append('files', f)
   if (domain) form.append('domain', domain)
   if (model) form.append('model', model)
+  if (themePreset) form.append('themePreset', themePreset)
 
   const cleanKeys = (jiraIssueKeys || []).map((k) => (k || '').trim()).filter(Boolean)
   if (cleanKeys.length) {
@@ -325,6 +338,23 @@ export async function listGenerations(accessToken?: string): Promise<GenerationL
   return Array.isArray(data) ? (data as GenerationListItem[]) : []
 }
 
+export async function deleteGeneration(generationId: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function renameGeneration(generationId: string, name: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/name`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(accessToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
 export async function listAuditEvents(generationId: string, accessToken?: string): Promise<AuditEventListItem[]> {
   const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/audit`, {
     headers: authHeaders(accessToken),
@@ -337,6 +367,32 @@ export async function listAuditEvents(generationId: string, accessToken?: string
   }
 
   return Array.isArray(data) ? (data as AuditEventListItem[]) : []
+}
+
+export type QualityScoresResponse = {
+  globalScore?: number
+  semanticFidelity?: number
+  codeQuality?: number
+  completeness?: number
+  accessibility?: number
+  visualRichness?: number
+  reasoning?: Record<string, string>
+  version?: number
+  source?: string
+}
+
+export async function getGenerationQuality(
+  generationId: string,
+  version?: number,
+  accessToken?: string,
+): Promise<QualityScoresResponse> {
+  const url = version != null
+    ? `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/quality?version=${version}`
+    : `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/quality`
+  const res = await fetch(url, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) return {}
+  return (typeof data === 'object' && data !== null ? (data as QualityScoresResponse) : {})
 }
 
 export async function getGenerationVersions(generationId: string, accessToken?: string): Promise<GenerationVersionsResponse> {
@@ -383,6 +439,54 @@ export async function getGeneration(generationId: string, accessToken?: string):
   }
 
   return data
+}
+
+export async function repairGeneration(
+  generationId: string,
+  accessToken?: string,
+): Promise<{ globalScore: number; semanticFidelity: number; codeQuality: number; completeness: number; accessibility: number; visualRichness: number; repaired: boolean; reasoning?: Record<string, string> }> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/repair`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return data as any
+}
+
+export async function generateDocs(
+  generationId: string,
+  accessToken?: string,
+): Promise<{ readme: string; filesUpdated: number }> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/docs`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return data as any
+}
+
+export async function downloadCleanZip(generationId: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/export/clean`, {
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${generationId.toLowerCase()}-clean-stack.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 export async function downloadGenerationZip(generationId: string, accessToken?: string): Promise<void> {
@@ -632,6 +736,8 @@ export type TedSuggestion = {
   icon: string
   action: string
   steps?: string[]
+  file?: string         // target file path for auto-apply
+  instruction?: string  // edit instruction for auto-apply
 }
 
 export type TedChatResponse = {

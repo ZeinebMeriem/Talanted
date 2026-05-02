@@ -76,10 +76,19 @@ class DesignSystemAgent:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate(self, plan: dict[str, Any], context: str = "") -> dict[str, Any]:
+    # Maps user-facing theme preset names to concrete style directions injected into the prompt
+    _PRESET_TO_DIRECTION: dict[str, str] = {
+        "minimal":   "Cyber-Minimalism — maximum negative space, monochrome palette with a single crisp accent, clean sans-serif typography, zero decorative elements",
+        "corporate": "Corporate Refined — deep navy primary, gold or teal accent, conservative layout, authoritative typography, professional card shadows",
+        "vibrant":   "Neon Pop — saturated gradients, electric accent colors, bold typographic hierarchy, energetic visual rhythm",
+        "dark":      "Dark Industrial — near-black backgrounds (#0d0d0d–#1a1a2e), bright neon accents, monospace/tech fonts, glowing shadows",
+        "natural":   "Organic Warmth — earth tones (terracotta, sage, cream), rounded corners, humanist serif + sans combo, nature-inspired textures",
+    }
+
+    def generate(self, plan: dict[str, Any], context: str = "", theme_preset: str | None = None) -> dict[str, Any]:
         """Generate a full design token set for *plan* and return it as a dict."""
         sys_msg = self._build_system_message()
-        user_msg = self._build_user_message(plan, context)
+        user_msg = self._build_user_message(plan, context, theme_preset)
 
         try:
             tokens = self.provider.chat_json(sys_msg, user_msg)
@@ -110,8 +119,7 @@ class DesignSystemAgent:
             "memorable and slightly risky than something safe and forgettable."
         )
 
-    @staticmethod
-    def _build_user_message(plan: dict[str, Any], context: str) -> str:
+    def _build_user_message(self, plan: dict[str, Any], context: str, theme_preset: str | None = None) -> str:
         summary   = plan.get("summary", "").strip()
         audience  = plan.get("audience", "").strip()
         keywords  = ", ".join(plan.get("keywords", [])) or "not specified"
@@ -169,7 +177,12 @@ class DesignSystemAgent:
   }
 }'''
 
-        return "\n\n".join([
+        preset_section = ""
+        if theme_preset and theme_preset.lower() in self._PRESET_TO_DIRECTION:
+            direction = self._PRESET_TO_DIRECTION[theme_preset.lower()]
+            preset_section = f"## USER-SELECTED THEME PRESET\nThe user explicitly chose the '{theme_preset}' preset. You MUST base your design direction on:\n{direction}\nYou may personalise details but MUST honor the core aesthetic of this preset."
+
+        parts = [
             "## PROJECT BRIEF\n" + brief,
             "## AESTHETIC VOCABULARY\n" + _STYLE_VOCABULARY.strip(),
             "## TYPOGRAPHY GUIDANCE\n" + _FONT_GUIDANCE.strip(),
@@ -177,7 +190,10 @@ class DesignSystemAgent:
             "## OUTPUT SCHEMA\n"
             "Return ONLY a single valid JSON object that exactly matches this shape "
             "(replace the comment strings with real values):\n\n" + schema,
-        ])
+        ]
+        if preset_section:
+            parts.insert(1, preset_section)
+        return "\n\n".join(parts)
 
     # ------------------------------------------------------------------
     # Fallback

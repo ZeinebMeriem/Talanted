@@ -11,7 +11,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -73,6 +75,7 @@ public class GenerationController {
             @RequestParam(name = "files", required = false) List<MultipartFile> files,
             @RequestParam(name = "domain", required = false) String domain,
             @RequestParam(name = "model", required = false) String model,
+            @RequestParam(name = "themePreset", required = false) String themePreset,
             @RequestParam(name = "jiraIssueKeys", required = false) List<String> jiraIssueKeys,
             @RequestParam(name = "jiraIssueKey", required = false) String jiraIssueKey,
             JwtAuthenticationToken token,
@@ -113,7 +116,7 @@ public class GenerationController {
         if (!keys.isEmpty()) {
             service.createGenerationStreamFromJiraMulti(userId, keys, safePrompt, files, domain, model, writer);
         } else {
-            service.createGenerationStream(userId, safePrompt, files, domain, model, writer);
+            service.createGenerationStream(userId, safePrompt, files, domain, model, themePreset, writer);
         }
 
         // Ensure the response is fully committed
@@ -204,6 +207,14 @@ public class GenerationController {
         return service.getVersions(id);
     }
 
+    /** Returns quality scores for a generation, optionally scoped to a specific version. */
+    @GetMapping("/{id}/quality")
+    public ResponseEntity<java.util.Map<String, Object>> quality(
+            @PathVariable("id") String id,
+            @RequestParam(value = "version", required = false) Integer version) {
+        return ResponseEntity.ok(service.getQualityScores(id, version));
+    }
+
     @PostMapping("/{id}/rollback")
     public GenerationRollbackResponse rollback(
             @PathVariable("id") String id,
@@ -218,6 +229,20 @@ public class GenerationController {
         body.generationId = id;
         EditFileResponse resp = service.editFile(id, body.filePath, body.instruction, body.model);
         return ResponseEntity.ok(resp);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteGeneration(@PathVariable("id") String id) {
+        service.deleteGeneration(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/name")
+    public ResponseEntity<Void> renameGeneration(
+            @PathVariable("id") String id,
+            @RequestBody java.util.Map<String, String> body) {
+        service.renameGeneration(id, body.getOrDefault("name", ""));
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/chat")
@@ -285,4 +310,19 @@ public class GenerationController {
             return ResponseEntity.ok(GitLabPushDto.PushResponse.error("Error: " + e.getMessage()));
         }
     }
+
+    /** Agentic Repair — trigger self-healing on an existing project and return updated scores. */
+    @PostMapping("/{id}/repair")
+    public ResponseEntity<java.util.Map<String, Object>> repair(@PathVariable("id") String id) {
+        java.util.Map<String, Object> result = service.repairGeneration(id);
+        return ResponseEntity.ok(result);
+    }
+
+    /** Auto-Documentation — generate README.md + JSDoc for an existing project. */
+    @PostMapping("/{id}/docs")
+    public ResponseEntity<java.util.Map<String, Object>> generateDocs(@PathVariable("id") String id) {
+        java.util.Map<String, Object> result = service.generateDocs(id);
+        return ResponseEntity.ok(result);
+    }
 }
+

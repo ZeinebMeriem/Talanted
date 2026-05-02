@@ -18,6 +18,8 @@ public class Generation {
 
     private String prompt;
 
+    private String name;
+
     private int activeVersion;
 
     private Instant createdAt;
@@ -76,6 +78,14 @@ public class Generation {
 
     public void setPrompt(String prompt) {
         this.prompt = prompt;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public int getActiveVersion() {

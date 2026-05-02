@@ -10,6 +10,7 @@ interface TedChatBotProps {
   fileCount?: number
   fileContent?: string
   allFiles?: Array<{ path: string; content: string }>
+  onFileApplied?: () => void
 }
 
 export const TedChatBot: React.FC<TedChatBotProps> = ({
@@ -21,13 +22,15 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
   fileCount,
   fileContent,
   allFiles,
+  onFileApplied,
 }) => {
   const [input, setInput] = React.useState('')
   const [darkMode, setDarkMode] = React.useState(false)
+  const [applyingId, setApplyingId] = React.useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { messages, isLoading, isTyping, suggestions, sendMessage, updateContext, applySuggestion, clearMessages } = useTed({
+  const { messages, isLoading, isTyping, suggestions, sendMessage, updateContext, applySuggestion, applyToCode, clearMessages } = useTed({
     accessToken,
     enabled: isOpen,
   })
@@ -173,7 +176,17 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
                 <SuggestionButton
                   key={suggestion.id}
                   suggestion={suggestion}
-                  onClick={() => applySuggestion(suggestion)}
+                  applying={applyingId === suggestion.id}
+                  onAsk={() => applySuggestion(suggestion)}
+                  onApply={
+                    suggestion.file && suggestion.instruction && generationId
+                      ? async () => {
+                          setApplyingId(suggestion.id)
+                          await applyToCode(suggestion, generationId, onFileApplied)
+                          setApplyingId(null)
+                        }
+                      : undefined
+                  }
                   darkMode={darkMode}
                 />
               ))}
@@ -301,28 +314,49 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode }) => {
  */
 interface SuggestionButtonProps {
   suggestion: TedSuggestion
-  onClick: () => void
+  applying: boolean
+  onAsk: () => void
+  onApply?: () => void
   darkMode: boolean
 }
 
-const SuggestionButton: React.FC<SuggestionButtonProps> = ({ suggestion, onClick, darkMode }) => {
+const SuggestionButton: React.FC<SuggestionButtonProps> = ({ suggestion, applying, onAsk, onApply, darkMode }) => {
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left px-4 py-3 border rounded-xl transition-all group ${
-        darkMode
-          ? 'bg-blue-600/20 border-blue-500/50 hover:bg-blue-600/40 hover:border-blue-400'
-          : 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
-      }`}
-    >
+    <div className={`w-full px-4 py-3 border rounded-xl ${
+      darkMode ? 'bg-blue-600/20 border-blue-500/50' : 'bg-blue-50 border-blue-200'
+    }`}>
       <div className="flex items-start gap-3">
         <span className="text-lg mt-0.5 flex-shrink-0">{suggestion.icon}</span>
         <div className="flex-1 min-w-0">
           <p className={`font-semibold text-sm ${darkMode ? 'text-blue-100' : 'text-blue-900'}`}>{suggestion.title}</p>
           <p className={`text-xs mt-1 ${darkMode ? 'text-blue-200/70' : 'text-blue-700'}`}>{suggestion.description}</p>
+          {suggestion.file && (
+            <p className={`text-xs mt-1 font-mono ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>{suggestion.file}</p>
+          )}
         </div>
       </div>
-    </button>
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={onAsk}
+          className={`flex-1 text-xs py-1.5 px-3 rounded-lg border font-medium transition-all ${
+            darkMode ? 'border-blue-400 text-blue-200 hover:bg-blue-600/30' : 'border-blue-300 text-blue-700 hover:bg-blue-100'
+          }`}
+        >
+          Ask TED
+        </button>
+        {onApply && (
+          <button
+            onClick={onApply}
+            disabled={applying}
+            className={`flex-1 text-xs py-1.5 px-3 rounded-lg font-medium transition-all disabled:opacity-60 ${
+              darkMode ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {applying ? 'Applying…' : '⚡ Apply'}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 

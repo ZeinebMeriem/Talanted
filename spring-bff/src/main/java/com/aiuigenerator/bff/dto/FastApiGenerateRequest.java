@@ -12,4 +12,5 @@ public class FastApiGenerateRequest {
     public String domain; // ecommerce | medical | dashboard | education | saas | portfolio | restaurant |
                           // real_estate | null (auto-detect)
     public String model; // gemini | claude | gpt | groq | null (use .env default)
+    public String themePreset; // minimal | corporate | vibrant | dark | natural | auto | null
 }

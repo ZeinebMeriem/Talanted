@@ -709,14 +709,25 @@ class PlannerAgent:
         import os as _os
         output_target = _os.environ.get("AI_OUTPUT_TARGET", "react").lower().strip()
         if output_target == "react":
-            # Prefer the LLM's own TSX/TS file plan (dynamic, project-specific names)
+            # Prefer the LLM's own TSX/TS file plan — but only if it's a real multi-file plan.
+            # A plan with only App.tsx (or no src/components/ + src/pages/) means the LLM collapsed
+            # everything into one file; fall back to the structured template in that case.
             tsx_files = [f for f in raw_html_files if f["path"].endswith(".tsx") or f["path"].endswith(".ts")]
-            if tsx_files:
+            has_proper_structure = any(
+                "components/" in f["path"] or "pages/" in f["path"]
+                for f in tsx_files
+            )
+            if tsx_files and has_proper_structure:
                 logger.info("PlannerAgent: using LLM-generated TSX file plan (%d files)", len(tsx_files))
                 plan["files"] = _sort_files(tsx_files)
             else:
-                # LLM returned HTML paths — fall back to hardcoded template
-                logger.warning("PlannerAgent: LLM gave no TSX paths, falling back to static template")
+                if tsx_files:
+                    logger.warning(
+                        "PlannerAgent: LLM gave only single-file TSX plan (%s) — forcing multi-file template",
+                        [f["path"] for f in tsx_files],
+                    )
+                else:
+                    logger.warning("PlannerAgent: LLM gave no TSX paths, falling back to static template")
                 plan["files"] = _build_react_file_plan(project_type, plan, raw_html_files)
 
             # Always ensure src/data/mockData.ts is in the plan (first file)

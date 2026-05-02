@@ -244,7 +244,7 @@ class Orchestrator:
             ).strip()
             for attempt in range(4):
                 try:
-                    design_tokens = self.design_system.generate(plan, context_for_design)
+                    design_tokens = self.design_system.generate(plan, context_for_design, theme_preset=getattr(req, 'themePreset', None))
                     break
                 except Exception as de:
                     if "429" in str(de) and attempt < 3:
@@ -333,6 +333,14 @@ class Orchestrator:
                         fh.write(cf.content)
                 build_success = True
             logger.info("Saved %d files to %s (success=%s)", len(code.files), project_path, build_success)
+            # Write prompt metadata so repair/docs endpoints can reference the original prompt
+            import json as _json
+            meta = {"prompt": req.prompt or "", "generationId": req.generationId}
+            try:
+                with open(os.path.join(project_path, ".meta.json"), "w", encoding="utf-8") as mf:
+                    _json.dump(meta, mf)
+            except Exception:
+                pass
         except Exception:  # noqa: BLE001
             logger.exception("Failed to save project files to %s", project_path)
         durations["build_ms"] = int((time.perf_counter() - t_build) * 1000)
@@ -383,6 +391,7 @@ class Orchestrator:
                 completeness=ui_eval_result["dimensions"]["completeness"],
                 accessibility=ui_eval_result["dimensions"]["accessibility"],
                 visual_richness=ui_eval_result["dimensions"]["visual_richness"],
+                reasoning=ui_eval_result.get("reasoning", {}),
             )
         else:
             final_score = 80 if not llm_error else 60
