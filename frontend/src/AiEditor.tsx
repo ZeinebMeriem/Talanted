@@ -39,7 +39,7 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
 type CenterTab = 'preview' | 'code' | 'quality'
 
@@ -265,6 +265,10 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   // GitLab push modal
   const [isPushGitLabModalOpen, setIsPushGitLabModalOpen] = useState(false)
 
+  // Deploy modal
+  const [isDeployModalOpen, setIsDeployModalOpen] = useState(false)
+  const [liveDeployUrl, setLiveDeployUrl] = useState<string | undefined>(undefined)
+
   // Handle element selection from inspect mode
   const handleElementSelected = useCallback((info: ElementInfo) => {
     // Don't auto-switch to chat anymore - let them use the visual editor
@@ -321,6 +325,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       setAuditError(null)
       setLiveScores(null)
       setLiveReasoning(null)
+      setLiveDeployUrl(undefined)
       const [bundle, history, generation, quality] = await Promise.all([
         getGenerationCode(generationId, accessToken),
         getChatHistory(generationId, accessToken),
@@ -330,6 +335,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       setApiResult({ generationId, codeBundle: bundle, uiSpec: undefined, aiReport: undefined })
       setSelectedGeneration(generation)
       setSelectedGenerationId(generationId)
+      if (generation?.deployUrl) setLiveDeployUrl(generation.deployUrl)
       // Use fetched quality scores if available, otherwise fall back to generation-level scores
       const hasQuality = quality && Object.values(quality).some(v => v != null && typeof v === 'number')
       if (hasQuality) {
@@ -2941,6 +2947,32 @@ document.addEventListener('click', function(e) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
                       fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      background: liveDeployUrl
+                        ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+                        : 'linear-gradient(135deg, #00AD9F 0%, #059669 100%)',
+                      border: 'none', color: '#fff',
+                      cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 8px rgba(0,173,159,.35)'
+                    }}
+                    onClick={() => setIsDeployModalOpen(true)}
+                    title={liveDeployUrl ? `Deployed: ${liveDeployUrl}` : 'Deploy to Netlify'}
+                    type="button"
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,173,159,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,173,159,.35)' }}
+                  >
+                    {liveDeployUrl
+                      ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    }
+                    {liveDeployUrl ? 'LIVE' : 'DEPLOY'}
+                  </button>
+                )}
+
+                {apiResult?.generationId && (
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
                       background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', border: 'none', color: '#fff',
                       cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
                       boxShadow: '0 2px 8px rgba(99,102,241,.35)'
@@ -3170,6 +3202,16 @@ document.addEventListener('click', function(e) {
             generationId={selectedGenerationId || ''}
             accessToken={accessToken}
           />
+
+          {isDeployModalOpen && selectedGenerationId && (
+            <DeployModal
+              generationId={selectedGenerationId}
+              accessToken={accessToken}
+              existingDeployUrl={liveDeployUrl ?? selectedGeneration?.deployUrl}
+              onClose={() => setIsDeployModalOpen(false)}
+              onDeployed={url => { setLiveDeployUrl(url); setIsDeployModalOpen(false) }}
+            />
+          )}
 
 
           {/* ── Version Saved Toast ─────────────────────────────────────── */}

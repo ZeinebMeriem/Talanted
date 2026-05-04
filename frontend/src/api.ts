@@ -67,6 +67,9 @@ export type GenerationListItem = {
   activeVersion?: number
   createdAt?: string
   updatedAt?: string
+  deployUrl?: string
+  deployProvider?: string
+  deployedAt?: string
 }
 
 export type JiraIssue = {
@@ -448,6 +451,25 @@ export async function repairGeneration(
   const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/repair`, {
     method: 'POST',
     headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return data as any
+}
+
+export async function deployProject(
+  generationId: string,
+  token: string,
+  provider: 'netlify' = 'netlify',
+  accessToken?: string,
+): Promise<{ url: string; siteId?: string; siteName?: string; error?: string }> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/deploy`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders(accessToken) },
+    body: JSON.stringify({ provider, token }),
   })
   const data: unknown = await readJsonOrNull(res)
   if (!res.ok) {
