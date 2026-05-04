@@ -40,6 +40,11 @@ public class Generation {
 
     private Instant gitlabPushedAt; // timestamp when pushed to GitLab
 
+    // Deployment
+    private String deployUrl;      // public URL after deploy (e.g. https://xyz.netlify.app)
+    private String deployProvider; // "netlify"
+    private Instant deployedAt;
+
     // Quality evaluation scores (from UIEvaluatorAgent)
     private Integer globalScore; // 0-100 overall quality
     private Integer semanticFidelity; // 0-100
@@ -215,4 +220,13 @@ public class Generation {
     public void setVisualRichness(Integer visualRichness) {
         this.visualRichness = visualRichness;
     }
+
+    public String getDeployUrl() { return deployUrl; }
+    public void setDeployUrl(String deployUrl) { this.deployUrl = deployUrl; }
+
+    public String getDeployProvider() { return deployProvider; }
+    public void setDeployProvider(String deployProvider) { this.deployProvider = deployProvider; }
+
+    public Instant getDeployedAt() { return deployedAt; }
+    public void setDeployedAt(Instant deployedAt) { this.deployedAt = deployedAt; }
 }

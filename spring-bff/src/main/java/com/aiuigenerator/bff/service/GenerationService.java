@@ -2087,6 +2087,49 @@ public class GenerationService {
         }
     }
 
+    /** Deploy to Netlify via FastAPI and persist the public URL. */
+    @SuppressWarnings("unchecked")
+    public java.util.Map<String, Object> deployToNetlify(String generationId, String token) {
+        try {
+            String url = fastApiBaseUrl + "/internal/projects/" + generationId + "/deploy/netlify";
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(90_000);
+            conn.setDoOutput(true);
+            String body = "{\"token\":\"" + token.replace("\"", "\\\"") + "\"}";
+            conn.getOutputStream().write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            int status = conn.getResponseCode();
+            java.io.InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String raw = is == null ? "{}" : new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+
+            if (status >= 400) {
+                String msg = raw;
+                try { msg = (String) new com.fasterxml.jackson.databind.ObjectMapper().readValue(raw, java.util.Map.class).getOrDefault("detail", raw); } catch (Exception ignored) {}
+                return Map.of("error", msg);
+            }
+
+            java.util.Map<String, Object> result = new com.fasterxml.jackson.databind.ObjectMapper().readValue(raw, java.util.Map.class);
+            String deployUrl = (String) result.getOrDefault("url", "");
+
+            // Persist the deploy URL on the Generation document
+            if (!deployUrl.isBlank()) {
+                generationRepo.findById(generationId).ifPresent(g -> {
+                    g.setDeployUrl(deployUrl);
+                    g.setDeployProvider("netlify");
+                    g.setDeployedAt(java.time.Instant.now());
+                    generationRepo.save(g);
+                });
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("deployToNetlify failed for {}: {}", generationId, e.getMessage(), e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
     /** Proxy docs generation request to FastAPI. */
     @SuppressWarnings("unchecked")
     public java.util.Map<String, Object> generateDocs(String generationId) {
