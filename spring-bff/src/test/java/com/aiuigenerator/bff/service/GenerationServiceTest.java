@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.Sort;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -163,7 +164,7 @@ class GenerationServiceTest {
     void getGeneration_statusIsValid() {
         Generation g = new Generation();
         g.setGenerationId("gen-s");
-        g.setStatus(GenerationStatus.RUNNING);
+        g.setStatus(GenerationStatus.PROCESSING);
         when(generationRepo.findById("gen-s")).thenReturn(Optional.of(g));
 
         Generation result = generationService.getGeneration("gen-s");
@@ -171,7 +172,7 @@ class GenerationServiceTest {
         assertNotNull(result.getStatus());
         assertTrue(
             result.getStatus() == GenerationStatus.PENDING ||
-            result.getStatus() == GenerationStatus.RUNNING ||
+            result.getStatus() == GenerationStatus.PROCESSING ||
             result.getStatus() == GenerationStatus.COMPLETED ||
             result.getStatus() == GenerationStatus.FAILED
         );
@@ -182,7 +183,7 @@ class GenerationServiceTest {
     @Test
     @DisplayName("getChatHistory — returns empty list when no messages")
     void getChatHistory_noMessages_returnsEmpty() {
-        when(chatRepo.findByGenerationIdOrderByTimestampAsc("gen-001")).thenReturn(List.of());
+        when(chatRepo.findByGenerationId(eq("gen-001"), any(Sort.class))).thenReturn(List.of());
 
         var result = generationService.getChatHistory("gen-001");
 
