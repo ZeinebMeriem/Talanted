@@ -45,6 +45,8 @@ jobs:
       - name: Run tests
         working-directory: ./fastapi-ai
         run: pytest tests/ -v --tb=short --cov=app --cov-report=xml
+        env:
+          PROJECTS_DIR: /tmp/test-projects
 
       - name: SonarQube Scan
         if: ${{ secrets.SONAR_TOKEN != '' }}
