@@ -34,8 +34,8 @@ jobs:
           context: ./frontend
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/ui-generator-frontend:latest
-            ${{ secrets.DOCKER_USERNAME }}/ui-generator-frontend:${{ github.sha }}
+            meryemboukraa/ui-generator-frontend:latest
+            meryemboukraa/ui-generator-frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -45,8 +45,8 @@ jobs:
           context: ./spring-bff
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/ui-generator-bff:latest
-            ${{ secrets.DOCKER_USERNAME }}/ui-generator-bff:${{ github.sha }}
+            meryemboukraa/ui-generator-bff:latest
+            meryemboukraa/ui-generator-bff:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -56,8 +56,8 @@ jobs:
           context: ./fastapi-ai
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/ui-generator-fastapi:latest
-            ${{ secrets.DOCKER_USERNAME }}/ui-generator-fastapi:${{ github.sha }}
+            meryemboukraa/ui-generator-fastapi:latest
+            meryemboukraa/ui-generator-fastapi:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -65,6 +65,6 @@ jobs:
         if: success()
         run: |
           echo "✅ Deployment to Docker Hub completed"
-          echo "Frontend : ${{ secrets.DOCKER_USERNAME }}/ui-generator-frontend:${{ github.sha }}"
-          echo "BFF      : ${{ secrets.DOCKER_USERNAME }}/ui-generator-bff:${{ github.sha }}"
-          echo "FastAPI  : ${{ secrets.DOCKER_USERNAME }}/ui-generator-fastapi:${{ github.sha }}"
+          echo "Frontend : meryemboukraa/ui-generator-frontend:${{ github.sha }}"
+          echo "BFF      : meryemboukraa/ui-generator-bff:${{ github.sha }}"
+          echo "FastAPI  : meryemboukraa/ui-generator-fastapi:${{ github.sha }}"
