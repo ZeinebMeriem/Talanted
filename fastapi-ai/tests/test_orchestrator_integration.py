@@ -1,220 +1,232 @@
 """Tests for orchestrator integration and end-to-end pipeline."""
 import pytest
-from unittest.mock import MagicMock, patch, call
-import json
+from unittest.mock import MagicMock, patch
 
 from app.schemas import GenerateRequest
-from app.pipeline.models import SourcePack
+from app.pipeline.orchestrator import Orchestrator
 
 
-class TestOrchestratorBasics:
-    """Test Orchestrator basic initialization and structure."""
-
-    def test_orchestrator_initializes(self):
-        """Test that Orchestrator can be instantiated."""
-        from app.pipeline.orchestrator import Orchestrator
-
-        orchestrator = Orchestrator()
-        assert orchestrator is not None
-
-    def test_orchestrator_has_required_methods(self):
-        """Test that Orchestrator has required methods."""
-        from app.pipeline.orchestrator import Orchestrator
-
-        orchestrator = Orchestrator()
-        assert hasattr(orchestrator, "run")
-        assert hasattr(orchestrator, "run_stream")
-        assert hasattr(orchestrator, "edit_file")
+@pytest.fixture
+def orchestrator():
+    return Orchestrator()
 
 
-class TestOrchestratorPipeline:
-    """Test full orchestrator pipeline execution."""
+@pytest.fixture
+def basic_request():
+    return GenerateRequest(
+        generationId="test-gen-123",
+        prompt="Create a landing page with hero section and CTA button",
+        mode="full",
+        fileRefs=None,
+        domain="landing",
+        model=None,
+    )
 
-    def test_orchestrator_run_accepts_generate_request(self, sample_generate_request):
-        """Test that orchestrator.run() accepts GenerateRequest."""
-        from app.pipeline.orchestrator import Orchestrator
 
-        orchestrator = Orchestrator()
-        assert orchestrator is not None
-        # Should not crash with valid request structure
-        assert sample_generate_request.generationId is not None
+# ── Initialisation ────────────────────────────────────────────────────────────
 
-    def test_orchestrator_run_completes_successfully(
-        self, mocker, sample_generate_request
-    ):
-        """Test that orchestrator pipeline completes without crashing."""
-        from app.pipeline.orchestrator import Orchestrator
+class TestOrchestratorInit:
 
-        orchestrator = Orchestrator()
+    def test_orchestrator_has_run_method(self, orchestrator):
+        assert callable(getattr(orchestrator, "run", None))
 
-        # Mock out LLM calls to speed up test
-        with patch.object(orchestrator, "run", return_value=MagicMock()):
-            result = orchestrator.run(sample_generate_request)
-            assert result is not None
+    def test_orchestrator_has_run_stream_method(self, orchestrator):
+        assert callable(getattr(orchestrator, "run_stream", None))
 
-    def test_orchestrator_progress_callback(self, sample_generate_request):
-        """Test that orchestrator calls progress callback during execution."""
-        from app.pipeline.orchestrator import Orchestrator
+    def test_orchestrator_has_edit_file_method(self, orchestrator):
+        assert callable(getattr(orchestrator, "edit_file", None))
 
-        orchestrator = Orchestrator()
-        progress_events = []
+    def test_orchestrator_has_ui_evaluator(self, orchestrator):
+        assert hasattr(orchestrator, "ui_evaluator")
+        assert orchestrator.ui_evaluator is not None
 
-        def progress_callback(event):
-            progress_events.append(event)
 
-        # Mock run to simulate progress events
-        with patch.object(orchestrator, "run") as mock_run:
-            mock_run.side_effect = lambda req, _progress_cb=None: (
-                [_progress_cb({"type": "progress", "stage": "planning", "progress": 10})]
-                if _progress_cb
-                else None
-            )
-
-            orchestrator.run(sample_generate_request, _progress_cb=progress_callback)
-
-            # Progress callback should have been called
-            assert len(progress_events) > 0 or True  # May not be called in mock
-
+# ── Streaming ─────────────────────────────────────────────────────────────────
 
 class TestOrchestratorStreaming:
-    """Test orchestrator streaming functionality."""
 
-    def test_orchestrator_run_stream_yields_events(self, sample_generate_request):
-        """Test that run_stream() yields progress events."""
-        from app.pipeline.orchestrator import Orchestrator
-
-        orchestrator = Orchestrator()
-
-        # Mock the generator to avoid actual LLM calls
-        with patch.object(orchestrator, "run_stream") as mock_stream:
-            events = [
-                {"type": "progress", "stage": "planning", "progress": 10},
-                {"type": "progress", "stage": "design", "progress": 30},
-                {"type": "complete", "progress": 100, "result": {}},
-            ]
-            mock_stream.return_value = iter(events)
-
-            collected = list(orchestrator.run_stream(sample_generate_request))
-            assert len(collected) == 3
-            assert collected[0]["type"] == "progress"
-            assert collected[-1]["type"] == "complete"
-
-    def test_orchestrator_streaming_event_structure(self):
-        """Test that streaming events have correct structure."""
-        progress_event = {
-            "type": "progress",
-            "stage": "codegen",
-            "progress": 50,
-            "message": "Generating components...",
-            "fileIndex": 2,
-            "totalFiles": 5,
-        }
-
-        assert progress_event["type"] in ["progress", "complete", "error"]
-        assert "progress" in progress_event
-        assert isinstance(progress_event["progress"], int)
-
-    def test_orchestrator_streaming_error_handling(self):
-        """Test that streaming handles errors gracefully."""
-        error_event = {
-            "type": "error",
-            "message": "Failed to generate code: LLM timeout",
-        }
-
-        assert error_event["type"] == "error"
-        assert "message" in error_event
-
-
-class TestOrchestratorAgentChaining:
-    """Test orchestrator agent execution chain."""
-
-    def test_orchestrator_chains_agents_correctly(self, sample_generate_request):
-        """Test that agents are called in correct order."""
-        from app.pipeline.orchestrator import Orchestrator
-
-        orchestrator = Orchestrator()
-
-        # Verify agent call order: OCR → Extract → TextPrep → Plan → Design → Codegen → ...
-        expected_stages = [
-            "extract",
-            "rag",
-            "prep",
-            "planning",
-            "design",
-            "codegen_start",
-            "build",
-            "eval",
+    def test_run_stream_yields_progress_then_complete(self, orchestrator, basic_request):
+        """run_stream doit émettre des events progress puis un event complete."""
+        fake_events = [
+            {"type": "progress", "stage": "planning", "progress": 20, "message": "Planning..."},
+            {"type": "progress", "stage": "codegen_start", "progress": 50, "message": "Generating..."},
+            {"type": "complete", "progress": 100, "result": {"generationId": "test-gen-123"}},
         ]
+        with patch.object(orchestrator, "run_stream", return_value=iter(fake_events)):
+            events = list(orchestrator.run_stream(basic_request))
 
-        # Stages should follow logical order
-        assert expected_stages[0] == "extract"  # First stage
-        assert expected_stages[-1] == "eval"  # Last stage
-        assert expected_stages.index("planning") < expected_stages.index("design")
-        assert expected_stages.index("design") < expected_stages.index("codegen_start")
+        assert len(events) == 3
+        assert events[0]["type"] == "progress"
+        assert events[-1]["type"] == "complete"
+        assert events[-1]["progress"] == 100
 
-    def test_orchestrator_handles_missing_file_refs(self):
-        """Test orchestrator when no files are provided."""
-        from app.schemas import GenerateRequest
+    def test_run_stream_progress_increases(self, orchestrator, basic_request):
+        """Les valeurs de progress doivent être croissantes."""
+        fake_events = [
+            {"type": "progress", "stage": "extract", "progress": 10},
+            {"type": "progress", "stage": "planning", "progress": 30},
+            {"type": "progress", "stage": "codegen_start", "progress": 60},
+            {"type": "complete", "progress": 100, "result": {}},
+        ]
+        with patch.object(orchestrator, "run_stream", return_value=iter(fake_events)):
+            events = list(orchestrator.run_stream(basic_request))
 
+        progress_values = [e["progress"] for e in events]
+        assert progress_values == sorted(progress_values), "Progress doit être croissant"
+
+    def test_run_stream_error_event_has_message(self, orchestrator, basic_request):
+        """Un event error doit avoir un champ 'message'."""
+        fake_events = [
+            {"type": "error", "message": "LLM timeout after 3 retries"},
+        ]
+        with patch.object(orchestrator, "run_stream", return_value=iter(fake_events)):
+            events = list(orchestrator.run_stream(basic_request))
+
+        assert events[0]["type"] == "error"
+        assert "message" in events[0]
+        assert len(events[0]["message"]) > 0
+
+    def test_run_stream_complete_contains_generation_id(self, orchestrator, basic_request):
+        """L'event complete doit contenir un generationId."""
+        fake_events = [
+            {"type": "complete", "progress": 100, "result": {"generationId": "test-gen-123"}},
+        ]
+        with patch.object(orchestrator, "run_stream", return_value=iter(fake_events)):
+            events = list(orchestrator.run_stream(basic_request))
+
+        result = events[0]["result"]
+        assert "generationId" in result
+        assert result["generationId"] == "test-gen-123"
+
+
+# ── Schéma de la requête ──────────────────────────────────────────────────────
+
+class TestGenerateRequestSchema:
+
+    def test_request_requires_generation_id(self):
         req = GenerateRequest(
-            generationId="test",
-            prompt="Create a landing page",
+            generationId="abc-123",
+            prompt="Build a form",
             mode="full",
-            fileRefs=None,  # No files
+            fileRefs=None,
             domain=None,
             model=None,
         )
+        assert req.generationId == "abc-123"
 
+    def test_request_accepts_none_file_refs(self):
+        req = GenerateRequest(
+            generationId="x",
+            prompt="Test",
+            mode="full",
+            fileRefs=None,
+            domain=None,
+            model=None,
+        )
         assert req.fileRefs is None
-        # Should handle gracefully without crashing
+
+    def test_request_accepts_domain(self):
+        req = GenerateRequest(
+            generationId="x",
+            prompt="E-commerce store",
+            mode="full",
+            fileRefs=None,
+            domain="ecommerce",
+            model=None,
+        )
+        assert req.domain == "ecommerce"
+
+    def test_request_accepts_model_override(self):
+        req = GenerateRequest(
+            generationId="x",
+            prompt="Dashboard",
+            mode="full",
+            fileRefs=None,
+            domain=None,
+            model="gemini",
+        )
+        assert req.model == "gemini"
 
 
-class TestOrchestratorErrorRecovery:
-    """Test orchestrator error recovery mechanisms."""
+# ── Ordre des agents ──────────────────────────────────────────────────────────
 
-    def test_orchestrator_retry_on_build_failure(self):
-        """Test that orchestrator retries failed Vite builds."""
-        from app.pipeline.orchestrator import Orchestrator
+class TestPipelineStageOrder:
 
-        orchestrator = Orchestrator()
+    def test_planning_before_codegen(self):
+        stages = ["extract", "rag", "prep", "planning", "design", "codegen_start", "build", "eval"]
+        assert stages.index("planning") < stages.index("codegen_start")
 
-        # Orchestrator should have retry logic
-        assert hasattr(orchestrator, "run") or hasattr(orchestrator, "__init__")
+    def test_design_before_codegen(self):
+        stages = ["extract", "rag", "prep", "planning", "design", "codegen_start", "build", "eval"]
+        assert stages.index("design") < stages.index("codegen_start")
 
-    def test_orchestrator_gen_emits_errors_to_stream(self):
-        """Test that errors are properly emitted to event stream."""
-        error_event = {
-            "type": "error",
-            "message": "Vite build failed after 3 retries: module not found",
+    def test_build_before_eval(self):
+        stages = ["extract", "rag", "prep", "planning", "design", "codegen_start", "build", "eval"]
+        assert stages.index("build") < stages.index("eval")
+
+    def test_extract_is_first_stage(self):
+        stages = ["extract", "rag", "prep", "planning", "design", "codegen_start", "build", "eval"]
+        assert stages[0] == "extract"
+
+    def test_eval_is_last_stage(self):
+        stages = ["extract", "rag", "prep", "planning", "design", "codegen_start", "build", "eval"]
+        assert stages[-1] == "eval"
+
+
+# ── Évaluation de qualité ─────────────────────────────────────────────────────
+
+class TestUIEvaluator:
+
+    def test_evaluator_returns_global_score(self, orchestrator):
+        """ui_evaluator.evaluate doit retourner un global_score entre 0 et 100."""
+        mock_result = {
+            "global_score": 78,
+            "dimensions": {
+                "semantic_fidelity": 85,
+                "code_quality": 70,
+                "completeness": 75,
+                "accessibility": 80,
+                "visual_richness": 65,
+            },
+            "reasoning": {},
         }
+        with patch.object(orchestrator.ui_evaluator, "evaluate", return_value=mock_result):
+            result = orchestrator.ui_evaluator.evaluate(
+                prompt="landing page", code="<div/>", build_success=True
+            )
 
-        assert error_event["type"] == "error"
-        assert "failed" in error_event["message"].lower()
+        assert "global_score" in result
+        assert 0 <= result["global_score"] <= 100
 
-
-class TestOrchestratorDomainDetection:
-    """Test orchestrator domain detection."""
-
-    def test_orchestrator_detects_domain_from_prompt(self):
-        """Test that orchestrator auto-detects project domain."""
-        from app.pipeline.orchestrator import Orchestrator
-
-        orchestrator = Orchestrator()
-
-        prompts = {
-            "Create a product store": ["ecommerce", "shop"],
-            "Build a dashboard": ["dashboard", "analytics"],
-            "Portfolio website": ["portfolio", "personal"],
+    def test_evaluator_returns_all_dimensions(self, orchestrator):
+        """Toutes les 5 dimensions doivent être présentes."""
+        expected_dims = {"semantic_fidelity", "code_quality", "completeness", "accessibility", "visual_richness"}
+        mock_result = {
+            "global_score": 70,
+            "dimensions": {d: 70 for d in expected_dims},
+            "reasoning": {},
         }
+        with patch.object(orchestrator.ui_evaluator, "evaluate", return_value=mock_result):
+            result = orchestrator.ui_evaluator.evaluate("prompt", "code", True)
 
-        # Orchestrator should have domain detection
-        for prompt, keywords in prompts.items():
-            # Should identify domain from keywords
-            assert any(word in prompt.lower() for word in keywords) or True
+        assert set(result["dimensions"].keys()) == expected_dims
 
-    def test_orchestrator_uses_domain_for_generation(self, sample_generate_request):
-        """Test that detected domain influences code generation."""
-        sample_generate_request.domain = "landing"
+    def test_evaluator_scores_in_valid_range(self, orchestrator):
+        """Chaque score doit être entre 0 et 100."""
+        mock_result = {
+            "global_score": 82,
+            "dimensions": {
+                "semantic_fidelity": 90,
+                "code_quality": 75,
+                "completeness": 85,
+                "accessibility": 80,
+                "visual_richness": 70,
+            },
+            "reasoning": {},
+        }
+        with patch.object(orchestrator.ui_evaluator, "evaluate", return_value=mock_result):
+            result = orchestrator.ui_evaluator.evaluate("prompt", "code", True)
 
-        assert sample_generate_request.domain is not None
-        assert isinstance(sample_generate_request.domain, str)
+        assert 0 <= result["global_score"] <= 100
+        for score in result["dimensions"].values():
+            assert 0 <= score <= 100

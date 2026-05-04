@@ -439,6 +439,58 @@ def internal_repair_project(generation_id: str) -> dict:
     }
 
 
+@app.post("/internal/projects/{generation_id}/deploy/netlify")
+def internal_deploy_netlify(generation_id: str, body: dict) -> dict:
+    """Deploy the built dist/ folder to Netlify and return the public URL."""
+    import re as _re, io, zipfile, requests as _req
+    token = (body.get("token") or "").strip()
+    if not token:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Netlify personal access token is required")
+
+    projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
+    safe_id = _re.sub(r"[^a-zA-Z0-9_-]", "_", generation_id)
+    dist_path = os.path.join(projects_dir, safe_id, "dist")
+    if not os.path.isdir(dist_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="No built dist/ folder found — generate the project first")
+
+    # Zip the dist/ contents (index.html at zip root, not nested in dist/)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _, files in os.walk(dist_path):
+            for fname in files:
+                full = os.path.join(root, fname)
+                arcname = os.path.relpath(full, dist_path).replace("\\", "/")
+                zf.write(full, arcname)
+    buf.seek(0)
+
+    try:
+        resp = _req.post(
+            "https://api.netlify.com/api/v1/sites",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/zip"},
+            data=buf.read(),
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        url = data.get("ssl_url") or data.get("url") or ""
+        return {
+            "url": url,
+            "siteId": data.get("id", ""),
+            "siteName": data.get("name", ""),
+        }
+    except _req.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("message", "")
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail=f"Netlify API error: {detail or str(e)}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Deploy failed: {exc}")
+
+
 @app.post("/internal/projects/{generation_id}/docs")
 def internal_generate_docs(generation_id: str) -> dict:
     """Generate README.md and JSDoc comments for an existing project."""

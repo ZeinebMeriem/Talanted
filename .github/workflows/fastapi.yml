@@ -44,10 +44,11 @@ jobs:
 
       - name: Run tests
         working-directory: ./fastapi-ai
-        run: pytest tests/ -v --tb=short --cov=app --cov-report=xml || true
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=xml
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@master
+        if: ${{ secrets.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v3
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -60,7 +61,7 @@ jobs:
             -Dsonar.sourceEncoding=UTF-8
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./fastapi-ai/coverage.xml
           fail_ci_if_error: false
@@ -95,7 +96,7 @@ jobs:
 
       - name: Bandit security scan
         working-directory: ./fastapi-ai
-        run: bandit -r app/ -f json -o bandit-report.json || true
+        run: bandit -r app/ -f json -o bandit-report.json -ll || echo "⚠️  High severity issues found - review required"
 
       - name: Check for known vulnerabilities
         working-directory: ./fastapi-ai

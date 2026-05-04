@@ -1,18 +1,22 @@
 package com.aiuigenerator.bff.service;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.web.multipart.MultipartFile;
-
 import com.aiuigenerator.bff.domain.Generation;
 import com.aiuigenerator.bff.domain.GenerationStatus;
-import com.aiuigenerator.bff.dto.GenerationCreateResponse;
+import com.aiuigenerator.bff.repo.AiReportRepository;
+import com.aiuigenerator.bff.repo.ChatMessageRepository;
+import com.aiuigenerator.bff.repo.CodeVersionRepository;
+import com.aiuigenerator.bff.repo.GenerationFileRepository;
 import com.aiuigenerator.bff.repo.GenerationRepository;
+import com.aiuigenerator.bff.repo.UiSpecVersionRepository;
+import com.aiuigenerator.bff.dto.GenerationCreateResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.List;
@@ -22,171 +26,167 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-@SpringBootTest
-@TestPropertySource(properties = {
-    "app.fastapi.base-url=http://fastapi:8000",
-    "app.keycloak.admin-url=http://keycloak:8080/admin"
-})
+@ExtendWith(MockitoExtension.class)
 @DisplayName("GenerationService Tests")
 class GenerationServiceTest {
 
-  @Autowired
-  private GenerationService generationService;
+    @Mock private UploadValidator validator;
+    @Mock private FileStorageService fileStorage;
+    @Mock private FastApiClient fastApi;
+    @Mock private AuditService audit;
+    @Mock private JiraService jiraService;
+    @Mock private GenerationRepository generationRepo;
+    @Mock private GenerationFileRepository fileRepo;
+    @Mock private UiSpecVersionRepository uiSpecRepo;
+    @Mock private CodeVersionRepository codeRepo;
+    @Mock private AiReportRepository reportRepo;
+    @Mock private ChatMessageRepository chatRepo;
 
-  @MockBean
-  private GenerationRepository generationRepo;
+    @InjectMocks
+    private GenerationService generationService;
 
-  private String testUserId = "user-123";
-  private String testPrompt = "Create a landing page with hero section";
-
-  @BeforeEach
-  void setup() {
-    // Reset mocks before each test
-    reset(generationRepo);
-  }
-
-  @Test
-  @DisplayName("Should validate prompt before generation")
-  void testValidatePrompt() {
-    // Valid prompt
-    assertDoesNotThrow(() -> generationService.createGeneration(
-        testUserId, testPrompt, null, null));
-  }
-
-  @Test
-  @DisplayName("Should reject empty prompt")
-  void testRejectEmptyPrompt() {
-    assertThrows(Exception.class, () -> generationService.createGeneration(
-        testUserId, "", null, null));
-  }
-
-  @Test
-  @DisplayName("Should create generation with minimal inputs")
-  void testCreateMinimalGeneration() {
-    try {
-      GenerationCreateResponse result = generationService.createGeneration(
-          testUserId,
-          testPrompt,
-          null,  // no files
-          "landing"  // domain
-      );
-
-      assertNotNull(result);
-      assertNotNull(result.generationId);
-      assertEquals(GenerationStatus.PENDING, result.status);
-    } catch (Exception e) {
-      // May fail due to missing backend, but should not throw unexpected errors
-      assertTrue(true);
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(generationService, "fastApiBaseUrl", "http://localhost:8000");
+        ReflectionTestUtils.setField(generationService, "devMode", true);
     }
-  }
 
-  @Test
-  @DisplayName("Should list generations for user")
-  void testListGenerations() {
-    String userId = "user-456";
-    Generation gen = new Generation();
-    gen.setGenerationId("gen-001");
-    gen.setUserId(userId);
-    gen.setPrompt("test");
-    gen.setStatus(GenerationStatus.COMPLETED);
+    // ── LIST ──────────────────────────────────────────────────────────────────
 
-    when(generationRepo.findByUserIdOrderByCreatedAtDesc(userId)).thenReturn(List.of(gen));
+    @Test
+    @DisplayName("listGenerations — returns only projects belonging to userId")
+    void listGenerations_filtersbyUserId() {
+        String userId = "user-123";
+        Generation g = new Generation();
+        g.setGenerationId("gen-001");
+        g.setUserId(userId);
+        g.setStatus(GenerationStatus.COMPLETED);
 
-    List<Generation> result = generationService.listGenerations(userId);
+        when(generationRepo.findByUserIdOrderByCreatedAtDesc(userId)).thenReturn(List.of(g));
 
-    assertNotNull(result);
-    assertEquals(1, result.size());
-    assertEquals("gen-001", result.get(0).getGenerationId());
-  }
+        List<Generation> result = generationService.listGenerations(userId);
 
-  @Test
-  @DisplayName("Should retrieve generation by ID")
-  void testGetGeneration() {
-    String genId = "gen-001";
-    Generation gen = new Generation();
-    gen.setGenerationId(genId);
-    gen.setPrompt("test project");
-    gen.setStatus(GenerationStatus.COMPLETED);
-
-    when(generationRepo.findById(genId)).thenReturn(Optional.of(gen));
-
-    Generation result = generationService.getGeneration(genId);
-
-    assertNotNull(result);
-    assertEquals(genId, result.getGenerationId());
-    assertEquals("test project", result.getPrompt());
-  }
-
-  @Test
-  @DisplayName("Should handle file uploads")
-  void testUploadFiles() {
-    // This test verifies file upload validation logic
-    MultipartFile mockFile = mock(MultipartFile.class);
-    when(mockFile.getOriginalFilename()).thenReturn("spec.pdf");
-    when(mockFile.getContentType()).thenReturn("application/pdf");
-    when(mockFile.getSize()).thenReturn(1024 * 100L);  // 100KB
-
-    // Should handle file without crashing
-    try {
-      GenerationCreateResponse result = generationService.createGeneration(
-          testUserId,
-          testPrompt,
-          List.of(mockFile),
-          "landing"
-      );
-      assertNotNull(result);
-    } catch (Exception e) {
-      // File storage may not be available in test, but should validate
-      assertTrue(true);
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("gen-001", result.get(0).getGenerationId());
+        assertEquals(userId, result.get(0).getUserId());
+        verify(generationRepo).findByUserIdOrderByCreatedAtDesc(userId);
     }
-  }
 
-  @Test
-  @DisplayName("Should track generation status")
-  void testTrackGenerationStatus() {
-    String genId = "gen-001";
-    Generation gen = new Generation();
-    gen.setGenerationId(genId);
-    gen.setStatus(GenerationStatus.PENDING);
-    gen.setCreatedAt(Instant.now());
+    @Test
+    @DisplayName("listGenerations — returns empty list when user has no projects")
+    void listGenerations_noProjects_returnsEmpty() {
+        when(generationRepo.findByUserIdOrderByCreatedAtDesc("user-empty")).thenReturn(List.of());
 
-    when(generationRepo.findById(genId)).thenReturn(Optional.of(gen));
+        List<Generation> result = generationService.listGenerations("user-empty");
 
-    Generation result = generationService.getGeneration(genId);
-
-    assertNotNull(result.getStatus());
-    assertTrue(result.getStatus() == GenerationStatus.PENDING ||
-               result.getStatus() == GenerationStatus.PROCESSING ||
-               result.getStatus() == GenerationStatus.COMPLETED ||
-               result.getStatus() == GenerationStatus.FAILED);
-  }
-
-  @Test
-  @DisplayName("Should duplicate generation")
-  void testDuplicateGeneration() {
-    try {
-      com.aiuigenerator.bff.dto.DuplicateResponse result = generationService
-          .duplicateGeneration("gen-001", testUserId);
-
-      assertNotNull(result);
-      assertNotNull(result.newGenerationId);
-    } catch (Exception e) {
-      // May fail due to missing upstream service
-      assertTrue(true);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
-  }
 
-  @Test
-  @DisplayName("Should rollback to previous version")
-  void testRollbackGeneration() {
-    try {
-      com.aiuigenerator.bff.dto.GenerationRollbackResponse result = generationService
-          .rollback("gen-001", 1);
+    // ── GET BY ID ─────────────────────────────────────────────────────────────
 
-      assertNotNull(result);
-    } catch (Exception e) {
-      // May fail if version doesn't exist
-      assertTrue(true);
+    @Test
+    @DisplayName("getGeneration — returns generation when found")
+    void getGeneration_found() {
+        Generation g = new Generation();
+        g.setGenerationId("gen-001");
+        g.setPrompt("Build a dashboard");
+        g.setStatus(GenerationStatus.COMPLETED);
+        g.setCreatedAt(Instant.now());
+
+        when(generationRepo.findById("gen-001")).thenReturn(Optional.of(g));
+
+        Generation result = generationService.getGeneration("gen-001");
+
+        assertNotNull(result);
+        assertEquals("gen-001", result.getGenerationId());
+        assertEquals("Build a dashboard", result.getPrompt());
+        assertEquals(GenerationStatus.COMPLETED, result.getStatus());
     }
-  }
+
+    @Test
+    @DisplayName("getGeneration — throws when not found")
+    void getGeneration_notFound_throws() {
+        when(generationRepo.findById("missing")).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> generationService.getGeneration("missing"));
+    }
+
+    // ── DELETE ────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("deleteGeneration — removes from repository")
+    void deleteGeneration_callsRepository() {
+        Generation g = new Generation();
+        g.setGenerationId("gen-del");
+        g.setStatus(GenerationStatus.COMPLETED);
+        when(generationRepo.findById("gen-del")).thenReturn(Optional.of(g));
+        doNothing().when(generationRepo).deleteById("gen-del");
+
+        generationService.deleteGeneration("gen-del");
+
+        verify(generationRepo).deleteById("gen-del");
+    }
+
+    // ── RENAME ────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("renameGeneration — updates name and saves")
+    void renameGeneration_updatesAndSaves() {
+        Generation g = new Generation();
+        g.setGenerationId("gen-001");
+        g.setName("Old Name");
+        when(generationRepo.findById("gen-001")).thenReturn(Optional.of(g));
+        when(generationRepo.save(any())).thenReturn(g);
+
+        generationService.renameGeneration("gen-001", "New Name");
+
+        assertEquals("New Name", g.getName());
+        verify(generationRepo).save(g);
+    }
+
+    @Test
+    @DisplayName("renameGeneration — throws when generation not found")
+    void renameGeneration_notFound_throws() {
+        when(generationRepo.findById("missing")).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> generationService.renameGeneration("missing", "Name"));
+    }
+
+    // ── STATUS ────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getGeneration — status is one of the known GenerationStatus values")
+    void getGeneration_statusIsValid() {
+        Generation g = new Generation();
+        g.setGenerationId("gen-s");
+        g.setStatus(GenerationStatus.RUNNING);
+        when(generationRepo.findById("gen-s")).thenReturn(Optional.of(g));
+
+        Generation result = generationService.getGeneration("gen-s");
+
+        assertNotNull(result.getStatus());
+        assertTrue(
+            result.getStatus() == GenerationStatus.PENDING ||
+            result.getStatus() == GenerationStatus.RUNNING ||
+            result.getStatus() == GenerationStatus.COMPLETED ||
+            result.getStatus() == GenerationStatus.FAILED
+        );
+    }
+
+    // ── CHAT HISTORY ─────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getChatHistory — returns empty list when no messages")
+    void getChatHistory_noMessages_returnsEmpty() {
+        when(chatRepo.findByGenerationIdOrderByTimestampAsc("gen-001")).thenReturn(List.of());
+
+        var result = generationService.getChatHistory("gen-001");
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
 }

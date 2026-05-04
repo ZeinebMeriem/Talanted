@@ -162,9 +162,10 @@ public class GenerationController {
     public Generation get(@PathVariable("id") String id, JwtAuthenticationToken token) {
         Generation g = service.getGeneration(id);
         // In production mode, verify ownership
-        if (!devMode && token != null) {
-            String userId = (String) token.getToken().getClaims().get("sub");
-            if (!g.getUserId().equals(userId)) {
+        if (!devMode && token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub == null) throw new IllegalArgumentException("Invalid token - missing 'sub' claim");
+            if (!g.getUserId().equals(sub.toString())) {
                 throw new IllegalArgumentException("generation not found");
             }
         }
@@ -254,7 +255,11 @@ public class GenerationController {
     public ResponseEntity<com.aiuigenerator.bff.dto.DuplicateResponse> duplicate(
             @PathVariable("id") String id,
             JwtAuthenticationToken token) {
-        String userId = (String) token.getToken().getClaims().get("sub");
+        String userId = "dev-user";
+        if (token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub != null) userId = sub.toString();
+        }
         com.aiuigenerator.bff.dto.DuplicateResponse resp = service.duplicateGeneration(id, userId);
         return ResponseEntity.ok(resp);
     }
@@ -322,6 +327,22 @@ public class GenerationController {
     @PostMapping("/{id}/docs")
     public ResponseEntity<java.util.Map<String, Object>> generateDocs(@PathVariable("id") String id) {
         java.util.Map<String, Object> result = service.generateDocs(id);
+        return ResponseEntity.ok(result);
+    }
+
+    /** Deploy to Netlify — proxies to FastAPI, persists public URL. */
+    @PostMapping("/{id}/deploy")
+    public ResponseEntity<java.util.Map<String, Object>> deploy(
+            @PathVariable("id") String id,
+            @RequestBody java.util.Map<String, String> body) {
+        String provider = body.getOrDefault("provider", "netlify");
+        String token    = body.getOrDefault("token", "");
+        if (token.isBlank()) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", "token is required"));
+        }
+        java.util.Map<String, Object> result = "netlify".equals(provider)
+                ? service.deployToNetlify(id, token)
+                : java.util.Map.of("error", "Unsupported provider: " + provider);
         return ResponseEntity.ok(result);
     }
 }

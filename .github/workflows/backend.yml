@@ -27,16 +27,13 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Build with Maven
+      - name: Build and test with Maven
         working-directory: ./spring-bff
-        run: mvn clean package -DskipTests
-
-      - name: Run tests
-        working-directory: ./spring-bff
-        run: mvn test
+        run: mvn clean verify
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@master
+        if: ${{ secrets.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v3
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -85,9 +82,7 @@ jobs:
 
       - name: Run dependency check
         working-directory: ./spring-bff
-        run: |
-          mvn dependency:tree
-          mvn dependency:check || true
+        run: mvn dependency:tree
 
       - name: Scan for known vulnerabilities
         working-directory: ./spring-bff
