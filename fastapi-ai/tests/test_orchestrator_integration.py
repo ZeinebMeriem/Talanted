@@ -17,7 +17,7 @@ def basic_request():
         generationId="test-gen-123",
         prompt="Create a landing page with hero section and CTA button",
         mode="full",
-        fileRefs=None,
+        fileRefs=[],
         domain="landing",
         model=None,
     )
@@ -108,7 +108,7 @@ class TestGenerateRequestSchema:
             generationId="abc-123",
             prompt="Build a form",
             mode="full",
-            fileRefs=None,
+            fileRefs=[],
             domain=None,
             model=None,
         )
@@ -119,18 +119,18 @@ class TestGenerateRequestSchema:
             generationId="x",
             prompt="Test",
             mode="full",
-            fileRefs=None,
+            fileRefs=[],
             domain=None,
             model=None,
         )
-        assert req.fileRefs is None
+        assert req.fileRefs == []
 
     def test_request_accepts_domain(self):
         req = GenerateRequest(
             generationId="x",
             prompt="E-commerce store",
             mode="full",
-            fileRefs=None,
+            fileRefs=[],
             domain="ecommerce",
             model=None,
         )
@@ -141,7 +141,7 @@ class TestGenerateRequestSchema:
             generationId="x",
             prompt="Dashboard",
             mode="full",
-            fileRefs=None,
+            fileRefs=[],
             domain=None,
             model="gemini",
         )

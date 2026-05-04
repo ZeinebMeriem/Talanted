@@ -48,7 +48,7 @@ def sample_generate_request():
         generationId="test-gen-123",
         prompt="Create a simple landing page with a hero section and CTA button",
         mode="full",
-        fileRefs=None,
+        fileRefs=[],
         domain="landing",
         model=None,
     )

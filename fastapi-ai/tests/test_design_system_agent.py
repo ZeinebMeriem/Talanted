@@ -11,14 +11,14 @@ class TestDesignSystemAgentBasics:
         from app.pipeline.agents.design_system_agent import DesignSystemAgent
 
         mock_llm = MagicMock()
-        agent = DesignSystemAgent(llm_provider=mock_llm)
+        agent = DesignSystemAgent(provider=mock_llm)
         assert agent is not None
 
     def test_design_agent_generates_color_palette(self, mock_llm_provider):
         """Test that design agent generates color palette."""
         from app.pipeline.agents.design_system_agent import DesignSystemAgent
 
-        agent = DesignSystemAgent(llm_provider=mock_llm_provider)
+        agent = DesignSystemAgent(provider=mock_llm_provider)
 
         mock_llm_provider.chat_json.return_value = {
             "primary": "#3b82f6",
@@ -39,7 +39,7 @@ class TestDesignSystemAgentBasics:
         """Test that design agent generates typography system."""
         from app.pipeline.agents.design_system_agent import DesignSystemAgent
 
-        agent = DesignSystemAgent(llm_provider=mock_llm_provider)
+        agent = DesignSystemAgent(provider=mock_llm_provider)
 
         mock_llm_provider.chat_json.return_value = {
             "font_family": "Inter",
@@ -55,7 +55,7 @@ class TestDesignSystemAgentBasics:
         """Test that design agent generates component specifications."""
         from app.pipeline.agents.design_system_agent import DesignSystemAgent
 
-        agent = DesignSystemAgent(llm_provider=mock_llm_provider)
+        agent = DesignSystemAgent(provider=mock_llm_provider)
 
         mock_llm_provider.chat_json.return_value = {
             "Button": {
@@ -78,7 +78,7 @@ class TestDesignSystemOutputFormat:
         """Test that design output includes all required fields."""
         from app.pipeline.agents.design_system_agent import DesignSystemAgent
 
-        agent = DesignSystemAgent(llm_provider=mock_llm_provider)
+        agent = DesignSystemAgent(provider=mock_llm_provider)
 
         output = {
             "colors": {"primary": "#3b82f6", "secondary": "#8b5cf6"},
@@ -110,7 +110,7 @@ class TestDesignSystemDomainContext:
         """Test that design agent respects domain color/style guidelines."""
         from app.pipeline.agents.design_system_agent import DesignSystemAgent
 
-        agent = DesignSystemAgent(llm_provider=mock_llm_provider)
+        agent = DesignSystemAgent(provider=mock_llm_provider)
 
         # Medical domain should use calm, professional colors
         medical_design = agent.generate_color_palette(
@@ -128,7 +128,7 @@ class TestDesignSystemDomainContext:
         """Test that multiple calls produce consistent design tokens."""
         from app.pipeline.agents.design_system_agent import DesignSystemAgent
 
-        agent = DesignSystemAgent(llm_provider=mock_llm_provider)
+        agent = DesignSystemAgent(provider=mock_llm_provider)
 
         mock_llm_provider.chat_json.return_value = {
             "primary": "#3b82f6",

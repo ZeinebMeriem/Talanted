@@ -8,7 +8,7 @@ class TestCodegenAgentBasics:
 
     def test_codegen_agent_initializes(self):
         """Test that CodegenAgent can be instantiated."""
-        from app.pipeline.agents.codegen_agent import CodegenAgent
+        from app.pipeline.agents.codegen_agent import LlmCodegenAgent as CodegenAgent
 
         mock_llm = MagicMock()
         agent = CodegenAgent(llm_provider=mock_llm)
@@ -16,7 +16,7 @@ class TestCodegenAgentBasics:
 
     def test_codegen_generates_html_files(self, mock_llm_provider, sample_ui_spec):
         """Test that codegen generates HTML files from UI spec."""
-        from app.pipeline.agents.codegen_agent import CodegenAgent
+        from app.pipeline.agents.codegen_agent import LlmCodegenAgent as CodegenAgent
 
         agent = CodegenAgent(llm_provider=mock_llm_provider)
 
@@ -60,7 +60,7 @@ class TestCodegenAgentBasics:
 
     def test_codegen_handles_multiple_pages(self, mock_llm_provider):
         """Test codegen with multiple pages in spec."""
-        from app.pipeline.agents.codegen_agent import CodegenAgent
+        from app.pipeline.agents.codegen_agent import LlmCodegenAgent as CodegenAgent
 
         agent = CodegenAgent(llm_provider=mock_llm_provider)
 
@@ -82,7 +82,7 @@ class TestCodegenReactSupport:
 
     def test_codegen_can_generate_react_components(self, mock_llm_provider):
         """Test codegen with React framework option."""
-        from app.pipeline.agents.codegen_agent import CodegenAgent
+        from app.pipeline.agents.codegen_agent import LlmCodegenAgent as CodegenAgent
 
         agent = CodegenAgent(llm_provider=mock_llm_provider)
 
@@ -100,7 +100,7 @@ class TestCodegenReactSupport:
 
     def test_codegen_react_includes_tailwind(self, mock_llm_provider):
         """Test that React codegen includes Tailwind classes."""
-        from app.pipeline.agents.codegen_agent import CodegenAgent
+        from app.pipeline.agents.codegen_agent import LlmCodegenAgent as CodegenAgent
 
         agent = CodegenAgent(llm_provider=mock_llm_provider)
 
@@ -118,7 +118,7 @@ class TestCodegenErrorHandling:
 
     def test_codegen_handles_llm_timeout(self, mocker):
         """Test codegen gracefully handles LLM timeout."""
-        from app.pipeline.agents.codegen_agent import CodegenAgent
+        from app.pipeline.agents.codegen_agent import LlmCodegenAgent as CodegenAgent
 
         mock_llm = MagicMock()
         mock_llm.chat.side_effect = TimeoutError("LLM request timeout")
@@ -130,7 +130,7 @@ class TestCodegenErrorHandling:
 
     def test_codegen_handles_invalid_spec(self, mock_llm_provider):
         """Test codegen error handling with invalid input."""
-        from app.pipeline.agents.codegen_agent import CodegenAgent
+        from app.pipeline.agents.codegen_agent import LlmCodegenAgent as CodegenAgent
 
         agent = CodegenAgent(llm_provider=mock_llm_provider)
 

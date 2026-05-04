@@ -12,13 +12,13 @@ class TestPlannerAgentBasics:
     def test_planner_agent_initializes(self):
         """Test that PlannerAgent can be instantiated."""
         mock_llm = MagicMock()
-        agent = PlannerAgent(llm_provider=mock_llm)
+        agent = PlannerAgent(provider=mock_llm)
         assert agent is not None
         assert agent.llm_provider == mock_llm
 
     def test_planner_generates_project_structure(self, sample_generate_request, mock_llm_provider):
         """Test that planner generates project structure from prompt."""
-        agent = PlannerAgent(llm_provider=mock_llm_provider)
+        agent = PlannerAgent(provider=mock_llm_provider)
 
         # Mock the LLM response
         mock_llm_provider.chat_json.return_value = {
@@ -36,7 +36,7 @@ class TestPlannerAgentBasics:
     def test_planner_detects_project_type(self):
         """Test that planner correctly detects project type from keywords."""
         mock_llm = MagicMock()
-        agent = PlannerAgent(llm_provider=mock_llm)
+        agent = PlannerAgent(provider=mock_llm)
 
         # Test dashboard detection
         keywords = ["dashboard", "analytics", "metrics", "kpi"]
@@ -45,7 +45,7 @@ class TestPlannerAgentBasics:
 
     def test_planner_generates_valid_json_schema(self, mock_llm_provider, sample_generate_request):
         """Test that planner output conforms to expected schema."""
-        agent = PlannerAgent(llm_provider=mock_llm_provider)
+        agent = PlannerAgent(provider=mock_llm_provider)
 
         mock_llm_provider.chat_json.return_value = {
             "project_name": "E-Commerce Store",
@@ -65,7 +65,7 @@ class TestPlannerAgentBasics:
 
     def test_planner_handles_empty_prompt(self, mock_llm_provider):
         """Test planner behavior with empty/minimal prompts."""
-        agent = PlannerAgent(llm_provider=mock_llm_provider)
+        agent = PlannerAgent(provider=mock_llm_provider)
 
         from app.schemas import GenerateRequest
         empty_req = GenerateRequest(
@@ -92,7 +92,7 @@ class TestPlannerAgentWithDomainContext:
 
     def test_planner_uses_domain_context(self, mock_llm_provider, sample_generate_request):
         """Test that planner uses domain-specific guidance."""
-        agent = PlannerAgent(llm_provider=mock_llm_provider)
+        agent = PlannerAgent(provider=mock_llm_provider)
 
         request = sample_generate_request
         request.domain = "landing"
@@ -103,7 +103,7 @@ class TestPlannerAgentWithDomainContext:
 
     def test_planner_provides_component_suggestions_for_domain(self, mock_llm_provider):
         """Test that planner suggests domain-appropriate components."""
-        from app.pipeline.domain_prompts import DOMAIN_TEMPLATES
+        from app.pipeline.domain_prompts import DOMAIN_CONTEXTS as DOMAIN_TEMPLATES
 
         # Verify domain templates exist
         assert "landing" in DOMAIN_TEMPLATES or len(DOMAIN_TEMPLATES) > 0
