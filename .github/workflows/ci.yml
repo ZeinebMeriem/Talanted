@@ -32,7 +32,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: maven
-      - run: cd spring-bff && mvn clean package -DskipTests
+      - run: cd spring-bff && mvn clean verify
 
   fastapi:
     runs-on: ubuntu-latest
