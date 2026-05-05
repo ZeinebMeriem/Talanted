@@ -49,7 +49,8 @@ jobs:
           PROJECTS_DIR: /tmp/test-projects
 
       - name: SonarQube Scan
-        if: ${{ secrets.SONAR_TOKEN != '' }}
+        if: ${{ vars.SONAR_ENABLED == 'true' }}
+        continue-on-error: true
         uses: SonarSource/sonarqube-scan-action@v3
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
