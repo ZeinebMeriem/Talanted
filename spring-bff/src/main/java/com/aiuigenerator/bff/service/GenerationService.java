@@ -2153,5 +2153,135 @@ public class GenerationService {
             return Map.of("error", e.getMessage(), "filesUpdated", 0);
         }
     }
+
+    /** Generate 3 A/B variants from the same prompt with different theme presets. */
+    @SuppressWarnings("unchecked")
+    public VariantsDto.VariantsResponse generateVariants(String userId, String prompt,
+            String domain, java.util.List<org.springframework.web.multipart.MultipartFile> files) {
+
+        String variantGroupId = ulid.nextULID();
+
+        String[][] themes = {
+            {"minimal",   "Minimal & Clean"},
+            {"vibrant",   "Colorful & Vibrant"},
+            {"corporate", "Professional & Corporate"},
+        };
+
+        java.util.List<VariantsDto.VariantItem> items = new java.util.ArrayList<>();
+
+        for (int i = 0; i < themes.length; i++) {
+            String theme      = themes[i][0];
+            String themeLabel = themes[i][1];
+            String variantId  = ulid.nextULID();
+
+            VariantsDto.VariantItem item = new VariantsDto.VariantItem();
+            item.variantId  = variantId;
+            item.theme      = theme;
+            item.themeLabel = themeLabel;
+
+            try {
+                // Create Generation document
+                Generation g = new Generation();
+                g.setGenerationId(variantId);
+                g.setSessionId(ulid.nextULID());
+                g.setUserId(userId);
+                g.setPrompt(prompt);
+                g.setStatus(GenerationStatus.PROCESSING);
+                g.setActiveVersion(1);
+                g.setVariantGroupId(variantGroupId);
+                g.setVariantTheme(theme);
+                g.setVariantIndex(i + 1);
+                g.setCreatedAt(Instant.now());
+                g.setUpdatedAt(Instant.now());
+                generationRepo.save(g);
+
+                // Upload files to MinIO
+                java.util.List<FileRefDto> fileRefs = new java.util.ArrayList<>();
+                if (files != null) {
+                    for (org.springframework.web.multipart.MultipartFile f : files) {
+                        if (f == null || f.isEmpty()) continue;
+                        validator.validateFile(f);
+                        String sha256    = validator.computeSha256(f);
+                        String safeName  = validator.sanitizeFilename(f.getOriginalFilename());
+                        String objectKey = variantId + "/" + sha256 + "_" + safeName;
+                        String minioPath = fileStorage.putToMinio(objectKey, f);
+                        FileRefDto ref   = new FileRefDto();
+                        ref.minioPath    = minioPath;
+                        ref.mimeType     = f.getContentType();
+                        ref.originalName = f.getOriginalFilename();
+                        ref.sha256       = sha256;
+                        ref.sizeBytes    = f.getSize();
+                        fileRefs.add(ref);
+                    }
+                }
+
+                // Call FastAPI
+                FastApiGenerateRequest req = new FastApiGenerateRequest();
+                req.generationId = variantId;
+                req.prompt       = prompt;
+                req.mode         = "full";
+                req.fileRefs     = fileRefs;
+                req.domain       = (domain != null && !domain.isBlank()) ? domain : null;
+                req.themePreset  = theme;
+                FastApiGenerateResponse resp = fastApi.generate(req);
+
+                // Save code version
+                CodeVersion cv = new CodeVersion();
+                cv.setCodeVersionId(ulid.nextULID());
+                cv.setGenerationId(variantId);
+                cv.setVersion(1);
+                cv.setCreatedAt(Instant.now());
+                if (resp.codeBundle != null && resp.codeBundle.files != null) {
+                    java.util.List<FileEntry> entries = new java.util.ArrayList<>();
+                    resp.codeBundle.files.forEach(f -> entries.add(new FileEntry(f.path, f.content)));
+                    cv.setFiles(entries);
+                }
+                codeRepo.save(cv);
+
+                // Extract quality scores
+                if (resp.aiReport != null && resp.aiReport.ui_evaluation != null) {
+                    Map<String, Object> ev = resp.aiReport.ui_evaluation;
+                    int gs = ev.get("global_score")       instanceof Number n ? n.intValue() : 0;
+                    int sf = ev.get("semantic_fidelity")  instanceof Number n ? n.intValue() : 0;
+                    int cq = ev.get("code_quality")       instanceof Number n ? n.intValue() : 0;
+                    int co = ev.get("completeness")       instanceof Number n ? n.intValue() : 0;
+                    int ac = ev.get("accessibility")      instanceof Number n ? n.intValue() : 0;
+                    int vr = ev.get("visual_richness")    instanceof Number n ? n.intValue() : 0;
+
+                    g.setGlobalScore(gs);
+                    g.setSemanticFidelity(sf);
+                    g.setCodeQuality(cq);
+                    g.setCompleteness(co);
+                    g.setAccessibility(ac);
+                    g.setVisualRichness(vr);
+
+                    item.globalScore      = gs;
+                    item.semanticFidelity = sf;
+                    item.codeQuality      = cq;
+                    item.completeness     = co;
+                    item.accessibility    = ac;
+                    item.visualRichness   = vr;
+                }
+
+                g.setStatus(GenerationStatus.COMPLETED);
+                g.setUpdatedAt(Instant.now());
+                generationRepo.save(g);
+
+                item.buildSuccess = true;
+
+            } catch (Exception e) {
+                log.error("variant {} theme {} failed: {}", variantId, theme, e.getMessage());
+                item.buildSuccess = false;
+                item.error = e.getMessage();
+            }
+
+            items.add(item);
+        }
+
+        VariantsDto.VariantsResponse result = new VariantsDto.VariantsResponse();
+        result.variantGroupId = variantGroupId;
+        result.variants       = items;
+        return result;
+    }
 }
 

@@ -706,6 +706,49 @@ export type DuplicateResponse = {
   buildOutput?: string
 }
 
+export type VariantItem = {
+  variantId: string
+  theme: string
+  themeLabel: string
+  globalScore: number
+  semanticFidelity: number
+  codeQuality: number
+  completeness: number
+  accessibility: number
+  visualRichness: number
+  buildSuccess: boolean
+  error?: string
+}
+
+export type VariantsResponse = {
+  variantGroupId: string
+  variants: VariantItem[]
+}
+
+export async function generateVariants(
+  prompt: string,
+  files: File[],
+  domain?: string | null,
+  accessToken?: string,
+): Promise<VariantsResponse> {
+  const form = new FormData()
+  form.append('prompt', prompt)
+  for (const f of files) form.append('files', f)
+  if (domain) form.append('domain', domain)
+
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/variants`, {
+    method: 'POST',
+    body: form,
+    headers: authHeaders(accessToken) as Record<string, string>,
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return data as VariantsResponse
+}
+
 export async function duplicateGeneration(
   generationId: string,
   accessToken?: string,

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   streamGeneration,
   createGeneration,
+  generateVariants,
   downloadGenerationZip,
   repairGeneration,
   generateDocs,
@@ -38,8 +39,10 @@ import {
   type ServiceHealth,
   type UserProfile,
   type UserStats,
+  type VariantItem,
+  type VariantsResponse,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, VariantPicker, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
 type CenterTab = 'preview' | 'code' | 'quality'
 
@@ -138,6 +141,11 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('gemini')
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null)
+
+  // A/B Variants state
+  const [isGeneratingVariants, setIsGeneratingVariants] = useState(false)
+  const [variantsData, setVariantsData] = useState<VariantsResponse | null>(null)
+  const [showVariantPicker, setShowVariantPicker] = useState(false)
 
   // Quality / repair / docs state
   const [liveScores, setLiveScores] = useState<{ globalScore?: number; semanticFidelity?: number; codeQuality?: number; completeness?: number; accessibility?: number; visualRichness?: number } | null>(null)
@@ -1082,6 +1090,29 @@ document.addEventListener('click', function(e) {
     }
   }
 
+  const handleGenerateVariants = async () => {
+    const prompt = customPrompt.trim()
+    if (!prompt || isGeneratingVariants) return
+    setIsGeneratingVariants(true)
+    try {
+      const result = await generateVariants(prompt, attachedFiles, activeDomain, accessToken)
+      setVariantsData(result)
+      setShowVariantPicker(true)
+    } catch (e: any) {
+      alert(`Variant generation failed: ${e?.message ?? 'Unknown error'}`)
+    } finally {
+      setIsGeneratingVariants(false)
+    }
+  }
+
+  const handleVariantSelected = (variant: VariantItem) => {
+    // Navigate to the selected variant project
+    setShowVariantPicker(false)
+    const fakeResult: GenerationApiResponse = { generationId: variant.variantId }
+    setApiResult(fakeResult)
+    void loadHistory().then(() => setHomeTab('projects'))
+  }
+
   const handleRepair = async () => {
     const id = apiResult?.generationId
     if (!id || isRepairing) return
@@ -1924,6 +1955,28 @@ document.addEventListener('click', function(e) {
                           )}
                         </>
                       )}
+                    </button>
+
+                    {/* A/B Variants button */}
+                    <button
+                      onClick={handleGenerateVariants}
+                      disabled={isGeneratingVariants || isBuilding || !customPrompt}
+                      title="Generate 3 UI variants with different themes and pick the best"
+                      style={{
+                        padding: '10px 14px', borderRadius: 10, border: '1.5px solid #c4b5fd',
+                        background: isGeneratingVariants ? '#f5f3ff' : '#faf5ff',
+                        color: '#7c3aed', fontSize: 12, fontWeight: 700,
+                        cursor: isGeneratingVariants || isBuilding || !customPrompt ? 'not-allowed' : 'pointer',
+                        opacity: isGeneratingVariants || isBuilding || !customPrompt ? 0.5 : 1,
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        whiteSpace: 'nowrap', transition: 'all .2s',
+                      }}>
+                      {isGeneratingVariants ? (
+                        <>
+                          <div style={{ width: 12, height: 12, border: '2px solid #c4b5fd', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                          Generating…
+                        </>
+                      ) : '✦ A/B Variants'}
                     </button>
                     <label title="Attach files"
                       style={{ width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.04)', border: '1.5px solid #e5e7eb', cursor: 'pointer', fontSize: 18, flexShrink: 0, transition: 'all .2s' }}
@@ -3210,6 +3263,16 @@ document.addEventListener('click', function(e) {
               existingDeployUrl={liveDeployUrl ?? selectedGeneration?.deployUrl}
               onClose={() => setIsDeployModalOpen(false)}
               onDeployed={url => { setLiveDeployUrl(url); setIsDeployModalOpen(false) }}
+            />
+          )}
+
+          {/* ── A/B Variant Picker ──────────────────────────────────────── */}
+          {showVariantPicker && variantsData && (
+            <VariantPicker
+              variants={variantsData.variants}
+              variantGroupId={variantsData.variantGroupId}
+              onSelect={handleVariantSelected}
+              onClose={() => setShowVariantPicker(false)}
             />
           )}
 

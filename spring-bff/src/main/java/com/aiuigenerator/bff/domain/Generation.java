@@ -45,6 +45,11 @@ public class Generation {
     private String deployProvider; // "netlify"
     private Instant deployedAt;
 
+    // A/B Variant support
+    private String variantGroupId;  // links 3 variants together
+    private String variantTheme;    // minimal | vibrant | corporate
+    private Integer variantIndex;   // 1, 2 or 3
+
     // Quality evaluation scores (from UIEvaluatorAgent)
     private Integer globalScore; // 0-100 overall quality
     private Integer semanticFidelity; // 0-100
@@ -220,6 +225,15 @@ public class Generation {
     public void setVisualRichness(Integer visualRichness) {
         this.visualRichness = visualRichness;
     }
+
+    public String getVariantGroupId() { return variantGroupId; }
+    public void setVariantGroupId(String variantGroupId) { this.variantGroupId = variantGroupId; }
+
+    public String getVariantTheme() { return variantTheme; }
+    public void setVariantTheme(String variantTheme) { this.variantTheme = variantTheme; }
+
+    public Integer getVariantIndex() { return variantIndex; }
+    public void setVariantIndex(Integer variantIndex) { this.variantIndex = variantIndex; }
 
     public String getDeployUrl() { return deployUrl; }
     public void setDeployUrl(String deployUrl) { this.deployUrl = deployUrl; }

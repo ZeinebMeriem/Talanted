@@ -8,6 +8,7 @@ export { PushGitLabModal, type PushGitLabModalProps } from './PushGitLabModal'
 export { DeployModal } from './DeployModal'
 export { QualityScores, type QualityScoresData } from './QualityScores'
 export { TedChatBot } from './TedChatBot'
+export { VariantPicker } from './VariantPicker'
 export { DarkModeToggle } from './DarkModeToggle'
 export { HomePage, type HomePageProps } from './HomePage'
 
