@@ -2241,12 +2241,12 @@ public class GenerationService {
                 // Extract quality scores
                 if (resp.aiReport != null && resp.aiReport.ui_evaluation != null) {
                     Map<String, Object> ev = resp.aiReport.ui_evaluation;
-                    int gs = ev.get("global_score")       instanceof Number n ? n.intValue() : 0;
-                    int sf = ev.get("semantic_fidelity")  instanceof Number n ? n.intValue() : 0;
-                    int cq = ev.get("code_quality")       instanceof Number n ? n.intValue() : 0;
-                    int co = ev.get("completeness")       instanceof Number n ? n.intValue() : 0;
-                    int ac = ev.get("accessibility")      instanceof Number n ? n.intValue() : 0;
-                    int vr = ev.get("visual_richness")    instanceof Number n ? n.intValue() : 0;
+                    int gs = toInt(ev.get("global_score"));
+                    int sf = toInt(ev.get("semantic_fidelity"));
+                    int cq = toInt(ev.get("code_quality"));
+                    int co = toInt(ev.get("completeness"));
+                    int ac = toInt(ev.get("accessibility"));
+                    int vr = toInt(ev.get("visual_richness"));
 
                     g.setGlobalScore(gs);
                     g.setSemanticFidelity(sf);
@@ -2282,6 +2282,11 @@ public class GenerationService {
         result.variantGroupId = variantGroupId;
         result.variants       = items;
         return result;
+    }
+
+    private static int toInt(Object val) {
+        if (val instanceof Number) return ((Number) val).intValue();
+        return 0;
     }
 }
 
