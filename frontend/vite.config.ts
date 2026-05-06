@@ -11,6 +11,8 @@ export default defineConfig({
       '/api': {
         target: 'http://spring-bff:8080',
         changeOrigin: true,
+        timeout: 3600000,
+        proxyTimeout: 3600000,
       },
       '/preview': {
         target: 'http://fastapi-ai:8000',

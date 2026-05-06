@@ -3266,6 +3266,55 @@ document.addEventListener('click', function(e) {
             />
           )}
 
+          {/* ── A/B Variants Loading Overlay ────────────────────────────── */}
+          {isGeneratingVariants && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 999,
+              background: 'rgba(15,15,20,.75)', backdropFilter: 'blur(6px)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 24,
+            }}>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {['Minimal & Clean', 'Colorful & Vibrant', 'Professional'].map((label, i) => (
+                  <div key={i} style={{
+                    padding: '12px 20px', borderRadius: 12,
+                    background: 'rgba(255,255,255,.08)',
+                    border: '1px solid rgba(255,255,255,.15)',
+                    color: '#e2e8f0', fontSize: 12, fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}>
+                    <div style={{
+                      width: 10, height: 10, borderRadius: '50%',
+                      background: ['#94a3b8','#a855f7','#3b82f6'][i],
+                      animation: `pulse ${1 + i * 0.3}s ease-in-out infinite`,
+                    }} />
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
+                  ✦ Generating 3 UI Variants…
+                </div>
+                <div style={{ fontSize: 14, color: '#94a3b8' }}>
+                  Each variant uses a different design theme — this takes a few minutes
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[0,1,2,3].map(i => (
+                  <div key={i} style={{
+                    width: 8, height: 8, borderRadius: '50%', background: '#6366f1',
+                    animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+                  }} />
+                ))}
+              </div>
+              <style>{`
+                @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+                @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+              `}</style>
+            </div>
+          )}
+
           {/* ── A/B Variant Picker ──────────────────────────────────────── */}
           {showVariantPicker && variantsData && (
             <VariantPicker
