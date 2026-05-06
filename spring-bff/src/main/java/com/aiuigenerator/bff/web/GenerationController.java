@@ -317,20 +317,19 @@ public class GenerationController {
     }
 
     /** A/B Variants — generate 3 UI variants from the same prompt with different themes. */
-    @PostMapping(value = "/variants", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping("/variants")
     public ResponseEntity<com.aiuigenerator.bff.dto.VariantsDto.VariantsResponse> generateVariants(
-            @RequestParam(name = "prompt", required = false) String prompt,
-            @RequestParam(name = "domain", required = false) String domain,
-            @RequestParam(name = "files", required = false) List<MultipartFile> files,
+            @RequestBody java.util.Map<String, String> body,
             JwtAuthenticationToken token) {
         String userId = "dev-user";
         if (token != null && token.getToken() != null) {
             Object sub = token.getToken().getClaims().get("sub");
             if (sub != null) userId = sub.toString();
         }
-        String safePrompt = prompt == null ? "" : prompt;
+        String prompt = body.getOrDefault("prompt", "");
+        String domain = body.getOrDefault("domain", null);
         com.aiuigenerator.bff.dto.VariantsDto.VariantsResponse resp =
-            service.generateVariants(userId, safePrompt, domain, files);
+            service.generateVariants(userId, prompt, domain, null);
         return ResponseEntity.ok(resp);
     }
 

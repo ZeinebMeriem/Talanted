@@ -727,19 +727,17 @@ export type VariantsResponse = {
 
 export async function generateVariants(
   prompt: string,
-  files: File[],
+  _files: File[],
   domain?: string | null,
   accessToken?: string,
 ): Promise<VariantsResponse> {
-  const form = new FormData()
-  form.append('prompt', prompt)
-  for (const f of files) form.append('files', f)
-  if (domain) form.append('domain', domain)
-
   const res = await fetch(`${BFF_BASE_URL}/api/generations/variants`, {
     method: 'POST',
-    body: form,
-    headers: authHeaders(accessToken) as Record<string, string>,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(accessToken),
+    },
+    body: JSON.stringify({ prompt, domain: domain ?? null }),
   })
   const data: unknown = await readJsonOrNull(res)
   if (!res.ok) {
