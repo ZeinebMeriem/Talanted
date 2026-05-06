@@ -2187,6 +2187,7 @@ public class GenerationService {
                 g.setSessionId(ulid.nextULID());
                 g.setUserId(userId);
                 g.setPrompt(prompt);
+                g.setName("Variant " + (i + 1) + " — " + themeLabel);
                 g.setStatus(GenerationStatus.PROCESSING);
                 g.setActiveVersion(1);
                 g.setVariantGroupId(variantGroupId);
@@ -2274,9 +2275,22 @@ public class GenerationService {
                 log.error("variant {} theme {} failed: {}", variantId, theme, e.getMessage());
                 item.buildSuccess = false;
                 item.error = e.getMessage();
+                // Mark the generation as FAILED in DB so it shows properly in the dashboard
+                try {
+                    generationRepo.findById(variantId).ifPresent(gen -> {
+                        gen.setStatus(GenerationStatus.FAILED);
+                        gen.setUpdatedAt(Instant.now());
+                        generationRepo.save(gen);
+                    });
+                } catch (Exception ignored) {}
             }
 
             items.add(item);
+
+            // Wait 15s between variants to avoid LLM rate limits (429)
+            if (i < themes.length - 1) {
+                try { Thread.sleep(15_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            }
         }
 
         VariantsDto.VariantsResponse result = new VariantsDto.VariantsResponse();
