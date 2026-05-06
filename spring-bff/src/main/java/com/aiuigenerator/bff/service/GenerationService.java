@@ -50,6 +50,7 @@ import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
 import com.aiuigenerator.bff.dto.JiraIssueDTO;
 import com.aiuigenerator.bff.dto.RestoreRequest;
 import com.aiuigenerator.bff.dto.CodeFileDto;
+import com.aiuigenerator.bff.dto.VariantsDto;
 import com.aiuigenerator.bff.repo.AiReportRepository;
 import com.aiuigenerator.bff.repo.ChatMessageRepository;
 import com.aiuigenerator.bff.repo.CodeVersionRepository;
