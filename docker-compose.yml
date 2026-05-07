@@ -129,7 +129,7 @@ services:
       AI_SPEC_BUILDER: ${AI_SPEC_BUILDER:-ollama}
       # ── Per-role provider selection (groq|gemini|openai|ollama) ──
       # NO_LOCAL_MODEL=true => never fall back to Ollama
-      NO_LOCAL_MODEL: ${NO_LOCAL_MODEL:-false}
+      NO_LOCAL_MODEL: ${NO_LOCAL_MODEL:-true}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:cloud}
       OLLAMA_CODER_MODEL: ${OLLAMA_CODER_MODEL:-qwen3.5:cloud}
