@@ -208,6 +208,153 @@ def internal_edit_file(payload: EditFileRequest) -> EditFileResponse:
     return orchestrator.edit_file(payload)
 
 
+@app.post("/internal/projects/{generation_id}/apply-snippet")
+def internal_apply_snippet(generation_id: str, body: dict) -> dict:
+    """Apply an accessibility fix by direct snippet replacement — no LLM needed."""
+    import re as _re, subprocess, os as _os, difflib
+    projects_dir = _os.environ.get("PROJECTS_DIR", "/app/projects")
+    safe_id = _re.sub(r"[^a-zA-Z0-9_-]", "_", generation_id)
+    project_path = _os.path.join(projects_dir, safe_id)
+
+    file_path: str = (body.get("filePath") or "").strip()
+    current_code: str = (body.get("currentCode") or "").strip()
+    auto_fix_code: str = (body.get("autoFixCode") or "").strip()
+
+    logger.info(f"[apply-snippet] filePath={file_path!r} has_current={bool(current_code)} has_fix={bool(auto_fix_code)}")
+
+    if not file_path or not auto_fix_code:
+        return {"success": False, "message": "filePath and autoFixCode are required"}
+
+    # Resolve path — handle both "src/components/foo.tsx" and "components/foo.tsx"
+    rel = file_path.lstrip("/")
+    if rel.startswith("src/"):
+        rel = rel[len("src/"):]
+
+    full_path = _os.path.join(project_path, "src", rel)
+    if not _os.path.exists(full_path):
+        # Walk src/ looking for a filename match (case-insensitive)
+        basename = _os.path.basename(rel).lower()
+        for root, _, files in _os.walk(_os.path.join(project_path, "src")):
+            for f in files:
+                if f.lower() == basename:
+                    full_path = _os.path.join(root, f)
+                    break
+
+    if not _os.path.exists(full_path):
+        return {"success": False, "message": f"File not found: {file_path}"}
+
+    with open(full_path, "r", encoding="utf-8") as fh:
+        original_content = fh.read()
+
+    def _norm(s: str) -> str:
+        return _re.sub(r'\s+', ' ', s).strip()
+
+    new_content = None
+    strategy_used = None
+    c_lines = original_content.splitlines()
+
+    # Strategy 1: exact string match
+    if current_code and current_code in original_content:
+        new_content = original_content.replace(current_code, auto_fix_code, 1)
+        strategy_used = "exact"
+
+    # Strategy 2: whitespace-normalised line-by-line match
+    if new_content is None and current_code:
+        q_lines = current_code.splitlines()
+        q_norm  = [_norm(l) for l in q_lines if _norm(l)]
+        if q_norm:
+            for i in range(len(c_lines) - len(q_norm) + 1):
+                window = [_norm(c_lines[i + j]) for j in range(len(q_norm))]
+                if window == q_norm:
+                    new_lines = c_lines[:i] + auto_fix_code.splitlines() + c_lines[i + len(q_norm):]
+                    new_content = "\n".join(new_lines)
+                    strategy_used = "ws-normalised"
+                    break
+
+    # Strategy 3: element-name match — LLM often omits extra props (className, ref…)
+    # Extract the JSX element name from currentCode, find the unique line containing it.
+    if new_content is None and current_code:
+        elem_m = _re.search(r'<([\w.]+)', current_code)
+        if elem_m:
+            elem_name = elem_m.group(1)
+            matching = [(i, l) for i, l in enumerate(c_lines) if elem_name in l and '<' in l]
+            if len(matching) == 1:
+                i = matching[0][0]
+                fix_lines = auto_fix_code.splitlines()
+                new_lines = c_lines[:i] + fix_lines + c_lines[i + 1:]
+                new_content = "\n".join(new_lines)
+                strategy_used = f"element-name({elem_name})"
+            elif len(matching) > 1:
+                # Multiple occurrences — pick the one whose normalised text best matches currentCode
+                best_ratio, best_i = 0.0, -1
+                for i, line in matching:
+                    ratio = difflib.SequenceMatcher(None, _norm(current_code), _norm(line)).ratio()
+                    if ratio > best_ratio:
+                        best_ratio, best_i = ratio, i
+                if best_ratio >= 0.4 and best_i >= 0:
+                    fix_lines = auto_fix_code.splitlines()
+                    new_lines = c_lines[:best_i] + fix_lines + c_lines[best_i + 1:]
+                    new_content = "\n".join(new_lines)
+                    strategy_used = f"element-best({elem_name},{best_ratio:.2f})"
+
+    # Strategy 4: difflib fuzzy match over sliding windows (lowered threshold)
+    if new_content is None and current_code:
+        q_lines = [l for l in current_code.splitlines() if _norm(l)]
+        window_size = max(1, len(q_lines))
+        best_ratio, best_i = 0.0, -1
+        for i in range(max(1, len(c_lines) - window_size + 1)):
+            window = "\n".join(c_lines[i:i + window_size])
+            ratio = difflib.SequenceMatcher(None, _norm(current_code), _norm(window)).ratio()
+            if ratio > best_ratio:
+                best_ratio, best_i = ratio, i
+        if best_ratio >= 0.45 and best_i >= 0:
+            end_i = best_i + window_size
+            new_lines = c_lines[:best_i] + auto_fix_code.splitlines() + c_lines[end_i:]
+            new_content = "\n".join(new_lines)
+            strategy_used = f"fuzzy({best_ratio:.2f})"
+
+    logger.info(f"[apply-snippet] strategy={strategy_used!r} matched={new_content is not None}")
+
+    if new_content is None:
+        return {
+            "success": False,
+            "message": (
+                "Could not locate the exact code to replace in this file. "
+                "The LLM's code snippet may differ from the actual file. "
+                "You can apply this fix manually: open the file and make the change shown in 'Auto-Fix Code'."
+            )
+        }
+
+    # Sanity check: don't write if nothing actually changed
+    if new_content == original_content:
+        return {"success": False, "message": "No change was made — the fix may already be applied."}
+
+    with open(full_path, "w", encoding="utf-8") as fh:
+        fh.write(new_content)
+
+    # Rebuild — revert on failure
+    try:
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=project_path,
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            with open(full_path, "w", encoding="utf-8") as fh:
+                fh.write(original_content)
+            # Extract only the meaningful error line (skip node internals / stack frames)
+            err_lines = [l for l in result.stderr.splitlines()
+                         if l.strip() and not l.strip().startswith("at ") and "node_modules" not in l]
+            short_err = " | ".join(err_lines[:3]) if err_lines else result.stderr[-200:]
+            return {"success": False, "message": f"The auto-generated fix introduced a syntax error — file was safely reverted. You can apply this fix manually. (Build error: {short_err})"}
+    except Exception as e:
+        with open(full_path, "w", encoding="utf-8") as fh:
+            fh.write(original_content)
+        return {"success": False, "message": f"Build error — fix reverted: {e}"}
+
+    return {"success": True, "message": f"Fix applied to {file_path} (strategy: {strategy_used})"}
+
+
 @app.get("/internal/projects/{generation_id}/files", response_model=ProjectFilesResponse)
 def internal_get_project_files(generation_id: str) -> ProjectFilesResponse:
     """Read all source files directly from disk — source of truth for the CODE tab."""
@@ -585,13 +732,19 @@ def internal_accessibility_report(generation_id: str) -> dict:
     if not src_files:
         return {"generated": False, "error": "No source files found", "issues": [], "score": 0}
 
-    # Build a compact view of the source for the LLM (max 6000 chars)
-    code_snapshot = ""
-    for path, content in list(src_files.items())[:5]:
-        code_snapshot += f"\n\n// === {path} ===\n{content[:1200]}"
-    code_snapshot = code_snapshot[:6000]
+    # Build a source snapshot for the LLM.
+    # Prioritise .tsx component files; skip type-only / config files.
+    component_files = {p: c for p, c in src_files.items()
+                       if p.endswith(".tsx") or p.endswith(".jsx")}
+    if not component_files:
+        component_files = src_files  # fallback if no tsx
 
-    SYSTEM = """You are a WCAG 2.1 AA accessibility expert. Analyze the React JSX/TSX code and return a JSON accessibility audit.
+    code_snapshot = ""
+    for path, content in list(component_files.items())[:8]:
+        code_snapshot += f"\n\n// === {path} ===\n{content[:2500]}"
+    code_snapshot = code_snapshot[:12000]
+
+    SYSTEM = """You are a WCAG 2.1 AA accessibility expert. Analyze the React JSX/TSX code and return a JSON accessibility audit with detailed fix suggestions and auto-fix code.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -604,18 +757,37 @@ Return ONLY valid JSON in this exact format:
       "severity": "<critical|serious|moderate|minor>",
       "wcag": "<WCAG criterion e.g. 1.1.1>",
       "title": "<short title>",
-      "description": "<what is wrong>",
-      "element": "<affected element or component>",
-      "fix": "<specific code fix suggestion>"
+      "description": "<what is wrong and why it matters>",
+      "element": "<affected component name or element>",
+      "filePath": "<relative file path where issue occurs, e.g. 'src/components/Avatar.tsx'>",
+      "lineNumber": <approximate line number or null>,
+      "currentCode": "<problematic code snippet (2-3 lines)>",
+      "fix": "<specific code fix explanation>",
+      "autoFixCode": "<complete corrected code snippet ready to apply>"
     }
   ],
   "passed": ["<list of accessibility checks that passed>"],
-  "recommendations": ["<general improvement recommendations>"]
+  "recommendations": ["<general improvement recommendations>"],
+  "codeSnapshot": "<truncated source code analyzed>"
 }
+
+For each issue:
+1. Identify which FILE it occurs in (filePath)
+2. Show the CURRENT code with the problem
+3. Provide AUTOFIX code that is complete and ready to use (not just explanation)
+4. Example for missing alt text:
+   - currentCode: "<img src={image} />"
+   - autoFixCode: "<img src={image} alt={`Profile picture of ${name}`} />"
 
 Focus on: missing alt text, poor color contrast, missing form labels, non-semantic HTML, missing ARIA attributes, keyboard navigation issues, focus management."""
 
-    USER = f"Analyze this React code for WCAG 2.1 AA accessibility issues:\n\n{code_snapshot}"
+    USER = f"""Analyze this React code for WCAG 2.1 AA accessibility issues. For each issue, identify the FILE PATH and provide CORRECTED CODE SNIPPET ready to apply.
+
+Files analyzed:
+{chr(10).join(f"- {path}" for path in list(src_files.keys())[:10])}
+
+Source code:
+{code_snapshot}"""
 
     try:
         from .pipeline.llm_provider import create_planner_provider
@@ -630,6 +802,47 @@ Focus on: missing alt text, poor color contrast, missing form labels, non-semant
             result = _json.loads(raw)
         result["generated"] = True
         result["filesAnalyzed"] = len(src_files)
+        result["codeSnapshot"] = code_snapshot  # Include the code snapshot in response
+
+        # Post-process every issue
+        if "issues" in result and isinstance(result["issues"], list):
+            # Build lookup: lowercase filename-without-ext → actual relative path
+            file_lookup: dict[str, str] = {}
+            for rel_path in src_files:
+                basename = rel_path.split("/")[-1]
+                name_no_ext = basename.rsplit(".", 1)[0].lower()
+                file_lookup[name_no_ext] = rel_path
+
+            for issue in result["issues"]:
+                # 1. Resolve filePath — LLM sometimes returns a component name
+                fp = (issue.get("filePath") or "").strip()
+                if not fp or ("/" not in fp and "." not in fp):
+                    candidate = fp.lower() if fp else (issue.get("element") or "").lower()
+                    if candidate in file_lookup:
+                        issue["filePath"] = file_lookup[candidate]
+                    elif src_files:
+                        issue["filePath"] = next(iter(src_files))
+
+                # 2. Replace LLM-guessed currentCode with REAL code from the file.
+                #    The LLM only saw truncated source — its currentCode is often fabricated.
+                #    Use lineNumber (if provided) to extract the actual code.
+                real_fp = (issue.get("filePath") or "").strip()
+                line_no = issue.get("lineNumber")
+                if real_fp and real_fp in src_files and line_no and isinstance(line_no, (int, float)):
+                    file_lines = src_files[real_fp].splitlines()
+                    ln = int(line_no) - 1  # convert to 0-indexed
+                    if 0 <= ln < len(file_lines):
+                        # Grab ±2 lines of context around the reported line
+                        start = max(0, ln - 1)
+                        end   = min(len(file_lines), ln + 3)
+                        real_snippet = "\n".join(file_lines[start:end])
+                        issue["currentCode"] = real_snippet
+                        logger.info(f"[audit] replaced currentCode for issue {issue.get('id')} from real file line {line_no}")
+
+                # 3. Ensure autoFixCode has a value
+                if not issue.get("autoFixCode") and issue.get("fix"):
+                    issue["autoFixCode"] = issue.get("fix", "")
+
         return result
     except Exception as exc:
         logger.error("accessibility report failed for %s: %s", generation_id, exc)

@@ -36,6 +36,7 @@ import com.aiuigenerator.bff.domain.Generation;
 import com.aiuigenerator.bff.domain.GenerationFile;
 import com.aiuigenerator.bff.domain.GenerationStatus;
 import com.aiuigenerator.bff.domain.UiSpecVersion;
+import com.aiuigenerator.bff.domain.AccessibilityAudit;
 import com.aiuigenerator.bff.dto.AiReportDto;
 import com.aiuigenerator.bff.dto.ChatMessageDto;
 import com.aiuigenerator.bff.dto.CodeBundleDto;
@@ -57,6 +58,7 @@ import com.aiuigenerator.bff.repo.CodeVersionRepository;
 import com.aiuigenerator.bff.repo.GenerationFileRepository;
 import com.aiuigenerator.bff.repo.GenerationRepository;
 import com.aiuigenerator.bff.repo.UiSpecVersionRepository;
+import com.aiuigenerator.bff.repo.AccessibilityAuditRepository;
 
 import de.huxhorn.sulky.ulid.ULID;
 
@@ -84,6 +86,7 @@ public class GenerationService {
     private final CodeVersionRepository codeRepo;
     private final AiReportRepository reportRepo;
     private final ChatMessageRepository chatRepo;
+    private final AccessibilityAuditRepository accessibilityAuditRepo;
 
     public GenerationService(
             UploadValidator validator,
@@ -96,7 +99,8 @@ public class GenerationService {
             UiSpecVersionRepository uiSpecRepo,
             CodeVersionRepository codeRepo,
             AiReportRepository reportRepo,
-            ChatMessageRepository chatRepo) {
+            ChatMessageRepository chatRepo,
+            AccessibilityAuditRepository accessibilityAuditRepo) {
         this.validator = validator;
         this.fileStorage = fileStorage;
         this.fastApi = fastApi;
@@ -108,6 +112,7 @@ public class GenerationService {
         this.codeRepo = codeRepo;
         this.reportRepo = reportRepo;
         this.chatRepo = chatRepo;
+        this.accessibilityAuditRepo = accessibilityAuditRepo;
     }
 
     public GenerationCreateResponse createGeneration(String userId, String prompt, List<MultipartFile> files,
@@ -2320,12 +2325,31 @@ public class GenerationService {
                     .lines().collect(Collectors.joining());
             final ObjectMapper mapper = new ObjectMapper();
             java.util.Map<String, Object> result = mapper.readValue(body, java.util.Map.class);
-            // Persist accessibility score to Generation document
+
+            // Persist full accessibility audit to new AccessibilityAudit document
             generationRepo.findById(generationId).ifPresent(g -> {
                 Object sc = result.get("score");
                 if (sc instanceof Number) {
-                    g.setAccessibility(((Number) sc).intValue());
+                    int score = ((Number) sc).intValue();
+                    g.setAccessibility(score);
                     g.setUpdatedAt(Instant.now());
+
+                    // Create and save full audit record
+                    AccessibilityAudit audit = new AccessibilityAudit(
+                            generationId,
+                            g.getUserId(),
+                            score,
+                            (String) result.getOrDefault("wcagLevel", "AA"),
+                            (String) result.getOrDefault("summary", ""),
+                            (List<Map<String, Object>>) result.getOrDefault("issues", List.of()),
+                            (List<String>) result.getOrDefault("passed", List.of()),
+                            (List<String>) result.getOrDefault("recommendations", List.of()),
+                            (Integer) result.getOrDefault("filesAnalyzed", 0),
+                            (String) result.getOrDefault("codeSnapshot", "")
+                    );
+                    AccessibilityAudit savedAudit = accessibilityAuditRepo.save(audit);
+                    g.setLastAccessibilityAuditId(savedAudit.getId());
+
                     generationRepo.save(g);
                 }
             });
@@ -2339,6 +2363,85 @@ public class GenerationService {
     private static int toInt(Object val) {
         if (val instanceof Number) return ((Number) val).intValue();
         return 0;
+    }
+
+    /**
+     * Resolves a component name (e.g. "AvatarImage") to its actual file path
+     * (e.g. "src/components/AvatarImage.tsx") by searching the project files.
+     * If filePath already has an extension or matches a known path, return as-is.
+     */
+    private String resolveFilePath(String generationId, String filePath) {
+        if (filePath == null) return filePath;
+        // Already looks like a real path (has extension or slashes)
+        if (filePath.contains(".") || filePath.contains("/")) return filePath;
+        try {
+            var projectFiles = fastApi.getProjectFiles(generationId);
+            if (projectFiles == null || projectFiles.files == null) return filePath;
+            String lower = filePath.toLowerCase();
+            // Exact component name match (case-insensitive)
+            for (var f : projectFiles.files) {
+                if (f.path == null) continue;
+                String name = f.path.contains("/")
+                        ? f.path.substring(f.path.lastIndexOf('/') + 1)
+                        : f.path;
+                // Strip extension for comparison
+                String nameNoExt = name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name;
+                if (nameNoExt.equalsIgnoreCase(lower) || nameNoExt.equalsIgnoreCase(filePath)) {
+                    return f.path;
+                }
+            }
+            // Partial match fallback
+            for (var f : projectFiles.files) {
+                if (f.path != null && f.path.toLowerCase().contains(lower)) {
+                    return f.path;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("resolveFilePath failed for '{}': {}", filePath, e.getMessage());
+        }
+        return filePath;
+    }
+
+    /** Get accessibility audit history for a generation (last 10 audits). */
+    public java.util.List<?> getAccessibilityHistory(String generationId) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("timestamp").descending());
+        return accessibilityAuditRepo.findByGenerationIdOrderByTimestampDesc(generationId, pageable);
+    }
+
+    /** Apply accessibility fix via direct snippet replacement — no LLM needed. */
+    public java.util.Map<String, Object> applyAccessibilityFix(String generationId, String filePath, String fixCode, String currentCode) {
+        log.info("applyAccessibilityFix called for project {} file {}", generationId, filePath);
+        try {
+            String url = fastApiBaseUrl + "/internal/projects/" + generationId + "/apply-snippet";
+            java.util.Map<String, String> payload = new java.util.HashMap<>();
+            payload.put("filePath", filePath);
+            payload.put("autoFixCode", fixCode);
+            payload.put("currentCode", currentCode != null ? currentCode : "");
+
+            final ObjectMapper mapper = new ObjectMapper();
+            String body = mapper.writeValueAsString(payload);
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(120_000);
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
+
+            int status = conn.getResponseCode();
+            java.io.InputStream is = status < 400 ? conn.getInputStream() : conn.getErrorStream();
+            String respBody = new java.io.BufferedReader(new java.io.InputStreamReader(is, StandardCharsets.UTF_8))
+                    .lines().collect(Collectors.joining());
+            java.util.Map<String, Object> result = mapper.readValue(respBody, java.util.Map.class);
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to apply accessibility fix for {}: {}", generationId, e.getMessage(), e);
+            java.util.Map<String, Object> error = new java.util.HashMap<>();
+            error.put("success", false);
+            error.put("message", "Failed to apply fix: " + e.getMessage());
+            return error;
+        }
     }
 }
 

@@ -58,6 +58,9 @@ public class Generation {
     private Integer accessibility; // 0-100
     private Integer visualRichness; // 0-100
 
+    // Accessibility audit history
+    private String lastAccessibilityAuditId; // reference to latest AccessibilityAudit document
+
     public String getGenerationId() {
         return generationId;
     }
@@ -224,6 +227,14 @@ public class Generation {
 
     public void setVisualRichness(Integer visualRichness) {
         this.visualRichness = visualRichness;
+    }
+
+    public String getLastAccessibilityAuditId() {
+        return lastAccessibilityAuditId;
+    }
+
+    public void setLastAccessibilityAuditId(String lastAccessibilityAuditId) {
+        this.lastAccessibilityAuditId = lastAccessibilityAuditId;
     }
 
     public String getVariantGroupId() { return variantGroupId; }

@@ -14,6 +14,25 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 100MB
+  mail:
+    host: ${MAIL_HOST:smtp.mailtrap.io}
+    port: ${MAIL_PORT:2525}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+    from: ${MAIL_FROM:noreply@ai-ui-generator.local}
+  thymeleaf:
+    mode: HTML
+    encoding: UTF-8
 
 logging:
   level:

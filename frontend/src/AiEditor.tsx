@@ -24,6 +24,11 @@ import {
   getGenerationQuality,
   getMe,
   getUserStats,
+  getUserProfile,
+  updateUserProfile,
+  sendVerificationEmail,
+  uploadAvatar,
+  deleteAvatar,
   listAuditEvents,
   listGenerations,
   deleteAdminUser,
@@ -44,7 +49,7 @@ import {
   type VariantItem,
   type VariantsResponse,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, VariantPicker, AccessibilityReport, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, VariantPicker, AccessibilityReport, AccountSettings, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
 type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
 
@@ -340,6 +345,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       setLiveScores(null)
       setLiveReasoning(null)
       setLiveDeployUrl(undefined)
+      setAccessibilityReport(undefined)
       const [bundle, history, generation, quality] = await Promise.all([
         getGenerationCode(generationId, accessToken),
         getChatHistory(generationId, accessToken),
@@ -1129,13 +1135,26 @@ document.addEventListener('click', function(e) {
 
   const handleGenerateAccessibility = async () => {
     const id = apiResult?.generationId || selectedGenerationId
-    if (!id || isGeneratingAccessibility) return
+    console.log('[Accessibility] Button clicked. ID:', id, 'apiResult:', apiResult, 'selectedGenerationId:', selectedGenerationId)
+    if (!id) {
+      console.log('[Accessibility] No project ID found, showing error')
+      setAccessibilityReport({ generated: false, error: 'No project loaded. Please load a project first.' })
+      setCenterTab('accessibility')
+      return
+    }
+    if (isGeneratingAccessibility) {
+      console.log('[Accessibility] Already generating, ignoring click')
+      return
+    }
+    console.log('[Accessibility] Starting audit for:', id)
     setIsGeneratingAccessibility(true)
     setCenterTab('accessibility')
     try {
       const report = await generateAccessibilityReport(id, accessToken)
+      console.log('[Accessibility] Report received:', report)
       setAccessibilityReport(report)
     } catch (e: any) {
+      console.error('[Accessibility] Error:', e)
       setAccessibilityReport({ generated: false, error: e?.message ?? 'Audit failed' })
     } finally {
       setIsGeneratingAccessibility(false)
@@ -2552,107 +2571,11 @@ document.addEventListener('click', function(e) {
 
           {/* ── PROFILE ── */}
           {homeTab === 'profile' && (
-            <div style={{ maxWidth: 720, margin: '0 auto', padding: '56px 40px 80px' }}>
-
-              {/* Header */}
-              <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 32px', fontFamily: "'Syne',sans-serif" }}>My Profile</h1>
-
-              {/* Identity card */}
-              <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '32px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 28 }}>
-                <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 900, color: '#fff', flexShrink: 0, boxShadow: '0 0 40px rgba(99,102,241,.35)' }}>
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <h2 style={{ fontSize: 22, fontWeight: 800, color: '#111827', margin: 0 }}>
-                      {(firstName && lastName) ? `${firstName} ${lastName}` : displayName}
-                    </h2>
-                    {userProfile?.roles?.includes('admin') && (
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.2)', color: '#5480ba', border: '1px solid rgba(84,128,186,.3)' }}>Admin</span>
-                    )}
-                  </div>
-                  {(userProfile?.email || email) && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>{userProfile?.email || email}</p>
-                      {(userProfile?.emailVerified) && (
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>✓ Verified</span>
-                      )}
-                    </div>
-                  )}
-                  {userSub && <p style={{ fontSize: 12, color: 'rgba(0,0,0,.15)', margin: '6px 0 0', fontFamily: 'monospace' }}>ID: {userSub}</p>}
-                </div>
-                <button onClick={() => void loadProfile()}
-                  style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                  {profileLoading ? '…' : '↻ Refresh'}
-                </button>
+            <>
+              <div style={{ padding: '40px 0 80px' }}>
+                <AccountSettings accessToken={accessToken} />
               </div>
-
-              {/* Stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
-                {[
-                  { label: 'Total Projects', value: userStats?.totalGenerations ?? validProjects.length, icon: '⊞', color: '#5480ba' },
-                  { label: 'Completed', value: userStats?.completedGenerations ?? validProjects.filter(g => g.status === 'COMPLETED').length, icon: '✓', color: '#34d399' },
-                  { label: 'Success Rate', value: `${userStats?.successRate ?? (validProjects.length > 0 ? Math.round(validProjects.filter(g => g.status === 'COMPLETED').length * 100 / validProjects.length) : 0)}%`, icon: '◎', color: '#a78bfa' },
-                ].map(stat => (
-                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '24px 20px' }}>
-                    <div style={{ fontSize: 22, marginBottom: 10, color: stat.color }}>{stat.icon}</div>
-                    <p style={{ fontSize: 30, fontWeight: 900, color: '#111827', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{stat.value}</p>
-                    <p style={{ fontSize: 13, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Recent Activity */}
-              {validProjects.length > 0 && (
-                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, padding: '24px 28px', marginBottom: 20 }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1f2937', margin: '0 0 18px' }}>Recent Activity</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {validProjects.slice(0, 5).map(g => (
-                      <div key={g.generationId} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px', borderRadius: 12, background: '#ffffff', cursor: 'pointer', transition: 'background .15s' }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(84,128,186,.08)'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'}
-                        onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
-                        <div style={{ width: 36, height: 36, borderRadius: 10, background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : 'rgba(251,191,36,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
-                          {g.status === 'COMPLETED' ? '✓' : '⟳'}
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name || projectName2(g.prompt)}</p>
-                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
-                        </div>
-                        <span style={{ fontSize: 13, color: 'rgba(0,0,0,.35)', flexShrink: 0 }}>→</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Account Actions */}
-              <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, padding: '24px 28px' }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1f2937', margin: '0 0 16px' }}>Account</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid rgba(0,0,0,.04)' }}>
-                    <div>
-                      <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: '0 0 2px' }}>Authentication</p>
-                      <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>Managed by Keycloak SSO</p>
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>Active</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
-                    <div>
-                      <p style={{ fontSize: 14, fontWeight: 600, color: '#e04580', margin: '0 0 2px' }}>Sign out</p>
-                      <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>End your current session</p>
-                    </div>
-                    {onLogout && (
-                      <button onClick={onLogout}
-                        style={{ fontSize: 13, fontWeight: 700, padding: '9px 20px', borderRadius: 10, background: 'rgba(248,113,113,.1)', color: '#e04580', border: '1px solid rgba(248,113,113,.2)', cursor: 'pointer' }}>
-                        Sign out
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-            </div>
+            </>
           )}
         </main>
 
@@ -3171,8 +3094,7 @@ document.addEventListener('click', function(e) {
                   </div>
                 ) : null}
 
-                {centerTab === 'accessibility' ? (
-                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+                <div style={{ height: '100%', display: centerTab === 'accessibility' ? 'flex' : 'none', flexDirection: 'column', background: '#f8fafc' }}>
                     {(apiResult?.generationId || selectedGenerationId) && (
                       <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', flex: 1 }}>
@@ -3190,12 +3112,16 @@ document.addEventListener('click', function(e) {
                     <div style={{ flex: 1, overflow: 'auto' }}>
                       <AccessibilityReport
                         report={accessibilityReport}
+                        generationId={apiResult?.generationId || selectedGenerationId}
+                        accessToken={accessToken}
                         onGenerate={handleGenerateAccessibility}
                         isGenerating={isGeneratingAccessibility}
+                        onFixApplied={() => {
+                          setPreviewReloadCount(c => c + 1)
+                        }}
                       />
                     </div>
                   </div>
-                ) : null}
 
               </div>
             </div>

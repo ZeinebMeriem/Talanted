@@ -347,6 +347,36 @@ public class GenerationController {
         return ResponseEntity.ok(result);
     }
 
+    /** Get accessibility audit history for a generation. */
+    @GetMapping("/{id}/accessibility/history")
+    public ResponseEntity<java.util.List<?>> getAccessibilityHistory(@PathVariable("id") String id) {
+        java.util.List<?> history = service.getAccessibilityHistory(id);
+        return ResponseEntity.ok(history);
+    }
+
+    /** Apply accessibility fix to project file. */
+    @PostMapping("/{id}/accessibility/apply-fix")
+    public ResponseEntity<java.util.Map<String, Object>> applyAccessibilityFix(
+            @PathVariable("id") String id,
+            @org.springframework.web.bind.annotation.RequestBody(required = false) java.util.Map<String, String> body) {
+        try {
+            if (body == null) {
+                return ResponseEntity.badRequest().body(java.util.Map.of("success", false, "message", "Request body is required"));
+            }
+            String filePath = body.getOrDefault("filePath", "").trim();
+            String fixCode = body.getOrDefault("fixCode", "").trim();
+            String currentCode = body.getOrDefault("currentCode", "").trim();
+            if (filePath.isBlank() || fixCode.isBlank()) {
+                return ResponseEntity.badRequest().body(java.util.Map.of("success", false, "message", "filePath and fixCode are required"));
+            }
+            java.util.Map<String, Object> result = service.applyAccessibilityFix(id, filePath, fixCode, currentCode);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(getClass()).error("Error in applyAccessibilityFix: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(java.util.Map.of("success", false, "message", "Server error: " + e.getMessage()));
+        }
+    }
+
     /** Auto-Documentation — generate README.md + JSDoc for an existing project. */
     @PostMapping("/{id}/docs")
     public ResponseEntity<java.util.Map<String, Object>> generateDocs(@PathVariable("id") String id) {

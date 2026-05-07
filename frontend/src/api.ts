@@ -38,6 +38,32 @@ export type UserStats = {
   successRate?: number
 }
 
+export type UserProfileResponse = {
+  userId?: string
+  username?: string
+  email?: string
+  firstName?: string
+  lastName?: string
+  emailVerified?: boolean
+  avatarUrl?: string
+  bio?: string
+  timezone?: string
+  preferredLanguage?: string
+  notifications?: Record<string, boolean>
+  createdAt?: string
+  updatedAt?: string
+  projectCount?: number
+  completedProjects?: number
+}
+
+export type UpdateProfileRequest = {
+  avatarUrl?: string
+  bio?: string
+  timezone?: string
+  preferredLanguage?: string
+  notifications?: Record<string, boolean>
+}
+
 export async function getMe(accessToken?: string): Promise<UserProfile> {
   const res = await fetch(`${BFF_BASE_URL}/api/user/me`, { headers: authHeaders(accessToken) })
   const data: unknown = await readJsonOrNull(res)
@@ -56,6 +82,68 @@ export async function getUserStats(accessToken?: string): Promise<UserStats> {
     throw new Error(message || `HTTP ${res.status}`)
   }
   return (typeof data === 'object' && data !== null ? (data as UserStats) : {})
+}
+
+export async function getUserProfile(accessToken?: string): Promise<UserProfileResponse> {
+  const res = await fetch(`${BFF_BASE_URL}/api/user/profile`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as UserProfileResponse) : {})
+}
+
+export async function updateUserProfile(request: UpdateProfileRequest, accessToken?: string): Promise<UserProfileResponse> {
+  const res = await fetch(`${BFF_BASE_URL}/api/user/profile`, {
+    method: 'PUT',
+    headers: { ...authHeaders(accessToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as UserProfileResponse) : {})
+}
+
+export async function sendVerificationEmail(accessToken?: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BFF_BASE_URL}/api/user/verify-email`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as { success: boolean; message: string }) : { success: false, message: 'Unknown error' })
+}
+
+export async function uploadAvatar(file: File, accessToken?: string): Promise<{ avatarUrl: string }> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${BFF_BASE_URL}/api/user/avatar`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+    body: formData,
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (typeof data === 'object' && data !== null ? (data as { avatarUrl: string }) : { avatarUrl: '' })
+}
+
+export async function deleteAvatar(accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/user/profile/avatar`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
 }
 
 export type GenerationListItem = {
@@ -486,7 +574,10 @@ export type AccessibilityIssue = {
   title: string
   description: string
   element: string
+  filePath?: string
   fix: string
+  currentCode?: string
+  autoFixCode?: string
 }
 
 export type AccessibilityReport = {
@@ -507,7 +598,7 @@ export async function generateAccessibilityReport(
 ): Promise<AccessibilityReport> {
   const res = await fetch(
     `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/accessibility`,
-    { method: 'POST', headers: authHeaders(accessToken) },
+    { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders(accessToken) } },
   )
   const data: unknown = await readJsonOrNull(res)
   if (!res.ok) {
@@ -515,6 +606,46 @@ export async function generateAccessibilityReport(
     throw new Error(message || `HTTP ${res.status}`)
   }
   return (data as AccessibilityReport) ?? {}
+}
+
+export async function getAccessibilityHistory(
+  generationId: string,
+  accessToken?: string,
+): Promise<any[]> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/accessibility/history`,
+    { headers: authHeaders(accessToken) },
+  )
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (data as any[]) ?? []
+}
+
+export async function applyAccessibilityFix(
+  generationId: string,
+  issueId: string,
+  filePath: string,
+  fixCode: string,
+  accessToken?: string,
+  currentCode?: string,
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/accessibility/apply-fix`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders(accessToken) },
+      body: JSON.stringify({ issueId, filePath, fixCode, currentCode }),
+    },
+  )
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (data as any) ?? { success: false, message: 'Unknown error' }
 }
 
 export async function generateDocs(

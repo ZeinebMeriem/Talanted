@@ -80,17 +80,13 @@ class Orchestrator:
         pipeline: list[str] = ["orchestrator", "ocr", "extract", "rag", "domain", "prep"]
         ui_eval_result: dict[str, Any] | None = None
         
-        # Create codegen agent with model override if provided
-        codegen_agent = self.llm_codegen  # default
-        if req.model:
-            try:
-                logger.info(f"Using model override: {req.model}")
-                coder_provider = create_coder_provider_with_model(req.model)
-                from .agents.llm_codegen import LlmCodegenAgent
-                codegen_agent = LlmCodegenAgent(coder_provider)
-            except Exception as e:
-                logger.warning(f"Failed to create coder with model {req.model}: {e}, using default")
-                codegen_agent = self.llm_codegen
+        # Create codegen agent — always use the configured coder provider (groq/gemini/etc)
+        try:
+            coder_provider = create_coder_provider_with_model(req.model) if req.model else create_coder_provider()
+            codegen_agent = LlmCodegenAgent(coder_provider)
+        except Exception as e:
+            logger.warning(f"Failed to create coder provider: {e}, using default")
+            codegen_agent = self.llm_codegen
 
         pack = SourcePack(items=[SourceItem(kind="prompt", content=req.prompt or "", meta={})])
         for fr in req.fileRefs or []:
@@ -603,6 +599,20 @@ class Orchestrator:
             buildOutput=build_output,
         )
 
+    def _resolve_file_by_name(self, src_dir: str, name: str) -> str | None:
+        """Find a file in src_dir matching name (ignoring extension and path prefix)."""
+        name_lower = name.lower().lstrip("src/").strip()
+        # Strip extension if present
+        if "." in name_lower:
+            name_lower = name_lower.rsplit(".", 1)[0]
+        for root, _, files in os.walk(src_dir):
+            for f in files:
+                f_no_ext = f.rsplit(".", 1)[0].lower()
+                if f_no_ext == name_lower:
+                    full = os.path.join(root, f)
+                    return os.path.relpath(full, src_dir).replace("\\", "/")
+        return None
+
     def _pick_file_to_edit(self, src_dir: str, instruction: str) -> str:
         """Ask the planner LLM which file to edit for the given instruction."""
         files = self._list_src_files(src_dir)
@@ -690,17 +700,13 @@ class Orchestrator:
 
         If filePath is empty the planner LLM auto-detects which file to edit.
         """
-        # Create codegen agent with model override if provided
-        codegen_agent = self.llm_codegen  # default
-        if req.model:
-            try:
-                logger.info(f"edit_file: Using model override: {req.model}")
-                coder_provider = create_coder_provider_with_model(req.model)
-                from .agents.llm_codegen import LlmCodegenAgent
-                codegen_agent = LlmCodegenAgent(coder_provider)
-            except Exception as e:
-                logger.warning(f"edit_file: Failed to create coder with model {req.model}: {e}, using default")
-                codegen_agent = self.llm_codegen
+        # Create codegen agent — always use the configured coder provider (groq/gemini/etc)
+        try:
+            coder_provider = create_coder_provider_with_model(req.model) if req.model else create_coder_provider()
+            codegen_agent = LlmCodegenAgent(coder_provider)
+        except Exception as e:
+            logger.warning(f"edit_file: Failed to create coder provider: {e}, using default")
+            codegen_agent = self.llm_codegen
         
         projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
         safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", req.generationId)
@@ -726,7 +732,14 @@ class Orchestrator:
         full_path = os.path.join(src_dir, rel_path)
 
         if not os.path.exists(full_path):
-            raise FileNotFoundError(f"File not found: {rel_path} (looked in {full_path})")
+            # Try to find by component name scan (handles "AvatarImage" → "components/AvatarImage.tsx")
+            resolved = self._resolve_file_by_name(src_dir, rel_path)
+            if resolved:
+                rel_path = resolved
+                full_path = os.path.join(src_dir, rel_path)
+                logger.info("edit_file: resolved '%s' -> '%s'", req.filePath, rel_path)
+            else:
+                raise FileNotFoundError(f"File not found: {rel_path} (looked in {full_path})")
 
         with open(full_path, "r", encoding="utf-8") as fh:
             current_code = fh.read()

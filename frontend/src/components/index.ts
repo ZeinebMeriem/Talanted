@@ -10,6 +10,7 @@ export { QualityScores, type QualityScoresData } from './QualityScores'
 export { TedChatBot } from './TedChatBot'
 export { VariantPicker } from './VariantPicker'
 export { AccessibilityReport } from './AccessibilityReport'
+export { AccountSettings } from './AccountSettings'
 export { DarkModeToggle } from './DarkModeToggle'
 export { HomePage, type HomePageProps } from './HomePage'
 

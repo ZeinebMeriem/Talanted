@@ -209,6 +209,12 @@ services:
       # Only needed when dev-mode is false:
       OAUTH_ISSUER: http://localhost:8083/realms/ai-ui
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
+      # Email service (SMTP)
+      MAIL_HOST: ${MAIL_HOST:-smtp.mailtrap.io}
+      MAIL_PORT: ${MAIL_PORT:-2525}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-noreply@ai-ui-generator.local}
       # Jira Integration
       # Intentionally no default base URL — set JIRA_BASE_URL in your .env
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
