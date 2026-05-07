@@ -2162,10 +2162,11 @@ public class GenerationService {
 
         String variantGroupId = ulid.nextULID();
 
+        // Each variant uses a different LLM provider to avoid rate limiting
         String[][] themes = {
-            {"minimal",   "Minimal & Clean"},
-            {"vibrant",   "Colorful & Vibrant"},
-            {"corporate", "Professional & Corporate"},
+            {"minimal",   "Minimal & Clean",          "groq"},
+            {"vibrant",   "Colorful & Vibrant",       "gemini"},
+            {"corporate", "Professional & Corporate", "claude"},
         };
 
         java.util.List<VariantsDto.VariantItem> items = new java.util.ArrayList<>();
@@ -2173,6 +2174,7 @@ public class GenerationService {
         for (int i = 0; i < themes.length; i++) {
             String theme      = themes[i][0];
             String themeLabel = themes[i][1];
+            String model      = themes[i][2];
             String variantId  = ulid.nextULID();
 
             VariantsDto.VariantItem item = new VariantsDto.VariantItem();
@@ -2225,6 +2227,7 @@ public class GenerationService {
                 req.fileRefs     = fileRefs;
                 req.domain       = (domain != null && !domain.isBlank()) ? domain : null;
                 req.themePreset  = theme;
+                req.model        = model;
                 FastApiGenerateResponse resp = fastApi.generate(req);
 
                 // Save code version
@@ -2287,9 +2290,9 @@ public class GenerationService {
 
             items.add(item);
 
-            // Wait 15s between variants to avoid LLM rate limits (429)
+            // Small pause between variants to avoid concurrent resource issues
             if (i < themes.length - 1) {
-                try { Thread.sleep(15_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                try { Thread.sleep(2_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
             }
         }
 
@@ -2297,6 +2300,40 @@ public class GenerationService {
         result.variantGroupId = variantGroupId;
         result.variants       = items;
         return result;
+    }
+
+    /** Generate a detailed WCAG 2.1 AA accessibility report via FastAPI. */
+    @SuppressWarnings("unchecked")
+    public java.util.Map<String, Object> generateAccessibilityReport(String generationId) {
+        try {
+            String url = fastApiBaseUrl + "/internal/projects/" + generationId + "/accessibility";
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(120_000);
+            conn.setDoOutput(true);
+            conn.getOutputStream().write("{}".getBytes(StandardCharsets.UTF_8));
+            int status = conn.getResponseCode();
+            java.io.InputStream is = status < 400 ? conn.getInputStream() : conn.getErrorStream();
+            String body = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))
+                    .lines().collect(Collectors.joining());
+            final ObjectMapper mapper = new ObjectMapper();
+            java.util.Map<String, Object> result = mapper.readValue(body, java.util.Map.class);
+            // Persist accessibility score to Generation document
+            generationRepo.findById(generationId).ifPresent(g -> {
+                Object sc = result.get("score");
+                if (sc instanceof Number) {
+                    g.setAccessibility(((Number) sc).intValue());
+                    g.setUpdatedAt(Instant.now());
+                    generationRepo.save(g);
+                }
+            });
+            return result;
+        } catch (Exception e) {
+            log.error("generateAccessibilityReport failed for {}: {}", generationId, e.getMessage(), e);
+            return Map.of("generated", false, "error", e.getMessage());
+        }
     }
 
     private static int toInt(Object val) {

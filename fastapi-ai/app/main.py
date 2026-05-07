@@ -554,6 +554,95 @@ def internal_deploy_netlify(generation_id: str, body: dict) -> dict:
         raise HTTPException(status_code=502, detail=f"Deploy failed: {exc}")
 
 
+@app.post("/internal/projects/{generation_id}/accessibility")
+def internal_accessibility_report(generation_id: str) -> dict:
+    """Generate a detailed WCAG 2.1 AA accessibility audit for a project.
+    Analyzes JSX/TSX source files and returns categorized issues with fix suggestions.
+    """
+    import re as _re, json as _json
+    projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
+    safe_id = _re.sub(r"[^a-zA-Z0-9_-]", "_", generation_id)
+    project_path = os.path.join(projects_dir, safe_id)
+    if not os.path.isdir(project_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Project {generation_id} not found")
+
+    # Read all JSX/TSX source files
+    src_dir = os.path.join(project_path, "src")
+    src_files: dict[str, str] = {}
+    if os.path.isdir(src_dir):
+        for root, _, fnames in os.walk(src_dir):
+            for fname in sorted(fnames):
+                if fname.endswith((".tsx", ".ts", ".jsx", ".js")):
+                    full = os.path.join(root, fname)
+                    rel = os.path.relpath(full, project_path).replace("\\", "/")
+                    try:
+                        with open(full, "r", encoding="utf-8") as fh:
+                            src_files[rel] = fh.read()
+                    except Exception:
+                        pass
+
+    if not src_files:
+        return {"generated": False, "error": "No source files found", "issues": [], "score": 0}
+
+    # Build a compact view of the source for the LLM (max 6000 chars)
+    code_snapshot = ""
+    for path, content in list(src_files.items())[:5]:
+        code_snapshot += f"\n\n// === {path} ===\n{content[:1200]}"
+    code_snapshot = code_snapshot[:6000]
+
+    SYSTEM = """You are a WCAG 2.1 AA accessibility expert. Analyze the React JSX/TSX code and return a JSON accessibility audit.
+
+Return ONLY valid JSON in this exact format:
+{
+  "score": <0-100 integer, overall accessibility score>,
+  "wcagLevel": "AA",
+  "summary": "<one sentence summary>",
+  "issues": [
+    {
+      "id": "<unique id like 'img-alt-1'>",
+      "severity": "<critical|serious|moderate|minor>",
+      "wcag": "<WCAG criterion e.g. 1.1.1>",
+      "title": "<short title>",
+      "description": "<what is wrong>",
+      "element": "<affected element or component>",
+      "fix": "<specific code fix suggestion>"
+    }
+  ],
+  "passed": ["<list of accessibility checks that passed>"],
+  "recommendations": ["<general improvement recommendations>"]
+}
+
+Focus on: missing alt text, poor color contrast, missing form labels, non-semantic HTML, missing ARIA attributes, keyboard navigation issues, focus management."""
+
+    USER = f"Analyze this React code for WCAG 2.1 AA accessibility issues:\n\n{code_snapshot}"
+
+    try:
+        from .pipeline.llm_provider import create_planner_provider
+        provider = create_planner_provider()
+        raw = provider.chat(SYSTEM, USER)
+        # Extract JSON from response
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', raw)
+        if json_match:
+            result = _json.loads(json_match.group())
+        else:
+            result = _json.loads(raw)
+        result["generated"] = True
+        result["filesAnalyzed"] = len(src_files)
+        return result
+    except Exception as exc:
+        logger.error("accessibility report failed for %s: %s", generation_id, exc)
+        return {
+            "generated": False,
+            "error": str(exc),
+            "score": 0,
+            "issues": [],
+            "passed": [],
+            "recommendations": [],
+        }
+
+
 @app.post("/internal/projects/{generation_id}/docs")
 def internal_generate_docs(generation_id: str) -> dict:
     """Generate README.md and JSDoc comments for an existing project."""

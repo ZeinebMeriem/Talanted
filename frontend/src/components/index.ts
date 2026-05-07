@@ -9,6 +9,7 @@ export { DeployModal } from './DeployModal'
 export { QualityScores, type QualityScoresData } from './QualityScores'
 export { TedChatBot } from './TedChatBot'
 export { VariantPicker } from './VariantPicker'
+export { AccessibilityReport } from './AccessibilityReport'
 export { DarkModeToggle } from './DarkModeToggle'
 export { HomePage, type HomePageProps } from './HomePage'
 

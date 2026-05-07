@@ -479,6 +479,44 @@ export async function deployProject(
   return data as any
 }
 
+export type AccessibilityIssue = {
+  id: string
+  severity: 'critical' | 'serious' | 'moderate' | 'minor'
+  wcag: string
+  title: string
+  description: string
+  element: string
+  fix: string
+}
+
+export type AccessibilityReport = {
+  generated?: boolean
+  score?: number
+  wcagLevel?: string
+  summary?: string
+  issues?: AccessibilityIssue[]
+  passed?: string[]
+  recommendations?: string[]
+  filesAnalyzed?: number
+  error?: string
+}
+
+export async function generateAccessibilityReport(
+  generationId: string,
+  accessToken?: string,
+): Promise<AccessibilityReport> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/accessibility`,
+    { method: 'POST', headers: authHeaders(accessToken) },
+  )
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return (data as AccessibilityReport) ?? {}
+}
+
 export async function generateDocs(
   generationId: string,
   accessToken?: string,

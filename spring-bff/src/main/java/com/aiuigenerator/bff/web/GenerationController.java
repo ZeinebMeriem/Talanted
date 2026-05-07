@@ -340,6 +340,13 @@ public class GenerationController {
         return ResponseEntity.ok(result);
     }
 
+    /** Accessibility Audit — generate detailed WCAG 2.1 AA report for an existing project. */
+    @PostMapping("/{id}/accessibility")
+    public ResponseEntity<java.util.Map<String, Object>> accessibilityReport(@PathVariable("id") String id) {
+        java.util.Map<String, Object> result = service.generateAccessibilityReport(id);
+        return ResponseEntity.ok(result);
+    }
+
     /** Auto-Documentation — generate README.md + JSDoc for an existing project. */
     @PostMapping("/{id}/docs")
     public ResponseEntity<java.util.Map<String, Object>> generateDocs(@PathVariable("id") String id) {

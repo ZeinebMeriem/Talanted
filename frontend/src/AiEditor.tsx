@@ -3,6 +3,8 @@ import {
   streamGeneration,
   createGeneration,
   generateVariants,
+  generateAccessibilityReport,
+  type AccessibilityReport as AccessibilityReportType,
   downloadGenerationZip,
   repairGeneration,
   generateDocs,
@@ -42,9 +44,9 @@ import {
   type VariantItem,
   type VariantsResponse,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, VariantPicker, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, VariantPicker, AccessibilityReport, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
-type CenterTab = 'preview' | 'code' | 'quality'
+type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
 
 type RightTab = 'chat' | 'console' | 'versions'
 
@@ -146,6 +148,10 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [isGeneratingVariants, setIsGeneratingVariants] = useState(false)
   const [variantsData, setVariantsData] = useState<VariantsResponse | null>(null)
   const [showVariantPicker, setShowVariantPicker] = useState(false)
+
+  // Accessibility report state
+  const [accessibilityReport, setAccessibilityReport] = useState<AccessibilityReportType | undefined>(undefined)
+  const [isGeneratingAccessibility, setIsGeneratingAccessibility] = useState(false)
 
   // Quality / repair / docs state
   const [liveScores, setLiveScores] = useState<{ globalScore?: number; semanticFidelity?: number; codeQuality?: number; completeness?: number; accessibility?: number; visualRichness?: number } | null>(null)
@@ -1118,6 +1124,21 @@ document.addEventListener('click', function(e) {
           await repairGeneration(variant.variantId, accessToken)
         } catch (_) {}
       }, 2000)
+    }
+  }
+
+  const handleGenerateAccessibility = async () => {
+    const id = apiResult?.generationId || selectedGenerationId
+    if (!id || isGeneratingAccessibility) return
+    setIsGeneratingAccessibility(true)
+    setCenterTab('accessibility')
+    try {
+      const report = await generateAccessibilityReport(id, accessToken)
+      setAccessibilityReport(report)
+    } catch (e: any) {
+      setAccessibilityReport({ generated: false, error: e?.message ?? 'Audit failed' })
+    } finally {
+      setIsGeneratingAccessibility(false)
     }
   }
 
@@ -2853,6 +2874,7 @@ document.addEventListener('click', function(e) {
                   { id: 'preview', label: 'Preview', icon: '👁' },
                   { id: 'code', label: 'Code', icon: '⚡' },
                   { id: 'quality', label: 'Quality', icon: '⭐' },
+                  { id: 'accessibility', label: 'Accessibility', icon: '♿' },
                 ] as const).map((t) => {
                   const active = centerTab === t.id
                   return (
@@ -3144,6 +3166,32 @@ document.addEventListener('click', function(e) {
                         onRepair={handleRepair}
                         onEvaluate={handleRepair}
                         isRepairing={isRepairing}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {centerTab === 'accessibility' ? (
+                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+                    {(apiResult?.generationId || selectedGenerationId) && (
+                      <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', flex: 1 }}>
+                          WCAG 2.1 AA Audit
+                        </span>
+                        <button
+                          onClick={handleGenerateAccessibility}
+                          disabled={isGeneratingAccessibility}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: isGeneratingAccessibility ? 'wait' : 'pointer' }}
+                        >
+                          {isGeneratingAccessibility ? '⏳ Auditing…' : '♿ Run Audit'}
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ flex: 1, overflow: 'auto' }}>
+                      <AccessibilityReport
+                        report={accessibilityReport}
+                        onGenerate={handleGenerateAccessibility}
+                        isGenerating={isGeneratingAccessibility}
                       />
                     </div>
                   </div>
