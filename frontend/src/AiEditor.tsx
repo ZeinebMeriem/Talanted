@@ -1105,12 +1105,20 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  const handleVariantSelected = (variant: VariantItem) => {
-    // Navigate to the selected variant project
+  const handleVariantSelected = async (variant: VariantItem) => {
     setShowVariantPicker(false)
-    const fakeResult: GenerationApiResponse = { generationId: variant.variantId }
-    setApiResult(fakeResult)
-    void loadHistory().then(() => setHomeTab('projects'))
+    // Properly load the selected variant into the editor
+    setSelectedGenerationId(variant.variantId)
+    setApiResult({ generationId: variant.variantId })
+    setHomeTab('projects')
+    // Auto-repair if the build failed so the preview works
+    if (!variant.buildSuccess || variant.globalScore === 0) {
+      setTimeout(async () => {
+        try {
+          await repairGeneration(variant.variantId, accessToken)
+        } catch (_) {}
+      }, 2000)
+    }
   }
 
   const handleRepair = async () => {
@@ -3018,6 +3026,25 @@ document.addEventListener('click', function(e) {
                       : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     }
                     {liveDeployUrl ? 'LIVE' : 'DEPLOY'}
+                  </button>
+                )}
+
+                {/* ── Compare Variants button (only when variants exist) ── */}
+                {variantsData && variantsData.variants.length > 0 && (
+                  <button
+                    onClick={() => setShowVariantPicker(true)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', height: 38, borderRadius: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)', border: 'none', color: '#fff',
+                      cursor: 'pointer', transition: 'all .25s', boxShadow: '0 2px 8px rgba(124,58,237,.35)',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(124,58,237,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(124,58,237,.35)' }}
+                    title="Compare all 3 variants"
+                    type="button"
+                  >
+                    ✦ VARIANTS ({variantsData.variants.length})
                   </button>
                 )}
 
