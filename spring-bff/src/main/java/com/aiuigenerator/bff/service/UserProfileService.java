@@ -142,7 +142,7 @@ public class UserProfileService {
                 sanitizeFileName(fileName));
 
         // Upload to MinIO
-        String avatarUrl = fileStorageService.putToMinio(objectKey, fileData, mimeType);
+        String avatarUrl = fileStorageService.putBytesToMinio(objectKey, fileData, mimeType, fileName);
 
         // Update user profile
         UserProfile profile = userProfileRepo.findByUserId(userId)
