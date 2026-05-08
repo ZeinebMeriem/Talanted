@@ -157,10 +157,11 @@ pipeline {
                 dir('fastapi-ai') {
                     sh '''
                         echo "Python version:" && python3 --version
-                        pip install -r requirements.txt --quiet
-                        pip install ruff pytest pytest-cov --quiet
-                        ruff check app/ || echo "Ruff warnings found"
-                        python3 -m pytest tests/ -v --cov=app --cov-report=xml || true
+                        python3 -m venv .venv
+                        .venv/bin/pip install -r requirements.txt --quiet
+                        .venv/bin/pip install ruff pytest pytest-cov --quiet
+                        .venv/bin/ruff check app/ || echo "Ruff warnings found"
+                        .venv/bin/python3 -m pytest tests/ -v --cov=app --cov-report=xml || true
                         echo "FastAPI build OK"
                     '''
                 }
