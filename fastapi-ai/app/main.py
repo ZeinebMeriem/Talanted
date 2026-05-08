@@ -297,7 +297,60 @@ def internal_apply_snippet(generation_id: str, body: dict) -> dict:
                     new_content = "\n".join(new_lines)
                     strategy_used = f"element-best({elem_name},{best_ratio:.2f})"
 
-    # Strategy 4: difflib fuzzy match over sliding windows (lowered threshold)
+    # Strategy 4: Attribute injection — surgically add a11y attrs to an existing opening tag.
+    # This avoids the "replace one line of a multi-line element" corruption from strategies 1-3.
+    if new_content is None:
+        _a11y_attr_re = _re.compile(
+            r'(?:aria-[\w-]+=(?:"[^"]*"|\'[^\']*\'|\{[^}]*\})|'
+            r'\balt=(?:"[^"]*"|\'[^\']*\'|\{[^}]*\})|'
+            r'\btabIndex=(?:"[^"]*"|\'[^\']*\'|\{[^}]*\})|'
+            r'\brole=(?:"[^"]*"|\'[^\']*\'|\{[^}]*\}))'
+        )
+        new_a11y = _a11y_attr_re.findall(auto_fix_code)
+        elem_src_a = current_code or auto_fix_code
+        elem_m_a = _re.search(r'<([\w.]+)', elem_src_a)
+
+        if new_a11y and elem_m_a:
+            elem_name_a = elem_m_a.group(1)
+
+            def _find_tag_end(content: str, tag_start: int) -> int:
+                depth = 0
+                for j in range(tag_start, min(tag_start + 1000, len(content))):
+                    ch = content[j]
+                    if ch == '{': depth += 1
+                    elif ch == '}' and depth > 0: depth -= 1
+                    elif ch == '>' and depth == 0: return j
+                return -1
+
+            positions = [m.start() for m in _re.finditer(
+                r'<' + _re.escape(elem_name_a) + r'(?=[\s\n\t/>])', original_content
+            )]
+            target_pos = None
+            if len(positions) == 1:
+                target_pos = positions[0]
+            elif len(positions) > 1 and current_code:
+                best_ratio_a, target_pos = 0.0, None
+                for p in positions:
+                    ctx = original_content[max(0, p - 20):p + 300]
+                    ratio = difflib.SequenceMatcher(None, _norm(current_code), _norm(ctx)).ratio()
+                    if ratio > best_ratio_a:
+                        best_ratio_a, target_pos = ratio, p
+
+            if target_pos is not None:
+                tag_end = _find_tag_end(original_content, target_pos)
+                if tag_end >= 0:
+                    opening = original_content[target_pos:tag_end]
+                    to_add = [a for a in new_a11y if a.split('=')[0].strip() not in opening]
+                    if to_add:
+                        attrs_str = ' ' + ' '.join(to_add)
+                        if original_content[tag_end - 1] == '/':
+                            slash_pos = original_content.rindex('/', target_pos, tag_end)
+                            new_content = original_content[:slash_pos] + attrs_str + ' /' + original_content[tag_end:]
+                        else:
+                            new_content = original_content[:tag_end] + attrs_str + original_content[tag_end:]
+                        strategy_used = f"attr-inject({elem_name_a})"
+
+    # Strategy 5: difflib fuzzy match over sliding windows (lowered threshold)
     if new_content is None and current_code:
         q_lines = [l for l in current_code.splitlines() if _norm(l)]
         window_size = max(1, len(q_lines))
@@ -328,6 +381,19 @@ def internal_apply_snippet(generation_id: str, body: dict) -> dict:
     # Sanity check: don't write if nothing actually changed
     if new_content == original_content:
         return {"success": False, "message": "No change was made — the fix may already be applied."}
+
+    # Auto-fix: convert alt= to aria-label= on non-img elements (LLM often gets this wrong for SVG icons)
+    # If the fixed line has `alt=` but NOT on an <img element, replace with aria-label=
+    def _fix_alt_on_icons(code: str) -> str:
+        fixed_lines = []
+        for line in code.splitlines():
+            stripped = line.strip()
+            if 'alt=' in stripped and not stripped.startswith('<img') and '<img' not in stripped:
+                line = _re.sub(r'\balt=', 'aria-label=', line)
+            fixed_lines.append(line)
+        return "\n".join(fixed_lines)
+
+    new_content = _fix_alt_on_icons(new_content)
 
     with open(full_path, "w", encoding="utf-8") as fh:
         fh.write(new_content)
@@ -744,42 +810,39 @@ def internal_accessibility_report(generation_id: str) -> dict:
         code_snapshot += f"\n\n// === {path} ===\n{content[:2500]}"
     code_snapshot = code_snapshot[:12000]
 
-    SYSTEM = """You are a WCAG 2.1 AA accessibility expert. Analyze the React JSX/TSX code and return a JSON accessibility audit with detailed fix suggestions and auto-fix code.
+    SYSTEM = """You are a WCAG 2.1 AA accessibility expert. Analyze the EXACT React JSX/TSX code provided and return a JSON accessibility audit.
 
-Return ONLY valid JSON in this exact format:
+CRITICAL RULES:
+- Only report issues for code you can LITERALLY SEE in the provided source. Do NOT invent issues.
+- currentCode must be an EXACT copy of lines from the source above (copy-paste, do not paraphrase).
+- autoFixCode must be valid TypeScript/JSX — it replaces currentCode directly in the file.
+- NEVER add `alt` prop to SVG icon components (Lucide icons like <Search>, <Zap>, <Home>, etc.) — they don't accept `alt`. Instead add `aria-label` to the parent button/link, or add `aria-hidden="true"` if decorative.
+- For <img> elements: use alt="" for decorative, alt="description" for meaningful.
+- autoFixCode must be a minimal change — only modify the problematic attribute, do not rewrite the whole component.
+
+Return ONLY valid JSON:
 {
-  "score": <0-100 integer, overall accessibility score>,
+  "score": <0-100 integer>,
   "wcagLevel": "AA",
-  "summary": "<one sentence summary>",
+  "summary": "<one sentence summary specific to THIS project's code>",
   "issues": [
     {
       "id": "<unique id like 'img-alt-1'>",
       "severity": "<critical|serious|moderate|minor>",
-      "wcag": "<WCAG criterion e.g. 1.1.1>",
+      "wcag": "<criterion e.g. 1.1.1>",
       "title": "<short title>",
-      "description": "<what is wrong and why it matters>",
-      "element": "<affected component name or element>",
-      "filePath": "<relative file path where issue occurs, e.g. 'src/components/Avatar.tsx'>",
-      "lineNumber": <approximate line number or null>,
-      "currentCode": "<problematic code snippet (2-3 lines)>",
-      "fix": "<specific code fix explanation>",
-      "autoFixCode": "<complete corrected code snippet ready to apply>"
+      "description": "<what is wrong>",
+      "element": "<component name>",
+      "filePath": "<exact relative path from source e.g. 'src/components/Navbar.tsx'>",
+      "lineNumber": <line number integer or null>,
+      "currentCode": "<EXACT lines copied from source code>",
+      "fix": "<explanation of the fix>",
+      "autoFixCode": "<valid TSX — only the fixed lines, minimal change>"
     }
   ],
-  "passed": ["<list of accessibility checks that passed>"],
-  "recommendations": ["<general improvement recommendations>"],
-  "codeSnapshot": "<truncated source code analyzed>"
-}
-
-For each issue:
-1. Identify which FILE it occurs in (filePath)
-2. Show the CURRENT code with the problem
-3. Provide AUTOFIX code that is complete and ready to use (not just explanation)
-4. Example for missing alt text:
-   - currentCode: "<img src={image} />"
-   - autoFixCode: "<img src={image} alt={`Profile picture of ${name}`} />"
-
-Focus on: missing alt text, poor color contrast, missing form labels, non-semantic HTML, missing ARIA attributes, keyboard navigation issues, focus management."""
+  "passed": ["<checks that passed>"],
+  "recommendations": ["<recommendations>"]
+}"""
 
     USER = f"""Analyze this React code for WCAG 2.1 AA accessibility issues. For each issue, identify the FILE PATH and provide CORRECTED CODE SNIPPET ready to apply.
 

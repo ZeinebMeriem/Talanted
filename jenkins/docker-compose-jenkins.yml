@@ -49,7 +49,7 @@ services:
     container_name: ai-ui-jenkins
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8090:8080"
       - "50000:50000"
     environment:
       JENKINS_OPTS: "--httpPort=8080 -Djenkins.install.runSetupWizard=false"

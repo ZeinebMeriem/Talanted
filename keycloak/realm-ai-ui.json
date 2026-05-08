@@ -9,6 +9,7 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
+  "verifyEmail": true,
   "sslRequired": "external",
   "roles": {
     "realm": [
@@ -23,11 +24,11 @@
   "smtpServer": {
     "host": "smtp.gmail.com",
     "port": "587",
-    "from": "meriemboukraa24@gmail.com",
+    "from": "meryemboukraa199@gmail.com",
     "fromDisplayName": "AI UI Generator",
     "auth": "true",
-    "user": "meriemboukraa24@gmail.com",
-    "password": "${SMTP_PASSWORD}",
+    "user": "meryemboukraa199@gmail.com",
+    "password": "pqjwhwftdnuptvgs",
     "starttls": "true",
     "ssl": "false"
   },

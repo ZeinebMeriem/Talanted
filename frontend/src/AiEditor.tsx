@@ -4,6 +4,7 @@ import {
   createGeneration,
   generateVariants,
   generateAccessibilityReport,
+  getAccessibilityHistory,
   type AccessibilityReport as AccessibilityReportType,
   downloadGenerationZip,
   repairGeneration,
@@ -154,8 +155,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [variantsData, setVariantsData] = useState<VariantsResponse | null>(null)
   const [showVariantPicker, setShowVariantPicker] = useState(false)
 
-  // Accessibility report state
-  const [accessibilityReport, setAccessibilityReport] = useState<AccessibilityReportType | undefined>(undefined)
+  // Accessibility report state — cached per project so switching away and back preserves results
+  const [accessibilityReports, setAccessibilityReports] = useState<Record<string, AccessibilityReportType>>({})
   const [isGeneratingAccessibility, setIsGeneratingAccessibility] = useState(false)
 
   // Quality / repair / docs state
@@ -273,6 +274,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
   const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null)
   const [selectedGeneration, setSelectedGeneration] = useState<any>(null)
+  const activeProjectId = apiResult?.generationId || selectedGenerationId || ''
+  const accessibilityReport = accessibilityReports[activeProjectId]
   const [auditEvents, setAuditEvents] = useState<AuditEventListItem[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditError, setAuditError] = useState<string | null>(null)
@@ -280,6 +283,38 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [versions, setVersions] = useState<GenerationVersionsResponse | null>(null)
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionsError, setVersionsError] = useState<string | null>(null)
+
+  // Stop any in-progress audit when switching projects
+  useEffect(() => {
+    setIsGeneratingAccessibility(false)
+  }, [selectedGenerationId])
+
+  // Auto-load last saved audit from backend when opening a project with no cached report
+  useEffect(() => {
+    if (!activeProjectId || accessibilityReports[activeProjectId]) return
+    getAccessibilityHistory(activeProjectId, accessToken ?? undefined)
+      .then(history => {
+        if (!history || history.length === 0) return
+        const latest = history[0]
+        setAccessibilityReports(prev => {
+          if (prev[activeProjectId]) return prev // already set by concurrent run
+          return {
+            ...prev,
+            [activeProjectId]: {
+              generated: true,
+              score: latest.score,
+              wcagLevel: latest.wcagLevel,
+              summary: latest.summary,
+              issues: latest.issues ?? [],
+              passed: latest.passed ?? [],
+              recommendations: latest.recommendations ?? [],
+              filesAnalyzed: latest.filesAnalyzed,
+            },
+          }
+        })
+      })
+      .catch(() => { /* no history is fine */ })
+  }, [activeProjectId])
 
   // GitLab push modal
   const [isPushGitLabModalOpen, setIsPushGitLabModalOpen] = useState(false)
@@ -345,7 +380,6 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       setLiveScores(null)
       setLiveReasoning(null)
       setLiveDeployUrl(undefined)
-      setAccessibilityReport(undefined)
       const [bundle, history, generation, quality] = await Promise.all([
         getGenerationCode(generationId, accessToken),
         getChatHistory(generationId, accessToken),
@@ -1138,7 +1172,7 @@ document.addEventListener('click', function(e) {
     console.log('[Accessibility] Button clicked. ID:', id, 'apiResult:', apiResult, 'selectedGenerationId:', selectedGenerationId)
     if (!id) {
       console.log('[Accessibility] No project ID found, showing error')
-      setAccessibilityReport({ generated: false, error: 'No project loaded. Please load a project first.' })
+      setAccessibilityReports(prev => ({ ...prev, [id]: { generated: false, error: 'No project loaded. Please load a project first.' } }))
       setCenterTab('accessibility')
       return
     }
@@ -1152,10 +1186,10 @@ document.addEventListener('click', function(e) {
     try {
       const report = await generateAccessibilityReport(id, accessToken)
       console.log('[Accessibility] Report received:', report)
-      setAccessibilityReport(report)
+      setAccessibilityReports(prev => ({ ...prev, [id]: report }))
     } catch (e: any) {
       console.error('[Accessibility] Error:', e)
-      setAccessibilityReport({ generated: false, error: e?.message ?? 'Audit failed' })
+      setAccessibilityReports(prev => ({ ...prev, [id]: { generated: false, error: e?.message ?? 'Audit failed' } }))
     } finally {
       setIsGeneratingAccessibility(false)
     }

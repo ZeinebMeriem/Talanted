@@ -658,6 +658,17 @@ def _build_nvidia_provider(*, role: str, max_tokens: int, temperature: float) ->
     )
 
 
+def _build_kimi_provider(*, role: str, max_tokens: int, temperature: float) -> OpenAiProvider:
+    """Build Kimi K2.6 provider — OpenAI-compatible Azure AI endpoint."""
+    api_key = os.getenv("KIMI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError(f"KIMI_API_KEY required for {role} provider=kimi")
+    base_url = os.getenv("KIMI_BASE_URL", "https://jawhe-movktvos-eastus2.services.ai.azure.com/openai/v1/").rstrip("/")
+    model = os.getenv("KIMI_MODEL", "Kimi-K2.6")
+    logger.info("%s provider: Kimi (%s @ %s)", role.capitalize(), model, base_url)
+    return OpenAiProvider(api_key=api_key, base_url=base_url, model=model, max_tokens=max_tokens, temperature=temperature)
+
+
 def _build_cohere_provider(*, role: str, max_tokens: int, temperature: float) -> OpenAiProvider:
     """Build Cohere provider — OpenAI-compatible endpoint."""
     api_key = os.getenv("COHERE_API_KEY", "").strip()
@@ -684,6 +695,7 @@ _PROVIDER_BUILDERS = {
     "cohere": _build_cohere_provider,
     "mistral": _build_mistral_provider,
     "nvidia": _build_nvidia_provider,
+    "kimi": _build_kimi_provider,
 }
 
 
@@ -773,7 +785,10 @@ def _build_fallback_chain(role: str, max_tokens: int, temperature: float) -> lis
         except Exception:
             pass
 
-    # Always try Gemini first (free, high quality)
+    # Kimi K2.6 first (Azure AI, high quality)
+    if os.getenv("KIMI_API_KEY", "").strip():
+        _try_add("kimi", _build_kimi_provider)
+    # Then Gemini (free, high quality)
     if os.getenv("GEMINI_API_KEY", "").strip():
         _try_add("gemini", _build_gemini_provider)
     # Then Groq (fast, free)

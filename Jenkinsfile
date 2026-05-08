@@ -10,11 +10,10 @@ pipeline {
     environment {
         // SonarQube Configuration
         SONAR_HOST_URL = 'http://sonarqube:9000'
-        SONAR_LOGIN = credentials('sonar-token')
+        // SONAR_LOGIN will be set only if credential exists
 
         // Docker Registry (optional)
         REGISTRY = 'docker.io'
-        REGISTRY_CREDENTIALS = credentials('docker-registry')
 
         // Project Info
         GIT_BRANCH = "${GIT_BRANCH}"
@@ -299,8 +298,7 @@ pipeline {
     post {
         always {
             script {
-                echo "🧹 Cleaning workspace..."
-                cleanWs()
+                echo "🔍 Pipeline finished"
             }
         }
         success {
