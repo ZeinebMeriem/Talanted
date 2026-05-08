@@ -76,7 +76,11 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
       if (data.bio) setBio(data.bio)
       if (data.timezone) setTimezone(data.timezone)
       if (data.preferredLanguage) setLanguage(data.preferredLanguage)
-      if (data.notifications) setNotifications(data.notifications)
+      if (data.notifications) setNotifications({
+        emailNotifications: data.notifications.emailNotifications ?? false,
+        projectUpdates: data.notifications.projectUpdates ?? false,
+        weeklyDigest: data.notifications.weeklyDigest ?? false
+      })
       if (data.avatarUrl) setAvatarPreview(data.avatarUrl)
     } catch (err) {
       setError(`Failed to load profile: ${err instanceof Error ? err.message : String(err)}`)
@@ -156,7 +160,7 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
       setUploadingAvatar(true)
       setError(null)
       await deleteAvatar(accessToken)
-      setProfile((prev) => prev ? { ...prev, avatarUrl: null } : null)
+      setProfile((prev) => prev ? { ...prev, avatarUrl: undefined } : null)
       setAvatarPreview(null)
       setSuccess('Avatar deleted successfully!')
       setTimeout(() => setSuccess(null), 3000)

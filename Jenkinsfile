@@ -8,15 +8,9 @@ pipeline {
     }
 
     environment {
-        // SonarQube Configuration
-        SONAR_HOST_URL = 'http://sonarqube:9000'
-        // SONAR_LOGIN will be set only if credential exists
-
-        // Docker Registry (optional)
+        // SonarQube — reachable because Jenkins is now on the ai-ui-generator_default network
+        SONAR_HOST_URL = 'http://ai-ui-sonarqube:9000'
         REGISTRY = 'docker.io'
-
-        // Project Info
-        GIT_BRANCH = "${GIT_BRANCH}"
     }
 
     parameters {
@@ -41,7 +35,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 script {
-                    echo "🔍 Checking out code..."
+                    echo "Checking out code..."
                     checkout scm
                     sh 'git log -1 --oneline'
                 }
@@ -53,34 +47,21 @@ pipeline {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FRONTEND_ONLY' }
             }
             steps {
-                script {
-                    echo "📦 Building Frontend..."
-                    dir('frontend') {
-                        sh '''
-                            echo "Node.js version:"
-                            node --version
-                            npm --version
-
-                            echo "Installing dependencies..."
-                            npm ci
-
-                            echo "Type checking..."
-                            npx tsc --noEmit
-
-                            echo "Running tests..."
-                            npm test -- --run || true
-
-                            echo "Building..."
-                            npm run build
-
-                            echo "✅ Frontend build successful"
-                        '''
-                    }
+                dir('frontend') {
+                    sh '''
+                        echo "Node.js version:" && node --version
+                        echo "npm version:"     && npm --version
+                        npm ci
+                        npx tsc --noEmit
+                        npm test -- --run || true
+                        npm run build
+                        echo "Frontend build OK"
+                    '''
                 }
             }
         }
 
-        stage('Frontend - SonarQube Analysis') {
+        stage('Frontend - SonarQube') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FRONTEND_ONLY') &&
@@ -88,17 +69,17 @@ pipeline {
                 }
             }
             steps {
-                script {
-                    echo "🔍 Running SonarQube analysis for Frontend..."
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('frontend') {
                         sh '''
                             npx sonar-scanner \
                               -Dsonar.projectKey=ai-ui-generator-frontend \
+                              -Dsonar.projectName="AI UI Generator - Frontend" \
                               -Dsonar.sources=src \
-                              -Dsonar.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts" \
+                              -Dsonar.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/node_modules/**" \
                               -Dsonar.sourceEncoding=UTF-8 \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
-                              -Dsonar.login=${SONAR_LOGIN} || true
+                              -Dsonar.token=${SONAR_TOKEN} || true
                         '''
                     }
                 }
@@ -110,28 +91,19 @@ pipeline {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
             }
             steps {
-                script {
-                    echo "📦 Building Backend (Spring BFF)..."
-                    dir('spring-bff') {
-                        sh '''
-                            echo "Java version:"
-                            java -version
-                            mvn --version
-
-                            echo "Building and testing with Maven..."
-                            mvn clean verify -DskipITs=false
-
-                            echo "Running Checkstyle..."
-                            mvn checkstyle:check || echo "⚠️ Checkstyle warnings found"
-
-                            echo "✅ Backend build successful"
-                        '''
-                    }
+                dir('spring-bff') {
+                    sh '''
+                        echo "Java version:" && java -version
+                        echo "Maven version:" && mvn --version
+                        mvn clean verify -DskipITs=false
+                        mvn checkstyle:check || echo "Checkstyle warnings found"
+                        echo "Backend build OK"
+                    '''
                 }
             }
         }
 
-        stage('Backend - SonarQube Analysis') {
+        stage('Backend - SonarQube') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY') &&
@@ -139,12 +111,12 @@ pipeline {
                 }
             }
             steps {
-                script {
-                    echo "🔍 Running SonarQube analysis for Backend..."
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('spring-bff') {
                         sh '''
                             mvn sonar:sonar \
                               -Dsonar.projectKey=ai-ui-generator-backend \
+                              -Dsonar.projectName="AI UI Generator - Backend" \
                               -Dsonar.sources=src/main/java \
                               -Dsonar.tests=src/test/java \
                               -Dsonar.java.source=17 \
@@ -152,29 +124,23 @@ pipeline {
                               -Dsonar.junit.reportPaths=target/surefire-reports \
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
-                              -Dsonar.login=${SONAR_LOGIN} || true
+                              -Dsonar.token=${SONAR_TOKEN} || true
                         '''
                     }
                 }
             }
         }
 
-        stage('Backend - Dependency Check (OWASP)') {
+        stage('Backend - OWASP Dependency Check') {
             when {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
             }
             steps {
-                script {
-                    echo "🛡️ Running OWASP Dependency Check..."
-                    dir('spring-bff') {
-                        sh '''
-                            echo "Checking dependencies..."
-                            mvn dependency:tree || true
-
-                            echo "Scanning for vulnerabilities..."
-                            mvn org.owasp:dependency-check-maven:check || echo "⚠️ Vulnerabilities found - review required"
-                        '''
-                    }
+                dir('spring-bff') {
+                    sh '''
+                        mvn dependency:tree || true
+                        mvn org.owasp:dependency-check-maven:check || echo "Vulnerabilities found - review required"
+                    '''
                 }
             }
         }
@@ -184,28 +150,20 @@ pipeline {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FASTAPI_ONLY' }
             }
             steps {
-                script {
-                    echo "📦 Building FastAPI..."
-                    dir('fastapi-ai') {
-                        sh '''
-                            echo "Python version:"
-                            python3 --version
-                            pip --version
-
-                            echo "Installing dependencies..."
-                            pip install -r requirements.txt
-
-                            echo "Running tests..."
-                            python3 -m pytest tests/ -v --cov --cov-report=xml || true
-
-                            echo "✅ FastAPI build successful"
-                        '''
-                    }
+                dir('fastapi-ai') {
+                    sh '''
+                        echo "Python version:" && python3 --version
+                        pip install -r requirements.txt --quiet
+                        pip install ruff pytest pytest-cov --quiet
+                        ruff check app/ || echo "Ruff warnings found"
+                        python3 -m pytest tests/ -v --cov=app --cov-report=xml || true
+                        echo "FastAPI build OK"
+                    '''
                 }
             }
         }
 
-        stage('FastAPI - SonarQube Analysis') {
+        stage('FastAPI - SonarQube') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FASTAPI_ONLY') &&
@@ -213,16 +171,17 @@ pipeline {
                 }
             }
             steps {
-                script {
-                    echo "🔍 Running SonarQube analysis for FastAPI..."
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('fastapi-ai') {
                         sh '''
                             npx sonar-scanner \
                               -Dsonar.projectKey=ai-ui-generator-fastapi \
+                              -Dsonar.projectName="AI UI Generator - FastAPI" \
                               -Dsonar.sources=app \
                               -Dsonar.language=py \
+                              -Dsonar.python.coverage.reportPaths=coverage.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
-                              -Dsonar.login=${SONAR_LOGIN} || true
+                              -Dsonar.token=${SONAR_TOKEN} || true
                         '''
                     }
                 }
@@ -234,46 +193,34 @@ pipeline {
                 expression { params.BUILD_TYPE == 'FULL' }
             }
             steps {
-                script {
-                    echo "🐳 Building Docker images..."
-                    sh '''
-                        echo "Frontend image..."
-                        docker build -t ai-ui-generator-frontend:${BUILD_NUMBER} frontend/ || true
-
-                        echo "Backend image..."
-                        docker build -t ai-ui-generator-backend:${BUILD_NUMBER} spring-bff/ || true
-
-                        echo "FastAPI image..."
-                        docker build -t ai-ui-generator-fastapi:${BUILD_NUMBER} fastapi-ai/ || true
-
-                        echo "✅ Docker images built"
-                    '''
-                }
+                sh '''
+                    docker build -t ai-ui-generator-frontend:${BUILD_NUMBER} frontend/
+                    docker build -t ai-ui-generator-backend:${BUILD_NUMBER}  spring-bff/
+                    docker build -t ai-ui-generator-fastapi:${BUILD_NUMBER}  fastapi-ai/
+                    echo "Docker images built"
+                '''
             }
         }
 
         stage('Docker Push') {
             when {
-                expression {
-                    params.BUILD_TYPE == 'FULL' && params.PUSH_DOCKER == true
-                }
+                expression { params.BUILD_TYPE == 'FULL' && params.PUSH_DOCKER == true }
             }
             steps {
-                script {
-                    echo "📤 Pushing Docker images..."
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-registry-credentials',
+                    usernameVariable: 'REGISTRY_USER',
+                    passwordVariable: 'REGISTRY_PASS'
+                )]) {
                     sh '''
-                        echo "Logging into Docker Registry..."
-                        echo ${REGISTRY_CREDENTIALS_PSW} | docker login -u ${REGISTRY_CREDENTIALS_USR} --password-stdin
-
+                        echo "${REGISTRY_PASS}" | docker login -u "${REGISTRY_USER}" --password-stdin
                         docker tag ai-ui-generator-frontend:${BUILD_NUMBER} ${REGISTRY}/ai-ui-generator-frontend:${BUILD_NUMBER}
-                        docker tag ai-ui-generator-backend:${BUILD_NUMBER} ${REGISTRY}/ai-ui-generator-backend:${BUILD_NUMBER}
-                        docker tag ai-ui-generator-fastapi:${BUILD_NUMBER} ${REGISTRY}/ai-ui-generator-fastapi:${BUILD_NUMBER}
-
+                        docker tag ai-ui-generator-backend:${BUILD_NUMBER}  ${REGISTRY}/ai-ui-generator-backend:${BUILD_NUMBER}
+                        docker tag ai-ui-generator-fastapi:${BUILD_NUMBER}  ${REGISTRY}/ai-ui-generator-fastapi:${BUILD_NUMBER}
                         docker push ${REGISTRY}/ai-ui-generator-frontend:${BUILD_NUMBER}
                         docker push ${REGISTRY}/ai-ui-generator-backend:${BUILD_NUMBER}
                         docker push ${REGISTRY}/ai-ui-generator-fastapi:${BUILD_NUMBER}
-
-                        echo "✅ Images pushed successfully"
+                        echo "Images pushed"
                     '''
                 }
             }
@@ -284,28 +231,23 @@ pipeline {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
             }
             steps {
-                script {
-                    echo "📦 Archiving artifacts..."
-                    archiveArtifacts artifacts: 'spring-bff/target/*.jar,frontend/dist/**,fastapi-ai/target/**',
-                                     allowEmptyArchive: true
-                    junit testResults: 'spring-bff/target/surefire-reports/*.xml',
-                         allowEmptyResults: true
-                }
+                archiveArtifacts artifacts: 'spring-bff/target/*.jar,frontend/dist/**',
+                                 allowEmptyArchive: true
+                junit testResults: 'spring-bff/target/surefire-reports/*.xml',
+                      allowEmptyResults: true
             }
         }
     }
 
     post {
         always {
-            script {
-                echo "🔍 Pipeline finished"
-            }
+            echo "Pipeline finished — build #${BUILD_NUMBER}"
         }
         success {
-            echo "✅ Pipeline succeeded!"
+            echo "Pipeline PASSED"
         }
         failure {
-            echo "❌ Pipeline failed!"
+            echo "Pipeline FAILED — check stage logs above"
         }
     }
 }

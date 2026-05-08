@@ -1172,8 +1172,6 @@ document.addEventListener('click', function(e) {
     console.log('[Accessibility] Button clicked. ID:', id, 'apiResult:', apiResult, 'selectedGenerationId:', selectedGenerationId)
     if (!id) {
       console.log('[Accessibility] No project ID found, showing error')
-      setAccessibilityReports(prev => ({ ...prev, [id]: { generated: false, error: 'No project loaded. Please load a project first.' } }))
-      setCenterTab('accessibility')
       return
     }
     if (isGeneratingAccessibility) {
@@ -3146,7 +3144,7 @@ document.addEventListener('click', function(e) {
                     <div style={{ flex: 1, overflow: 'auto' }}>
                       <AccessibilityReport
                         report={accessibilityReport}
-                        generationId={apiResult?.generationId || selectedGenerationId}
+                        generationId={apiResult?.generationId ?? selectedGenerationId ?? undefined}
                         accessToken={accessToken}
                         onGenerate={handleGenerateAccessibility}
                         isGenerating={isGeneratingAccessibility}
