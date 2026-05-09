@@ -53,7 +53,7 @@ pipeline {
                         echo "npm version:"     && npm --version
                         npm ci
                         npx tsc --noEmit
-                        npm test -- --run --coverage || true
+                        npm test -- --run --coverage --coverage.reporter=lcov --coverage.reporter=text --coverage.reportsDirectory=./coverage || true
                         npm run build
                         echo "Frontend build OK"
                     '''
