@@ -2109,19 +2109,13 @@ public class GenerationService {
             String raw = is == null ? "{}" : new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
 
             if (status >= 400) {
-                String msg = raw;
-                try {
-                    msg = (String) new com.fasterxml.jackson.databind.ObjectMapper()
-                        .readValue(raw, java.util.Map.class).getOrDefault("detail", raw);
-                } catch (Exception ignored) {}
-                return Map.of("error", msg);
+                return Map.of("error", extractErrorDetail(raw));
             }
 
             java.util.Map<String, Object> result = new com.fasterxml.jackson.databind.ObjectMapper()
                 .readValue(raw, java.util.Map.class);
             String deployUrl = (String) result.getOrDefault("url", "");
 
-            // Persist the deploy URL on the Generation document
             if (!deployUrl.isBlank()) {
                 generationRepo.findById(generationId).ifPresent(g -> {
                     g.setDeployUrl(deployUrl);
@@ -2135,6 +2129,18 @@ public class GenerationService {
             log.error("deployToNetlify failed for {}: {}", generationId, e.getMessage(), e);
             return Map.of("error", e.getMessage());
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractErrorDetail(String raw) {
+        try {
+            Object detail = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(raw, java.util.Map.class).get("detail");
+            if (detail instanceof String) {
+                return (String) detail;
+            }
+        } catch (Exception ignored) {}
+        return raw;
     }
 
     /** Proxy docs generation request to FastAPI. */
