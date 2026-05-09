@@ -126,6 +126,10 @@ pipeline {
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true
+                            echo "=== JaCoCo debug ==="
+                            ls -lh target/site/jacoco/ || echo "jacoco dir NOT found"
+                            head -5 target/site/jacoco/jacoco.xml || echo "jacoco.xml NOT found"
+                            ls -lh target/jacoco.exec || echo "jacoco.exec NOT found"
                         '''
                     }
                 }
