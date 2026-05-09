@@ -53,7 +53,7 @@ pipeline {
                         echo "npm version:"     && npm --version
                         npm ci
                         npx tsc --noEmit
-                        npm test -- --run || true
+                        npm test -- --run --coverage || true
                         npm run build
                         echo "Frontend build OK"
                     '''
@@ -78,6 +78,7 @@ pipeline {
                               -Dsonar.sources=src \
                               -Dsonar.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/node_modules/**" \
                               -Dsonar.sourceEncoding=UTF-8 \
+                              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true
                         '''
