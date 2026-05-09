@@ -255,7 +255,7 @@ public class JiraService {
         if (projectKey == null || projectKey.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Could not determine Jira project key from input. Paste a Jira board/project URL containing /projects/PROJ or provide the project key (PROJ)."
+                    "Could not determine Jira project key. Provide a board URL with /projects/PROJ or the project key directly."
             );
         }
 
@@ -272,7 +272,8 @@ public class JiraService {
             String labelsJql = String.join(",", labels.stream().map(l -> "\"" + l + "\"").toList());
             String keywordPattern = String.join(" OR summary ~ ",
                 labels.stream().map(l -> "\"" + l + "\"").toList());
-            jql = "project = \"" + projectKey + "\" AND (labels in (" + labelsJql + ") OR summary ~ " + keywordPattern + ") AND statusCategory != Done ORDER BY updated DESC";
+            jql = "project = \"" + projectKey + "\" AND (labels in (" + labelsJql
+                + ") OR summary ~ " + keywordPattern + ") AND statusCategory != Done ORDER BY updated DESC";
         }
 
         try {
@@ -378,7 +379,8 @@ public class JiraService {
                 if (!canBrowseProject) {
                     throw new ResponseStatusException(
                             HttpStatus.FORBIDDEN,
-                            "Jira credentials cannot browse project " + projectKey + ". Ensure the Jira API user has 'Browse Projects' permission and access to this project."
+                            "Jira credentials cannot browse project " + projectKey
+                                    + ". Ensure the Jira API user has 'Browse Projects' permission."
                     );
                 }
             }

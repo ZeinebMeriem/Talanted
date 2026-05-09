@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import java.io.PrintWriter;
@@ -24,7 +23,6 @@ import java.util.Base64;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.data.domain.Sort;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -37,7 +35,6 @@ import com.aiuigenerator.bff.domain.GenerationFile;
 import com.aiuigenerator.bff.domain.GenerationStatus;
 import com.aiuigenerator.bff.domain.UiSpecVersion;
 import com.aiuigenerator.bff.domain.AccessibilityAudit;
-import com.aiuigenerator.bff.dto.AiReportDto;
 import com.aiuigenerator.bff.dto.ChatMessageDto;
 import com.aiuigenerator.bff.dto.CodeBundleDto;
 import com.aiuigenerator.bff.dto.EditFileRequest;
@@ -2113,11 +2110,15 @@ public class GenerationService {
 
             if (status >= 400) {
                 String msg = raw;
-                try { msg = (String) new com.fasterxml.jackson.databind.ObjectMapper().readValue(raw, java.util.Map.class).getOrDefault("detail", raw); } catch (Exception ignored) {}
+                try {
+                    msg = (String) new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(raw, java.util.Map.class).getOrDefault("detail", raw);
+                } catch (Exception ignored) {}
                 return Map.of("error", msg);
             }
 
-            java.util.Map<String, Object> result = new com.fasterxml.jackson.databind.ObjectMapper().readValue(raw, java.util.Map.class);
+            java.util.Map<String, Object> result = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(raw, java.util.Map.class);
             String deployUrl = (String) result.getOrDefault("url", "");
 
             // Persist the deploy URL on the Generation document
@@ -2404,7 +2405,9 @@ public class GenerationService {
 
     /** Get accessibility audit history for a generation (last 10 audits). */
     public java.util.List<?> getAccessibilityHistory(String generationId) {
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("timestamp").descending());
+        org.springframework.data.domain.Pageable pageable =
+            org.springframework.data.domain.PageRequest.of(
+                0, 10, org.springframework.data.domain.Sort.by("timestamp").descending());
         return accessibilityAuditRepo.findByGenerationIdOrderByTimestampDesc(generationId, pageable);
     }
 

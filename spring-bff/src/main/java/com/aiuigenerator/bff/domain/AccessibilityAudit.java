@@ -25,7 +25,7 @@ public class AccessibilityAudit {
 
     private String summary;
 
-    private List<Map<String, Object>> issues; // Array of issue objects with severity, wcag, title, description, element, filePath, currentCode, fix, autoFixCode
+    private List<Map<String, Object>> issues; // issue objects: severity, wcag, title, description, element, filePath, fix
 
     private List<String> passed; // Passed checks
 

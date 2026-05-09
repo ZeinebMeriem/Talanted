@@ -76,39 +76,23 @@ public class FileStorageService {
     }
 
     private static String guessContentTypeFromName(String originalName) {
-        if (originalName == null)
-            return null;
+        if (originalName == null) { return null; }
         String name = originalName.toLowerCase(Locale.ROOT);
-        if (name.endsWith(".pdf"))
-            return "application/pdf";
-        if (name.endsWith(".png"))
-            return "image/png";
-        if (name.endsWith(".jpg") || name.endsWith(".jpeg"))
-            return "image/jpeg";
-        if (name.endsWith(".gif"))
-            return "image/gif";
-        if (name.endsWith(".svg"))
-            return "image/svg+xml";
-        if (name.endsWith(".webp"))
-            return "image/webp";
-        if (name.endsWith(".txt"))
-            return "text/plain";
-        if (name.endsWith(".md"))
-            return "text/markdown";
-        if (name.endsWith(".json"))
-            return "application/json";
-        if (name.endsWith(".csv"))
-            return "text/csv";
-        if (name.endsWith(".html") || name.endsWith(".htm"))
-            return "text/html";
-        if (name.endsWith(".css"))
-            return "text/css";
-        if (name.endsWith(".js"))
-            return "text/javascript";
-        if (name.endsWith(".xml"))
-            return "application/xml";
-        if (name.endsWith(".yaml") || name.endsWith(".yml"))
-            return "application/yaml";
+        if (name.endsWith(".pdf")) { return "application/pdf"; }
+        if (name.endsWith(".png")) { return "image/png"; }
+        if (name.endsWith(".jpg") || name.endsWith(".jpeg")) { return "image/jpeg"; }
+        if (name.endsWith(".gif")) { return "image/gif"; }
+        if (name.endsWith(".svg")) { return "image/svg+xml"; }
+        if (name.endsWith(".webp")) { return "image/webp"; }
+        if (name.endsWith(".txt")) { return "text/plain"; }
+        if (name.endsWith(".md")) { return "text/markdown"; }
+        if (name.endsWith(".json")) { return "application/json"; }
+        if (name.endsWith(".csv")) { return "text/csv"; }
+        if (name.endsWith(".html") || name.endsWith(".htm")) { return "text/html"; }
+        if (name.endsWith(".css")) { return "text/css"; }
+        if (name.endsWith(".js")) { return "text/javascript"; }
+        if (name.endsWith(".xml")) { return "application/xml"; }
+        if (name.endsWith(".yaml") || name.endsWith(".yml")) { return "application/yaml"; }
         return null;
     }
 }
