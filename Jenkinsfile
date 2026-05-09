@@ -115,7 +115,7 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('spring-bff') {
                         sh '''
-                            mvn sonar:sonar \
+                            mvn verify sonar:sonar \
                               -Dsonar.projectKey=ai-ui-generator-backend \
                               -Dsonar.projectName="AI UI Generator - Backend" \
                               -Dsonar.sources=src/main/java \
