@@ -17,7 +17,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@Disabled("Requires Flapdoodle embedded MongoDB — enable when dependency is available")
 @DataMongoTest
 @ActiveProfiles("test")
 @DisplayName("GenerationRepository — Tests d'intégration MongoDB réel")
