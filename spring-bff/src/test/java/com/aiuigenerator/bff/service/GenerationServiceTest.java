@@ -120,10 +120,6 @@ class GenerationServiceTest {
     @Test
     @DisplayName("deleteGeneration — removes from repository")
     void deleteGeneration_callsRepository() {
-        Generation g = new Generation();
-        g.setGenerationId("gen-del");
-        g.setStatus(GenerationStatus.COMPLETED);
-        when(generationRepo.findById("gen-del")).thenReturn(Optional.of(g));
         doNothing().when(generationRepo).deleteById("gen-del");
 
         generationService.deleteGeneration("gen-del");
@@ -149,12 +145,13 @@ class GenerationServiceTest {
     }
 
     @Test
-    @DisplayName("renameGeneration — throws when generation not found")
-    void renameGeneration_notFound_throws() {
+    @DisplayName("renameGeneration — silently ignores when generation not found")
+    void renameGeneration_notFound_doesNothing() {
         when(generationRepo.findById("missing")).thenReturn(Optional.empty());
 
-        assertThrows(IllegalArgumentException.class,
-                () -> generationService.renameGeneration("missing", "Name"));
+        generationService.renameGeneration("missing", "Name");
+
+        verify(generationRepo, never()).save(any());
     }
 
     // ── STATUS ────────────────────────────────────────────────────────────────

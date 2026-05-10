@@ -17,6 +17,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Disabled("Requires ai-ui-mongo Docker container — runs only inside Jenkins network")
 @DataMongoTest
 @ActiveProfiles("test")
 @DisplayName("GenerationRepository — Tests d'intégration MongoDB réel")

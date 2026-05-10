@@ -91,12 +91,12 @@ class GenerationControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/generations/{id} — 500 when not found")
+    @DisplayName("GET /api/generations/{id} — 4xx when not found")
     void getGeneration_notFound_throws() throws Exception {
         when(service.getGeneration("missing")).thenThrow(new IllegalArgumentException("not found"));
 
         mockMvc.perform(get("/api/generations/{id}", "missing"))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().is4xxClientError());
     }
 
     // ── CREATE ────────────────────────────────────────────────────────────────
