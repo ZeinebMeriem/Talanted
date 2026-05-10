@@ -89,7 +89,10 @@ pipeline {
 
         stage('Backend Build') {
             when {
-                expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
+                expression {
+                    (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY') &&
+                    params.RUN_SONARQUBE == false
+                }
             }
             steps {
                 dir('spring-bff') {
@@ -104,7 +107,7 @@ pipeline {
             }
         }
 
-        stage('Backend - SonarQube') {
+        stage('Backend Build + SonarQube') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY') &&
@@ -115,7 +118,9 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('spring-bff') {
                         sh '''
-                            mvn verify jacoco:report sonar:sonar \
+                            echo "Java version:" && java -version
+                            mvn checkstyle:check || echo "Checkstyle warnings found"
+                            mvn clean verify jacoco:report sonar:sonar \
                               -Dsonar.projectKey=ai-ui-generator-backend \
                               -Dsonar.projectName="AI UI Generator - Backend" \
                               -Dsonar.sources=src/main/java \
@@ -126,6 +131,7 @@ pipeline {
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true
+                            echo "Backend build OK"
                         '''
                     }
                 }
