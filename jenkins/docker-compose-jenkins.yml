@@ -45,7 +45,9 @@ services:
 
   # Jenkins Master
   jenkins:
-    image: jenkins/jenkins:lts-jdk17
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ai-ui-jenkins
     restart: unless-stopped
     ports:

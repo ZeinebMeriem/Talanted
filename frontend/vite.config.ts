@@ -16,13 +16,13 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://spring-bff:8080',
+        target: 'http://localhost:8081',
         changeOrigin: true,
         timeout: 3600000,
         proxyTimeout: 3600000,
       },
       '/preview': {
-        target: 'http://fastapi-ai:8000',
+        target: 'http://localhost:8000',
         rewrite: (path) => path.replace(/^\/preview/, '/projects'),
         changeOrigin: true,
       },
