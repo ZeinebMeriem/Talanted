@@ -104,23 +104,4 @@ class DuplicateResponse(BaseModel):
     buildOutput: str
 
 
-class VariantInfo(BaseModel):
-    """One variant in an A/B generation."""
-    variantId: str
-    theme: str
-    themeLabel: str
-    globalScore: int = 0
-    semanticFidelity: int = 0
-    codeQuality: int = 0
-    completeness: int = 0
-    accessibility: int = 0
-    visualRichness: int = 0
-    buildSuccess: bool = True
-    error: str | None = None
-
-
-class VariantsResponse(BaseModel):
-    """Response for A/B variant generation."""
-    variantGroupId: str
-    variants: list[VariantInfo]
 

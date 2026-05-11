@@ -24,8 +24,6 @@ from .schemas import (
     RestoreRequest,
     RestoreResponse,
     DuplicateResponse,
-    VariantInfo,
-    VariantsResponse,
 )
 
 logging.basicConfig(
@@ -140,67 +138,6 @@ def internal_generate_stream(payload: GenerateRequest) -> StreamingResponse:
             "Connection": "keep-alive",
         },
     )
-
-
-@app.post("/internal/generate/variants", response_model=VariantsResponse)
-def internal_generate_variants(payload: GenerateRequest) -> VariantsResponse:
-    """Generate 3 UI variants from the same prompt with different themes.
-    Each variant uses a different design preset: minimal, vibrant, corporate.
-    Returns all 3 variants with their quality scores so the user can pick the best one.
-    """
-    import uuid as _uuid
-
-    THEMES = [
-        ("minimal",   "Minimal & Clean"),
-        ("vibrant",   "Colorful & Vibrant"),
-        ("corporate", "Professional & Corporate"),
-    ]
-
-    variant_group_id = _uuid.uuid4().hex[:20].upper()
-    variants: list[VariantInfo] = []
-
-    for theme_id, theme_label in THEMES:
-        variant_id = f"{payload.generationId}_v{theme_id}"
-        variant_req = GenerateRequest(
-            generationId=variant_id,
-            prompt=payload.prompt,
-            mode=payload.mode,
-            fileRefs=payload.fileRefs,
-            domain=payload.domain,
-            model=payload.model,
-            themePreset=theme_id,
-        )
-        try:
-            result = orchestrator.run(variant_req)
-            ev = result.aiReport.ui_evaluation
-            if ev:
-                scores = dict(ev) if isinstance(ev, dict) else ev.dict()
-                variants.append(VariantInfo(
-                    variantId=variant_id,
-                    theme=theme_id,
-                    themeLabel=theme_label,
-                    globalScore=scores.get("global_score", 0),
-                    semanticFidelity=scores.get("semantic_fidelity", 0),
-                    codeQuality=scores.get("code_quality", 0),
-                    completeness=scores.get("completeness", 0),
-                    accessibility=scores.get("accessibility", 0),
-                    visualRichness=scores.get("visual_richness", 0),
-                    buildSuccess=True,
-                ))
-            else:
-                variants.append(VariantInfo(
-                    variantId=variant_id, theme=theme_id,
-                    themeLabel=theme_label, buildSuccess=True,
-                ))
-        except Exception as exc:
-            logger.error("variant %s failed: %s", theme_id, exc)
-            variants.append(VariantInfo(
-                variantId=variant_id, theme=theme_id,
-                themeLabel=theme_label, buildSuccess=False,
-                error=str(exc),
-            ))
-
-    return VariantsResponse(variantGroupId=variant_group_id, variants=variants)
 
 
 @app.post("/internal/edit-file", response_model=EditFileResponse)

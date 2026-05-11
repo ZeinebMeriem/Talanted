@@ -315,22 +315,6 @@ public class GenerationController {
         }
     }
 
-    /** A/B Variants — generate 3 UI variants from the same prompt with different themes. */
-    @PostMapping("/variants")
-    public ResponseEntity<com.aiuigenerator.bff.dto.VariantsDto.VariantsResponse> generateVariants(
-            @RequestBody java.util.Map<String, String> body,
-            JwtAuthenticationToken token) {
-        String userId = "dev-user";
-        if (token != null && token.getToken() != null) {
-            Object sub = token.getToken().getClaims().get("sub");
-            if (sub != null) userId = sub.toString();
-        }
-        String prompt = body.getOrDefault("prompt", "");
-        String domain = body.getOrDefault("domain", null);
-        com.aiuigenerator.bff.dto.VariantsDto.VariantsResponse resp =
-            service.generateVariants(userId, prompt, domain, null);
-        return ResponseEntity.ok(resp);
-    }
 
     /** Agentic Repair — trigger self-healing on an existing project and return updated scores. */
     @PostMapping("/{id}/repair")

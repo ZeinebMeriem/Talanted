@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   streamGeneration,
   createGeneration,
-  generateVariants,
   generateAccessibilityReport,
   getAccessibilityHistory,
   type AccessibilityReport as AccessibilityReportType,
@@ -47,10 +46,8 @@ import {
   type ServiceHealth,
   type UserProfile,
   type UserStats,
-  type VariantItem,
-  type VariantsResponse,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, VariantPicker, AccessibilityReport, AccountSettings, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
 type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
 
@@ -149,11 +146,6 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('gemini')
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null)
-
-  // A/B Variants state
-  const [isGeneratingVariants, setIsGeneratingVariants] = useState(false)
-  const [variantsData, setVariantsData] = useState<VariantsResponse | null>(null)
-  const [showVariantPicker, setShowVariantPicker] = useState(false)
 
   // Accessibility report state — cached per project so switching away and back preserves results
   const [accessibilityReports, setAccessibilityReports] = useState<Record<string, AccessibilityReportType>>({})
@@ -1144,37 +1136,6 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  const handleGenerateVariants = async () => {
-    const prompt = customPrompt.trim()
-    if (!prompt || isGeneratingVariants) return
-    setIsGeneratingVariants(true)
-    try {
-      const result = await generateVariants(prompt, attachedFiles, activeDomain, accessToken)
-      setVariantsData(result)
-      setShowVariantPicker(true)
-    } catch (e: any) {
-      alert(`Variant generation failed: ${e?.message ?? 'Unknown error'}`)
-    } finally {
-      setIsGeneratingVariants(false)
-    }
-  }
-
-  const handleVariantSelected = async (variant: VariantItem) => {
-    setShowVariantPicker(false)
-    // Properly load the selected variant into the editor
-    setSelectedGenerationId(variant.variantId)
-    setApiResult({ generationId: variant.variantId })
-    setHomeTab('projects')
-    // Auto-repair if the build failed so the preview works
-    if (!variant.buildSuccess || variant.globalScore === 0) {
-      setTimeout(async () => {
-        try {
-          await repairGeneration(variant.variantId, accessToken)
-        } catch (_) {}
-      }, 2000)
-    }
-  }
-
   const handleGenerateAccessibility = async () => {
     const id = apiResult?.generationId || selectedGenerationId
     console.log('[Accessibility] Button clicked. ID:', id, 'apiResult:', apiResult, 'selectedGenerationId:', selectedGenerationId)
@@ -2053,28 +2014,6 @@ document.addEventListener('click', function(e) {
                           )}
                         </>
                       )}
-                    </button>
-
-                    {/* A/B Variants button */}
-                    <button
-                      onClick={handleGenerateVariants}
-                      disabled={isGeneratingVariants || isBuilding || !customPrompt}
-                      title="Generate 3 UI variants with different themes and pick the best"
-                      style={{
-                        padding: '10px 14px', borderRadius: 10, border: '1.5px solid #c4b5fd',
-                        background: isGeneratingVariants ? '#f5f3ff' : '#faf5ff',
-                        color: '#7c3aed', fontSize: 12, fontWeight: 700,
-                        cursor: isGeneratingVariants || isBuilding || !customPrompt ? 'not-allowed' : 'pointer',
-                        opacity: isGeneratingVariants || isBuilding || !customPrompt ? 0.5 : 1,
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        whiteSpace: 'nowrap', transition: 'all .2s',
-                      }}>
-                      {isGeneratingVariants ? (
-                        <>
-                          <div style={{ width: 12, height: 12, border: '2px solid #c4b5fd', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                          Generating…
-                        </>
-                      ) : '✦ A/B Variants'}
                     </button>
                     <label title="Attach files"
                       style={{ width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.04)', border: '1.5px solid #e5e7eb', cursor: 'pointer', fontSize: 18, flexShrink: 0, transition: 'all .2s' }}
@@ -3024,25 +2963,6 @@ document.addEventListener('click', function(e) {
                   </button>
                 )}
 
-                {/* ── Compare Variants button (only when variants exist) ── */}
-                {variantsData && variantsData.variants.length > 0 && (
-                  <button
-                    onClick={() => setShowVariantPicker(true)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', height: 38, borderRadius: 10,
-                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-                      background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)', border: 'none', color: '#fff',
-                      cursor: 'pointer', transition: 'all .25s', boxShadow: '0 2px 8px rgba(124,58,237,.35)',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(124,58,237,.45)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(124,58,237,.35)' }}
-                    title="Compare all 3 variants"
-                    type="button"
-                  >
-                    ✦ VARIANTS ({variantsData.variants.length})
-                  </button>
-                )}
-
                 {apiResult?.generationId && (
                   <button
                     style={{
@@ -3316,66 +3236,6 @@ document.addEventListener('click', function(e) {
               onDeployed={url => { setLiveDeployUrl(url); setIsDeployModalOpen(false) }}
             />
           )}
-
-          {/* ── A/B Variants Loading Overlay ────────────────────────────── */}
-          {isGeneratingVariants && (
-            <div style={{
-              position: 'fixed', inset: 0, zIndex: 999,
-              background: 'rgba(15,15,20,.75)', backdropFilter: 'blur(6px)',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: 24,
-            }}>
-              <div style={{ display: 'flex', gap: 12 }}>
-                {['Minimal & Clean', 'Colorful & Vibrant', 'Professional'].map((label, i) => (
-                  <div key={i} style={{
-                    padding: '12px 20px', borderRadius: 12,
-                    background: 'rgba(255,255,255,.08)',
-                    border: '1px solid rgba(255,255,255,.15)',
-                    color: '#e2e8f0', fontSize: 12, fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: 8,
-                  }}>
-                    <div style={{
-                      width: 10, height: 10, borderRadius: '50%',
-                      background: ['#94a3b8','#a855f7','#3b82f6'][i],
-                      animation: `pulse ${1 + i * 0.3}s ease-in-out infinite`,
-                    }} />
-                    {label}
-                  </div>
-                ))}
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
-                  ✦ Generating 3 UI Variants…
-                </div>
-                <div style={{ fontSize: 14, color: '#94a3b8' }}>
-                  Each variant uses a different design theme — this takes a few minutes
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {[0,1,2,3].map(i => (
-                  <div key={i} style={{
-                    width: 8, height: 8, borderRadius: '50%', background: '#6366f1',
-                    animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
-                  }} />
-                ))}
-              </div>
-              <style>{`
-                @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
-                @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-              `}</style>
-            </div>
-          )}
-
-          {/* ── A/B Variant Picker ──────────────────────────────────────── */}
-          {showVariantPicker && variantsData && (
-            <VariantPicker
-              variants={variantsData.variants}
-              variantGroupId={variantsData.variantGroupId}
-              onSelect={handleVariantSelected}
-              onClose={() => setShowVariantPicker(false)}
-            />
-          )}
-
 
           {/* ── Version Saved Toast ─────────────────────────────────────── */}
           {lastVersionSaved && (
