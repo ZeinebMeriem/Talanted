@@ -4,8 +4,44 @@ import { AiEditor } from './AiEditor'
 import { JiraImportPage } from './JiraImportPage'
 
 function useSafeAuth() {
-  const auth = useAuth()
-  return auth
+  try {
+    const auth = useAuth()
+    return auth
+  } catch {
+    // AuthProvider not available (dev mode without OIDC)
+    // Create a mock JWT with realm_access.roles for admin panel
+    const devToken = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJkZXYtdXNlciIsInByZWZlcnJlZF91c2VybmFtZSI6ImRldmVsb3BlciIsImdpdmVuX25hbWUiOiJEZXZlbG9wZXIiLCJmYW1pbHlfbmFtZSI6IlVzZXIiLCJlbWFpbCI6ImRldkBsb2NhbCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsiYWRtaW4iLCJ1c2VyIl19fQ.'
+
+    return {
+      isLoading: false,
+      isAuthenticated: true,
+      error: null,
+      user: {
+        access_token: devToken,
+        profile: {
+          sub: 'dev-user',
+          preferred_username: 'developer',
+          given_name: 'Developer',
+          family_name: 'User',
+          name: 'Developer User',
+          email: 'dev@local',
+          email_verified: true,
+        },
+      },
+      signinRedirect: async () => {
+        console.log('🔐 Dev mode: signinRedirect called')
+        // In dev mode, we're already "logged in"
+      },
+      signoutRedirect: async () => {
+        console.log('🔐 Dev mode: signoutRedirect called')
+        window.location.assign('/')
+      },
+      removeUser: async () => {
+        console.log('🔐 Dev mode: removeUser called')
+        window.location.assign('/')
+      },
+    }
+  }
 }
 
 // ── Inline logo — no external file needed ────────────────────────────────────

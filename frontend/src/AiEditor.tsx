@@ -510,6 +510,10 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     try {
       setAdminError(null)
       setAdminLoading(true)
+
+      // Debug log
+      console.log('🔍 Loading admin dashboard with token:', accessToken?.substring(0, 30) + '...')
+
       const [users, stats, activity, failed, chart, health] = await Promise.all([
         getAdminUsers(accessToken),
         getAdminStats(accessToken),
@@ -518,6 +522,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
         getAdminDailyChart(accessToken),
         getAdminServiceHealth(accessToken),
       ])
+      console.log('✅ Admin data loaded:', { users: users.length, stats, activity: activity.length, failed: failed.length, chart: chart.length, health })
+
       setAdminUsers(users)
       setAdminStats(stats)
       setAdminActivity(activity)
@@ -525,7 +531,9 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       setAdminDailyChart(chart)
       setAdminHealth(health)
     } catch (e: any) {
-      setAdminError(e?.message ?? 'Failed to load admin data')
+      const errMsg = e?.message ?? 'Failed to load admin data'
+      console.error('❌ Admin dashboard error:', errMsg, e)
+      setAdminError(errMsg)
     } finally {
       setAdminLoading(false)
     }
@@ -558,12 +566,12 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     }
   }, [homeTab, userProfile, profileLoading, loadProfile])
 
-  // Load admin dashboard when tab is opened
+  // Load admin dashboard when tab is opened or token changes
   useEffect(() => {
-    if (homeTab === 'admin' && adminUsers.length === 0 && !adminLoading) {
+    if (homeTab === 'admin' && accessToken) {
       void loadAdminDashboard()
     }
-  }, [homeTab, adminUsers.length, adminLoading, loadAdminDashboard])
+  }, [homeTab, accessToken, loadAdminDashboard])
 
   useEffect(() => {
     if (ideVisible) {
@@ -1627,7 +1635,7 @@ document.addEventListener('click', function(e) {
     const validProjects = history.filter(g => g.generationId)
 
     return (
-      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh' }}>
+      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: '#ffffff' }}>
 
         {/* Brand color bar */}
         <div className="talan-color-bar">
@@ -1745,7 +1753,7 @@ document.addEventListener('click', function(e) {
         </aside>
 
         {/* ── MAIN CONTENT ── */}
-        <main style={{ marginLeft: 260, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4 }}>
+        <main style={{ marginLeft: 260, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4, background: '#ffffff' }}>
 
           {/* ── HOME PAGE ── */}
           {homeTab === 'create' && !showCreateForm && (
@@ -2384,10 +2392,10 @@ document.addEventListener('click', function(e) {
 
               {/* ── OVERVIEW TAB: chart ── */}
               {adminActiveTab === 'overview' && (
-                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, padding: '28px 28px 20px' }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: '0 0 24px' }}>Generations — last 7 days</h3>
+                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '28px 28px 20px' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 24px' }}>Generations — last 7 days</h3>
                   {adminDailyChart.length === 0
-                    ? <p style={{ color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No data yet</p>
+                    ? <p style={{ color: '#94a3b8', fontSize: 14 }}>No data yet</p>
                     : (() => {
                       const max = Math.max(...adminDailyChart.map(d => d.count), 1)
                       return (
@@ -2396,7 +2404,7 @@ document.addEventListener('click', function(e) {
                             <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                               <span style={{ fontSize: 12, fontWeight: 700, color: '#5480ba' }}>{d.count || ''}</span>
                               <div style={{ width: '100%', background: 'linear-gradient(to top,#6366f1,#a78bfa)', borderRadius: '6px 6px 0 0', height: `${Math.max((d.count / max) * 100, d.count ? 4 : 0)}px`, minHeight: d.count ? 4 : 0, transition: 'height .3s' }} />
-                              <span style={{ fontSize: 10, color: 'rgba(0,0,0,.35)', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
+                              <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
                             </div>
                           ))}
                         </div>
@@ -2408,13 +2416,13 @@ document.addEventListener('click', function(e) {
 
               {/* ── USERS TAB ── */}
               {adminActiveTab === 'users' && (
-                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>Registered Developers</h3>
-                    <span style={{ fontSize: 13, color: 'rgba(0,0,0,.35)', background: 'rgba(0,0,0,.04)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
+                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Registered Developers</h3>
+                    <span style={{ fontSize: 13, color: '#64748b', background: 'rgba(0,0,0,.04)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
                   </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminUsers.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No users found</div>}
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminUsers.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No users found</div>}
                   {!adminLoading && adminUsers.map((u, i) => {
                     const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
                     const initials = name.charAt(0).toUpperCase()
@@ -2427,11 +2435,11 @@ document.addEventListener('click', function(e) {
                         <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
+                          <p style={{ fontSize: 12, color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
-                          <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: '0 0 1px' }}>Joined</p>
-                          <p style={{ fontSize: 12, color: 'rgba(0,0,0,.6)', margin: 0 }}>{joinedDate}</p>
+                          <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Joined</p>
+                          <p style={{ fontSize: 12, color: '#475569', margin: 0 }}>{joinedDate}</p>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 60 }}>
                           <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: '0 0 1px' }}>Projects</p>
@@ -2475,14 +2483,14 @@ document.addEventListener('click', function(e) {
 
               {/* ── ACTIVITY TAB ── */}
               {adminActiveTab === 'activity' && (
-                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>Recent Activity</h3>
+                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Recent Activity</h3>
                   </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No activity yet</div>}
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No activity yet</div>}
                   {!adminLoading && adminActivity.map((g, i) => (
-                    <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
+                    <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.05)' : 'none' }}>
                       <span style={{
                         fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
                         background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
@@ -2491,7 +2499,7 @@ document.addEventListener('click', function(e) {
                         {g.status}
                       </span>
                       <p style={{ flex: 1, fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
-                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
                         {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </span>
                     </div>
@@ -2501,22 +2509,22 @@ document.addEventListener('click', function(e) {
 
               {/* ── FAILED TAB ── */}
               {adminActiveTab === 'failed' && (
-                <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>Failed Generations</h3>
+                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
+                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Failed Generations</h3>
                     <span style={{ fontSize: 13, background: 'rgba(248,113,113,.1)', color: '#e04580', padding: '4px 10px', borderRadius: 20 }}>{adminFailed.length} failed</span>
                   </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminFailed.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>No failed generations</div>}
+                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
+                  {!adminLoading && adminFailed.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No failed generations</div>}
                   {!adminLoading && adminFailed.map((g, i) => (
-                    <div key={g.generationId || i} style={{ padding: '16px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
+                    <div key={g.generationId || i} style={{ padding: '16px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(0,0,0,.05)' : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, color: 'rgba(0,0,0,.35)', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 16)}…</span>
-                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)' }}>
+                        <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 16)}…</span>
+                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
                           {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                         </span>
                       </div>
-                      <p style={{ fontSize: 13, color: '#fca5a5', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
+                      <p style={{ fontSize: 13, color: '#e04580', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
                     </div>
                   ))}
                 </div>
@@ -2527,7 +2535,7 @@ document.addEventListener('click', function(e) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                   {adminHealth
                     ? Object.entries(adminHealth).map(([svc, status]) => (
-                      <div key={svc} style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div key={svc} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
                         <div style={{ width: 12, height: 12, borderRadius: '50%', background: status === 'UP' ? '#34d399' : '#f87171', boxShadow: status === 'UP' ? '0 0 8px #34d399' : '0 0 8px #f87171', flexShrink: 0 }} />
                         <div>
                           <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
@@ -2535,7 +2543,7 @@ document.addEventListener('click', function(e) {
                         </div>
                       </div>
                     ))
-                    : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14 }}>Loading health status…</div>
+                    : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading health status…</div>
                   }
                 </div>
               )}

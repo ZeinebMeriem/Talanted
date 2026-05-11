@@ -6,6 +6,7 @@ import com.aiuigenerator.bff.repo.GenerationRepository;
 import com.aiuigenerator.bff.service.KeycloakAdminService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,6 +33,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin")
+@PreAuthorize("hasRole('admin')")
 public class AdminController {
 
     private final KeycloakAdminService keycloakAdmin;
