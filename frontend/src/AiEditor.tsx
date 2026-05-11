@@ -1692,7 +1692,7 @@ document.addEventListener('click', function(e) {
             {([
               ...(!isAdmin ? [{ icon: '⌂', label: 'Home', action: () => setHomeTab('create'), active: homeTab === 'create' }] : []),
               { icon: '⊞', label: `All projects${validProjects.length > 0 ? ` (${validProjects.length})` : ''}`, action: () => setHomeTab('projects'), active: homeTab === 'projects' },
-              { icon: '◉', label: 'Profile', action: () => setHomeTab('profile'), active: homeTab === 'profile' },
+              ...(!isAdmin ? [{ icon: '◉', label: 'Profile', action: () => setHomeTab('profile'), active: homeTab === 'profile' }] : []),
               ...(isAdmin ? [{ icon: '⚙', label: 'Admin Dashboard', action: () => setHomeTab('admin'), active: homeTab === 'admin' }] : []),
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
@@ -1734,13 +1734,23 @@ document.addEventListener('click', function(e) {
 
           {/* Bottom: user + sign out */}
           <div style={{ padding: '12px 14px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
-              {displayName.charAt(0)}
-            </div>
-            <div onClick={() => setHomeTab('profile')} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
-              {email && <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</p>}
-            </div>
+            {!isAdmin && (
+              <>
+                <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
+                  {displayName.charAt(0)}
+                </div>
+                <div onClick={() => setHomeTab('profile')} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
+                  {email && <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</p>}
+                </div>
+              </>
+            )}
+            {isAdmin && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Admin</p>
+                <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: 0 }}>Dashboard</p>
+              </div>
+            )}
             {onLogout && (
               <button onClick={onLogout}
                 style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.35)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 9px', borderRadius: 7, transition: 'all .15s' }}
