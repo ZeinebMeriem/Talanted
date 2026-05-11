@@ -42,6 +42,7 @@ Desktop.ini
 # --- Runtime artifacts ---
 projects/
 tmp-*
+**/logs/
 
 # --- Local analysis / notes (not for repo) ---
 docs/
