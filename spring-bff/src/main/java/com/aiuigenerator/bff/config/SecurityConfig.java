@@ -51,13 +51,17 @@ public class SecurityConfig {
                             .requestMatchers("/", "/error").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
+                            .requestMatchers("/preview/**").permitAll()  // Allow preview endpoints without auth
                             .requestMatchers("/api/admin/**").hasRole("admin")
                             .requestMatchers("/api/**").authenticated()
                             .anyRequest().permitAll())
                     .oauth2ResourceServer(
                             oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
         }
+
+        // Allow framing for preview endpoints (SAMEORIGIN allows same-origin framing)
+        http.headers(headers -> headers
+                .frameOptions(frameOptions -> frameOptions.sameOrigin()));
 
         return http.build();
     }
