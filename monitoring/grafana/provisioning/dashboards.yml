@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'AI UI Generator Dashboards'
+    orgId: 1
+    folder: 'AI UI Generator'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

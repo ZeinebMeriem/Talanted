@@ -1,0 +1,121 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'ai-ui-generator'
+    environment: 'production'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - '/etc/prometheus/alerts.yml'
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # Spring BFF — JVM and HTTP metrics
+  - job_name: 'spring-bff'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['spring-bff:8081']
+        labels:
+          service: 'bff'
+          component: 'spring-boot'
+    scrape_interval: 5s
+    scrape_timeout: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'spring-bff:8081'
+
+  # FastAPI — if instrumented with prometheus_client
+  - job_name: 'fastapi-ai'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['fastapi-ai:8000']
+        labels:
+          service: 'ai-pipeline'
+          component: 'fastapi'
+    scrape_interval: 5s
+    scrape_timeout: 10s
+
+  # Node Exporter — system-level metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node'
+          component: 'system'
+    scrape_interval: 10s
+    scrape_timeout: 10s
+
+  # MongoDB — if mongo-exporter is running
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['mongo-exporter:9216']
+        labels:
+          service: 'database'
+          component: 'mongodb'
+    scrape_interval: 10s
+    scrape_timeout: 10s
+    metrics_relabel_configs:
+      # Keep important metrics
+      - source_labels: [__name__]
+        regex: 'mongodb_(connections|op_counters|storage|replset|process_virtual_memory_bytes|process_resident_memory_bytes)'
+        action: keep
+
+  # Jenkins — if Prometheus plugin is installed
+  - job_name: 'jenkins'
+    static_configs:
+      - targets: ['jenkins:8080']
+        labels:
+          service: 'ci-cd'
+          component: 'jenkins'
+    metrics_path: '/prometheus'
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    basic_auth:
+      username: 'admin'
+      password: 'admin'
+
+  # SonarQube — optional code quality metrics
+  - job_name: 'sonarqube'
+    static_configs:
+      - targets: ['sonarqube:9000']
+        labels:
+          service: 'ci-cd'
+          component: 'sonarqube'
+    metrics_path: '/api/ce/info'
+    scrape_interval: 60s
+    scrape_timeout: 15s
+
+  # Keycloak — identity service (optional)
+  - job_name: 'keycloak'
+    static_configs:
+      - targets: ['keycloak:8080']
+        labels:
+          service: 'auth'
+          component: 'keycloak'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 15s
+
+  # MinIO — object storage (optional)
+  - job_name: 'minio'
+    bearer_token: 'minioadmin'
+    static_configs:
+      - targets: ['minio:9000']
+        labels:
+          service: 'storage'
+          component: 'minio'
+    metrics_path: '/minio/v2/metrics/cluster'
+    scrape_interval: 30s
+    scrape_timeout: 15s

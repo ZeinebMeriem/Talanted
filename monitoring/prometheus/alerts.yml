@@ -1,0 +1,312 @@
+groups:
+  - name: ai-ui-generator
+    interval: 30s
+    rules:
+      # ============================================
+      # SERVICE AVAILABILITY ALERTS
+      # ============================================
+
+      - alert: SpringBFFDown
+        expr: up{job="spring-bff"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: spring-bff
+        annotations:
+          summary: "Spring BFF is down"
+          description: "Spring BFF service has been unavailable for 2+ minutes"
+          value: "{{ $value }}"
+
+      - alert: FastAPIDown
+        expr: up{job="fastapi-ai"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: fastapi-ai
+        annotations:
+          summary: "FastAPI is down"
+          description: "FastAPI (generation pipeline) has been unavailable for 2+ minutes"
+          value: "{{ $value }}"
+
+      - alert: MongoDBDown
+        expr: up{job="mongodb"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: mongodb
+        annotations:
+          summary: "MongoDB is down"
+          description: "MongoDB has been unavailable for 5+ minutes"
+          value: "{{ $value }}"
+
+      # ============================================
+      # GENERATION PIPELINE PERFORMANCE
+      # ============================================
+
+      - alert: HighGenerationLatencyP95
+        expr: histogram_quantile(0.95, rate(request_duration_seconds_bucket{endpoint="/api/generations/stream"}[5m])) > 900
+        for: 10m
+        labels:
+          severity: warning
+          component: generation-pipeline
+        annotations:
+          summary: "High generation latency (p95 > 15 minutes)"
+          description: "95th percentile generation latency: {{ $value | humanizeDuration }}"
+          value: "{{ $value }}"
+
+      - alert: HighGenerationLatencyP99
+        expr: histogram_quantile(0.99, rate(request_duration_seconds_bucket{endpoint="/api/generations/stream"}[5m])) > 1200
+        for: 15m
+        labels:
+          severity: critical
+          component: generation-pipeline
+        annotations:
+          summary: "CRITICAL: Generation latency (p99 > 20 minutes)"
+          description: "99th percentile generation latency: {{ $value | humanizeDuration }}"
+          value: "{{ $value }}"
+
+      - alert: LowBuildSuccessRate
+        expr: rate(build_success_total[5m]) / rate(generation_total[5m]) < 0.90
+        for: 15m
+        labels:
+          severity: warning
+          component: build-pipeline
+        annotations:
+          summary: "Low build success rate (< 90%)"
+          description: "Current success rate: {{ $value | humanizePercentage }}"
+          value: "{{ $value }}"
+
+      - alert: VeryLowBuildSuccessRate
+        expr: rate(build_success_total[5m]) / rate(generation_total[5m]) < 0.85
+        for: 10m
+        labels:
+          severity: critical
+          component: build-pipeline
+        annotations:
+          summary: "CRITICAL: Build success rate (< 85%)"
+          description: "Current success rate: {{ $value | humanizePercentage }} — investigate codegen failures"
+          value: "{{ $value }}"
+
+      # ============================================
+      # CODE QUALITY METRICS
+      # ============================================
+
+      - alert: QualityScoreDegradation
+        expr: avg(quality_score_gauge) < 75
+        for: 20m
+        labels:
+          severity: warning
+          component: quality-evaluation
+        annotations:
+          summary: "Quality scores degraded (avg < 75)"
+          description: "Average generation quality score: {{ $value }}"
+          value: "{{ $value }}"
+
+      - alert: AccessibilityScoreLow
+        expr: avg(accessibility_score_gauge) < 70
+        for: 20m
+        labels:
+          severity: warning
+          component: accessibility
+        annotations:
+          summary: "Accessibility scores low (avg < 70)"
+          description: "Average WCAG 2.1 AA compliance score: {{ $value }}/100"
+          value: "{{ $value }}"
+
+      # ============================================
+      # API PERFORMANCE & ERRORS
+      # ============================================
+
+      - alert: HighHTTPErrorRate
+        expr: (rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High HTTP error rate (5xx > 5%)"
+          description: "Error rate: {{ $value | humanizePercentage }}"
+          value: "{{ $value }}"
+
+      - alert: HighHTTPLatency
+        expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API latency (p95 > 5s)"
+          description: "95th percentile HTTP latency: {{ $value | humanizeDuration }}"
+          value: "{{ $value }}"
+
+      # ============================================
+      # RESOURCE UTILIZATION
+      # ============================================
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage (> 85%)"
+          description: "Available memory: {{ (node_memory_MemAvailable_bytes / 1024 / 1024 / 1024) | humanize }}GB / {{ (node_memory_MemTotal_bytes / 1024 / 1024 / 1024) | humanize }}GB"
+          value: "{{ $value | humanizePercentage }}"
+
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL: Memory critically low (> 95%)"
+          description: "Available memory: {{ (node_memory_MemAvailable_bytes / 1024 / 1024 / 1024) | humanize }}GB — immediate action needed"
+          value: "{{ $value | humanizePercentage }}"
+
+      - alert: HighCPUUsage
+        expr: rate(node_cpu_seconds_total{mode!="idle"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage (> 80%)"
+          description: "CPU usage: {{ $value | humanizePercentage }}"
+          value: "{{ $value }}"
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Low disk space (< 15% available)"
+          description: "Available disk: {{ (node_filesystem_avail_bytes{mountpoint="/"} / 1024 / 1024 / 1024) | humanize }}GB"
+          value: "{{ (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) | humanizePercentage }}"
+
+      - alert: CriticalDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL: Disk nearly full (< 5% available)"
+          description: "Available disk: {{ (node_filesystem_avail_bytes{mountpoint="/"} / 1024 / 1024 / 1024) | humanize }}GB — immediate action required"
+          value: "{{ (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) | humanizePercentage }}"
+
+      # ============================================
+      # JVM & SPRING BOOT SPECIFIC
+      # ============================================
+
+      - alert: HighGCPauseTime
+        expr: histogram_quantile(0.95, jvm_gc_pause_seconds) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: jvm
+        annotations:
+          summary: "High garbage collection pause time (p95 > 2s)"
+          description: "GC pause time at 95th percentile: {{ $value | humanizeDuration }}"
+          value: "{{ $value }}"
+
+      - alert: JVMHeapUsageHigh
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: jvm
+        annotations:
+          summary: "JVM heap usage high (> 85%)"
+          description: "Heap usage: {{ $value | humanizePercentage }} — may lead to GC spikes"
+          value: "{{ $value }}"
+
+      - alert: TooManyJVMThreads
+        expr: jvm_threads_live > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: jvm
+        annotations:
+          summary: "Unusually high JVM thread count (> 100)"
+          description: "Current threads: {{ $value }}"
+          value: "{{ $value }}"
+
+      # ============================================
+      # DATABASE PERFORMANCE
+      # ============================================
+
+      - alert: MongoDBHighConnectionUsage
+        expr: mongodb_connections{connection_type="current"} / mongodb_connections{connection_type="total"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: mongodb
+        annotations:
+          summary: "MongoDB connection pool nearly exhausted (> 80%)"
+          description: "Active connections: {{ (mongodb_connections{connection_type=\"current\"}) | humanize }} / {{ (mongodb_connections{connection_type=\"total\"}) | humanize }}"
+          value: "{{ $value | humanizePercentage }}"
+
+      - alert: MongoDBSlowQueries
+        expr: histogram_quantile(0.95, rate(mongodb_server_query_exec_seconds_bucket[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+          component: mongodb
+        annotations:
+          summary: "MongoDB slow queries (p95 > 1 second)"
+          description: "95th percentile query time: {{ $value | humanizeDuration }}"
+          value: "{{ $value }}"
+
+      # ============================================
+      # LLM PROVIDER ISSUES
+      # ============================================
+
+      - alert: LLMProviderFallback
+        expr: rate(llm_provider_fallback_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: llm-providers
+        annotations:
+          summary: "LLM provider fallback triggered"
+          description: "Primary LLM provider failing, falling back to secondary. Rate: {{ $value }}/sec"
+          value: "{{ $value }}"
+
+      - alert: LLMRateLimitHits
+        expr: rate(llm_rate_limit_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: llm-providers
+        annotations:
+          summary: "LLM rate limit being hit frequently"
+          description: "Rate limit hits per second: {{ $value }} — consider upgrading API tier"
+          value: "{{ $value }}"
+
+      # ============================================
+      # SCHEDULED CHECKS
+      # ============================================
+
+      - alert: PrometheusConfigReloadFailures
+        expr: increase(prometheus_config_last_reload_successful[15m]) == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: prometheus
+        annotations:
+          summary: "Prometheus configuration reload failed"
+          description: "Check prometheus.yml for syntax errors"
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 3m
+        labels:
+          severity: warning
+          component: prometheus
+        annotations:
+          summary: "Prometheus scrape target down: {{ $labels.job }}"
+          description: "Target {{ $labels.instance }} ({{ $labels.job }}) has been down for 3+ minutes"
