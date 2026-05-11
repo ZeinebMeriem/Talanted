@@ -838,8 +838,9 @@ document.addEventListener('click', function(e) {
   }, [userScale])
 
   // Derived — always in sync with apiResult, no separate state needed
+  const bffBaseUrl = import.meta.env.VITE_BFF_BASE_URL || (typeof window !== 'undefined' ? window.location.origin.replace(':5173', ':8081') : '')
   const builtProjectUrl = apiResult?.generationId
-    ? `/preview/${apiResult.generationId}/dist/index.html`
+    ? `${bffBaseUrl}/preview/${apiResult.generationId}/dist/index.html`
     : null
 
 
@@ -1448,7 +1449,7 @@ document.addEventListener('click', function(e) {
       )
       return (
         <iframe
-          src={`http://localhost:8000/projects/${generationId}/dist/index.html`}
+          src={`/preview/${generationId}/dist/index.html`}
           style={{
             position: 'absolute', top: 0, left: 0,
             width: 1280, height: 900,
