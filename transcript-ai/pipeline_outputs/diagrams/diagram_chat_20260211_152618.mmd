@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant TestTeam
+    participant BookingSystem
+    participant Database
+    participant LoggingSystem
+    TestTeam->>BookingSystem: Feature Request
+    BookingSystem-->>TestTeam: Feature Response
+    BookingSystem->>Database: Data Storage
+    Database-->>BookingSystem: Data Retrieval
+    BookingSystem->>LoggingSystem: Log Events
+    LoggingSystem-->>BookingSystem: Event Processing
+    TestTeam->>BookingSystem: Setup Request
+    BookingSystem-->>TestTeam: Setup Response
+    BookingSystem->>Database: Resource Allocation
+    Database-->>BookingSystem: Resource Availability Check

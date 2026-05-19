@@ -416,8 +416,22 @@ export async function createGeneration(
   return data
 }
 
-export async function listGenerations(accessToken?: string): Promise<GenerationListItem[]> {
-  const url = `${BFF_BASE_URL}/api/generations`
+export interface PaginatedGenerations {
+  content: GenerationListItem[]
+  page: number
+  size: number
+  total: number
+  totalPages: number
+  hasNext: boolean
+  hasPrev: boolean
+}
+
+export async function listGenerations(
+  accessToken?: string,
+  page = 0,
+  size = 20,
+): Promise<GenerationListItem[]> {
+  const url = `${BFF_BASE_URL}/api/generations?page=${page}&size=${size}&sortBy=createdAt&direction=desc`
   const res = await fetch(url, { headers: authHeaders(accessToken) })
   const data: unknown = await readJsonOrNull(res)
 
@@ -426,7 +440,10 @@ export async function listGenerations(accessToken?: string): Promise<GenerationL
     throw new Error(message || `HTTP ${res.status}`)
   }
 
-  return Array.isArray(data) ? (data as GenerationListItem[]) : []
+  // Handle both paginated response and legacy array response
+  if (Array.isArray(data)) return data as GenerationListItem[]
+  const paginated = data as PaginatedGenerations
+  return Array.isArray(paginated?.content) ? paginated.content : []
 }
 
 export async function deleteGeneration(generationId: string, accessToken?: string): Promise<void> {

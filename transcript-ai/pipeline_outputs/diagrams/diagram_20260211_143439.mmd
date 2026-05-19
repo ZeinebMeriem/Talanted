@@ -1,0 +1,8 @@
+sequenceDiagram
+    participant Test
+    participant FeatureTester
+    participant TestingSystem
+    Test->>FeatureTester: Feature Testing Request
+    FeatureTester-->>Test: Feature Testing Response
+    FeatureTester->>TestingSystem: Setup Test Case Request
+    TestingSystem-->>FeatureTester: Test Case Setup Response

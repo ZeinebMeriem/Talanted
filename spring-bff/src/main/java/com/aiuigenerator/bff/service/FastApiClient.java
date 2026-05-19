@@ -54,14 +54,20 @@ public class FastApiClient {
     }
 
     public EditFileResponse editFile(EditFileRequest request) {
-        return webClient.post()
-                .uri("/internal/edit-file")
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(EditFileResponse.class)
-                .block();
+        try {
+            return webClient.post()
+                    .uri("/internal/edit-file")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(EditFileResponse.class)
+                    .block();
+        } catch (Exception e) {
+            String msg = e.getMessage();
+            System.err.println("FastAPI /internal/edit-file error: " + msg);
+            throw new RuntimeException("FastAPI edit-file failed: " + msg, e);
+        }
     }
 
     public ProjectFilesResponse getProjectFiles(String generationId) {

@@ -1,0 +1,16 @@
+flowchart TB
+    User([Passenger])
+    Admin([Flight Booking Agent])
+    UC1[Create Account]
+    UC2[Browse Flights]
+    UC3[Book Flight]
+    UC4[Purchase Tickets]
+    UC5[Manage Profile]
+    UC6[Pay for Flight]
+
+    User --> UC1
+    User --> UC2
+    User --> UC3
+    Admin --> UC4
+    Admin --> UC5
+    Admin --> UC6

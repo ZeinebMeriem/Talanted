@@ -62,6 +62,22 @@ const INSPECT_SCRIPT = `
   if (window.__inspectInitialized) return;
   window.__inspectInitialized = true;
 
+  // ── API proxy: rewrite /api/* calls to /preview/{id}/api/* ────────────────────
+  // Extract generation ID from URL path like /preview/ABC123DEF/dist/index.html
+  const pathMatch = window.location.pathname.match(/\\/preview\\/([a-zA-Z0-9_-]+)/);
+  const generationId = pathMatch ? pathMatch[1] : '';
+  if (generationId) {
+    const originalFetch = window.fetch;
+    window.fetch = function(resource, init) {
+      if (typeof resource === 'string' && resource.startsWith('/api/')) {
+        const newPath = '/preview/' + generationId + resource;
+        console.log('\\u2705 API proxy: ' + resource + ' → ' + newPath);
+        return originalFetch(newPath, init);
+      }
+      return originalFetch(resource, init);
+    };
+  }
+
   let hoverBox = null;
   let selectBox = null;
   let selectLabel = null;
@@ -228,25 +244,30 @@ const INSPECT_SCRIPT = `
     placeBox(selectBox, rect);
     placeSelectLabel(rect, labelFor(el));
 
+    // Only send serializable data (no DOM elements, SVG objects, etc.)
     const styles = getComputedStyles(el);
-    window.parent.postMessage({
-      type: 'element-selected',
-      payload: {
-        tagName: el.tagName.toLowerCase(),
-        className: el.className || '',
-        id: el.id || '',
-        textContent: (el.textContent || '').slice(0, 100).trim(),
-        path: getFullPath(el),
-        rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-        styles: {
-          color: rgbToHex(styles.color),
-          backgroundColor: rgbToHex(styles.backgroundColor),
-          fontSize: styles.fontSize, fontFamily: styles.fontFamily,
-          fontWeight: styles.fontWeight, padding: styles.padding,
-          margin: styles.margin, borderRadius: styles.borderRadius, textAlign: styles.textAlign
+    try {
+      window.parent.postMessage({
+        type: 'element-selected',
+        payload: {
+          tagName: el.tagName.toLowerCase(),
+          className: el.className || '',
+          id: el.id || '',
+          textContent: (el.textContent || '').slice(0, 100).trim(),
+          path: getFullPath(el),
+          rect: { top: Math.round(rect.top), left: Math.round(rect.left), width: Math.round(rect.width), height: Math.round(rect.height) },
+          styles: {
+            color: rgbToHex(styles.color),
+            backgroundColor: rgbToHex(styles.backgroundColor),
+            fontSize: styles.fontSize, fontFamily: styles.fontFamily,
+            fontWeight: styles.fontWeight, padding: styles.padding,
+            margin: styles.margin, borderRadius: styles.borderRadius, textAlign: styles.textAlign
+          }
         }
-      }
-    }, '*');
+      }, '*');
+    } catch (err) {
+      console.warn('Failed to send element-selected message:', err);
+    }
   }
 
   function handleMouseLeave() {
@@ -366,24 +387,35 @@ export const Preview: React.FC<PreviewProps> = ({
     }
   }, [selectedElement, onStyleChange, applyStyleToIframe])
 
-  // Listen for messages from iframe
+  // Listen for messages from iframe (with error handling)
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
-      if (e.data.type === 'inspect-ready') {
-        setInspectReady(true)
-        // Send current inspect mode state
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: 'set-inspect-mode', enabled: inspectMode },
-          '*'
-        )
-      } else if (e.data.type === 'element-selected') {
-        const info = e.data.payload as ElementInfo
-        setSelectedElement(info)
-        setEditedStyles({})  // Reset edited styles for new element
-        onElementSelected?.(info)
+      try {
+        // Ignore cross-origin messages and extension messages
+        if (!e.data || typeof e.data !== 'object') return
+
+        if (e.data.type === 'inspect-ready') {
+          setInspectReady(true)
+          // Send current inspect mode state
+          try {
+            iframeRef.current?.contentWindow?.postMessage(
+              { type: 'set-inspect-mode', enabled: inspectMode },
+              '*'
+            )
+          } catch (err) {
+            console.warn('Could not send inspect mode to iframe:', err)
+          }
+        } else if (e.data.type === 'element-selected' && e.data.payload) {
+          const info = e.data.payload as ElementInfo
+          setSelectedElement(info)
+          setEditedStyles({})  // Reset edited styles for new element
+          onElementSelected?.(info)
+        }
+      } catch (err) {
+        console.warn('Error handling iframe message:', err)
       }
     }
-    
+
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
   }, [inspectMode, onElementSelected])
@@ -416,19 +448,39 @@ export const Preview: React.FC<PreviewProps> = ({
   const handleIframeLoad = useCallback(() => {
     setIframeLoading(false)
     setInspectReady(false)
-    
+
     try {
       const iframe = iframeRef.current
-      if (iframe?.contentWindow) {
-        // Inject the inspect script
-        const script = iframe.contentDocument?.createElement('script')
-        if (script) {
+      if (!iframe?.contentWindow || !iframe?.contentDocument) {
+        console.error('✗ Iframe contentWindow/contentDocument not available (cross-origin?)')
+        return
+      }
+
+      console.log('✓ Iframe loaded, waiting for DOM ready...')
+
+      // Wait for the iframe document to be fully ready
+      const injectScript = () => {
+        try {
+          const doc = iframe.contentDocument
+          if (!doc?.body) {
+            console.warn('⏳ Document body not ready yet, retrying...')
+            setTimeout(injectScript, 100)
+            return
+          }
+
+          console.log('✓ iframe DOM ready, injecting inspect script...')
+          const script = doc.createElement('script')
           script.textContent = INSPECT_SCRIPT
-          iframe.contentDocument?.body?.appendChild(script)
+          doc.body.appendChild(script)
+          console.log('✓ Inspect script injected successfully')
+        } catch (err) {
+          console.error('✗ Error injecting script:', err)
         }
       }
+
+      injectScript()
     } catch (err) {
-      console.log('Could not inject inspect script (cross-origin):', err)
+      console.error('✗ Error in handleIframeLoad:', err)
     }
   }, [])
 
@@ -486,7 +538,7 @@ export const Preview: React.FC<PreviewProps> = ({
                   key={`preview-built-${previewReloadCount}`}
                   src={previewReloadCount > 0 ? `${builtProjectUrl}?t=${previewReloadCount}` : builtProjectUrl!}
                   className="w-full h-screen border-none bg-white"
-                  sandbox="allow-same-origin allow-scripts allow-forms"
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation allow-pointer-lock"
                   onLoad={handleIframeLoad}
                   onError={handleIframeError}
                 />

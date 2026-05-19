@@ -3,6 +3,7 @@ package com.aiuigenerator.bff.web;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.List;
+import java.util.Map;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -172,24 +173,42 @@ public class GenerationController {
     }
 
     @GetMapping
-    public List<Generation> list(JwtAuthenticationToken token) {
-        // In dev mode (legacy support), return all projects
+    public Map<String, Object> list(
+            JwtAuthenticationToken token,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction) {
+
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(50, Math.max(1, size));
+
+        List<Generation> all;
         if (devMode) {
-            return service.listAllGenerations();
+            all = service.listAllGenerations();
+        } else {
+            if (token == null || token.getToken() == null)
+                throw new IllegalArgumentException("Authentication required");
+            Object subClaim = token.getToken().getClaims().get("sub");
+            if (subClaim == null)
+                throw new IllegalArgumentException("Invalid token - missing 'sub' claim");
+            all = service.listGenerations(subClaim.toString());
         }
 
-        // Production: require authenticated user
-        if (token == null || token.getToken() == null) {
-            throw new IllegalArgumentException("Authentication required - token missing");
-        }
+        int total = all.size();
+        int fromIdx = Math.min(safePage * safeSize, total);
+        int toIdx = Math.min(fromIdx + safeSize, total);
+        List<Generation> pageContent = all.subList(fromIdx, toIdx);
 
-        Object subClaim = token.getToken().getClaims().get("sub");
-        if (subClaim == null) {
-            throw new IllegalArgumentException("Invalid token - missing 'sub' claim");
-        }
-
-        String userId = subClaim.toString();
-        return service.listGenerations(userId);
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("content", pageContent);
+        response.put("page", safePage);
+        response.put("size", safeSize);
+        response.put("total", total);
+        response.put("totalPages", (int) Math.ceil((double) total / safeSize));
+        response.put("hasNext", toIdx < total);
+        response.put("hasPrev", safePage > 0);
+        return response;
     }
 
     @GetMapping("/{id}/code")
@@ -225,7 +244,8 @@ public class GenerationController {
     @PostMapping("/{id}/edit-file")
     public ResponseEntity<EditFileResponse> editFile(
             @PathVariable("id") String id,
-            @RequestBody EditFileRequest body) {
+            @RequestBody EditFileRequest body,
+            JwtAuthenticationToken token) {
         body.generationId = id;
         EditFileResponse resp = service.editFile(id, body.filePath, body.instruction, body.model);
         return ResponseEntity.ok(resp);

@@ -725,12 +725,19 @@ class FallbackProvider(LlmProvider):
                 return result
             except Exception as exc:
                 err_str = str(exc)
-                is_rate_limit = any(code in err_str for code in ("429", "503", "500", "rate_limit", "quota", "Too Many"))
-                if is_rate_limit:
-                    logger.warning("FallbackProvider: %s hit rate limit (%s) — trying next provider", provider.model, err_str[:80])
+                is_retriable = any(code in err_str for code in (
+                    "413", "429", "503", "500", "rate_limit", "quota",
+                    "Too Many", "Payload Too Large",
+                    "401", "403", "PermissionDenied", "Unauthorized",
+                    "Access denied", "invalid subscription", "invalid key",
+                    "peer closed", "incomplete chunked", "RemoteProtocol",
+                    "connection", "timeout", "timed out", "reset",
+                ))
+                if is_retriable:
+                    logger.warning("FallbackProvider: %s failed (%s) — trying next provider", provider.model, err_str[:80])
                     last_exc = exc
                     continue
-                # Non-rate-limit error — don't fallback, raise immediately
+                # Unexpected error — don't fallback, raise immediately
                 raise
         raise last_exc or RuntimeError("FallbackProvider: all providers exhausted")
 
@@ -748,9 +755,13 @@ class FallbackProvider(LlmProvider):
                 return iter(result)
             except Exception as exc:
                 err_str = str(exc)
-                is_rate_limit = any(code in err_str for code in ("429", "503", "500", "rate_limit", "quota", "Too Many"))
-                if is_rate_limit:
-                    logger.warning("FallbackProvider: stream %s hit rate limit — trying next", provider.model)
+                is_retriable = any(code in err_str for code in (
+                    "429", "503", "500", "rate_limit", "quota", "Too Many",
+                    "401", "403", "PermissionDenied", "Unauthorized",
+                    "Access denied", "invalid subscription", "invalid key",
+                ))
+                if is_retriable:
+                    logger.warning("FallbackProvider: stream %s failed — trying next", provider.model)
                     last_exc = exc
                     continue
                 raise
@@ -935,6 +946,79 @@ def create_coder_provider_with_model(model_override: str | None = None) -> LlmPr
     
     # Otherwise use the standard coder provider (respects CODER_PROVIDER env var)
     return create_coder_provider()
+
+
+def create_ted_provider() -> LlmProvider:
+    """Create the provider for TED assistant with automatic fallback.
+
+    Priority chain: Groq → Gemini → Kimi → Ollama
+    Groq is preferred (fast + conversational) but falls back automatically
+    on 429 rate limits so TED never shows an error to the user.
+    """
+    max_tokens = 1024
+    temperature = 0.7
+    chain: list[LlmProvider] = []
+
+    # 1. Groq primary (fastest, best for conversation)
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if groq_key:
+        chain.append(OpenAiProvider(
+            api_key=groq_key,
+            base_url="https://api.groq.com/openai/v1",
+            model="llama-3.3-70b-versatile",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ))
+        # Groq fallback model with separate 500K/day quota
+        chain.append(OpenAiProvider(
+            api_key=groq_key,
+            base_url="https://api.groq.com/openai/v1",
+            model="llama-3.1-8b-instant",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ))
+
+    # 2. Cohere fallback (command-a-03-2025, generous free tier)
+    cohere_key = os.getenv("COHERE_API_KEY", "").strip()
+    if cohere_key:
+        chain.append(OpenAiProvider(
+            api_key=cohere_key,
+            base_url="https://api.cohere.com/compatibility/v1",
+            model="command-a-03-2025",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ))
+
+    # 3. Gemini fallback
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        chain.append(GeminiProvider(
+            api_key=gemini_key,
+            model="gemini-2.0-flash",
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ))
+
+    # 4. Kimi fallback
+    kimi_key = os.getenv("KIMI_API_KEY", "").strip()
+    if kimi_key:
+        chain.append(OpenAiProvider(
+            api_key=kimi_key,
+            base_url=os.getenv("KIMI_BASE_URL", "https://jawhe-movktvos-eastus2.services.ai.azure.com/openai/v1/").rstrip("/"),
+            model=os.getenv("KIMI_MODEL", "Kimi-K2.6"),
+            max_tokens=max_tokens,
+            temperature=temperature,
+        ))
+
+    if not chain:
+        return _build_ollama_provider(role="planner", max_tokens=max_tokens, temperature=temperature)
+
+    if len(chain) == 1:
+        logger.info("TED provider: %s", chain[0].model)
+        return chain[0]
+
+    logger.info("TED provider: fallback chain = %s", [p.model for p in chain])
+    return FallbackProvider(chain)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────

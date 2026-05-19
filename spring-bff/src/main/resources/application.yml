@@ -91,3 +91,12 @@ gitlab:
     client-id: d1152c3ca144adc13273603e6baea0abbc6ec04ab913c2b7bf1f6056190b528e
     client-secret: gloas-aa32cd15325996201e6c1c5a67e71aa289781499343fcdaca602b3b31510d585
     redirect-uri: http://127.0.0.1:8081/api/gitlab/auth/callback
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    disable-swagger-default-url: true
+  show-actuator: false

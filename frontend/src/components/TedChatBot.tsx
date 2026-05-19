@@ -33,6 +33,7 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
   const { messages, isLoading, isTyping, suggestions, sendMessage, updateContext, applySuggestion, applyToCode, clearMessages } = useTed({
     accessToken,
     enabled: isOpen,
+    generationId: generationId ?? undefined,
   })
 
   // Update TED context when props change
@@ -106,7 +107,26 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
 
             <div className="flex-1">
               <h2 className="font-bold text-base">Chat with TED</h2>
-              <p className="text-xs text-blue-100">Online • AI Assistant</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-blue-100">Online • AI Assistant</p>
+                {messages.length > 1 && (() => {
+                  const lastBot = [...messages].reverse().find(m => m.type === 'bot' && (m as any).mode)
+                  const mode = (lastBot as any)?.mode
+                  if (!mode) return null
+                  const modeConfig: Record<string, { label: string; color: string }> = {
+                    explain: { label: '💬 Explain', color: 'bg-blue-400/30' },
+                    fix:     { label: '🔧 Fix',     color: 'bg-red-400/30' },
+                    improve: { label: '⚡ Improve',  color: 'bg-yellow-400/30' },
+                    generate:{ label: '✨ Generate', color: 'bg-green-400/30' },
+                  }
+                  const cfg = modeConfig[mode]
+                  return cfg ? (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color} text-white`}>
+                      {cfg.label}
+                    </span>
+                  ) : null
+                })()}
+              </div>
             </div>
           </div>
 
@@ -141,7 +161,14 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
           darkMode ? 'bg-slate-800' : 'bg-gray-50'
         }`}>
           {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} darkMode={darkMode} />
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              darkMode={darkMode}
+              generationId={generationId}
+              accessToken={accessToken}
+              onFileApplied={onFileApplied}
+            />
           ))}
 
           {/* Typing Indicator */}
@@ -160,11 +187,13 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
             </div>
           )}
 
-          {/* Quick Reply Buttons (show after first message) */}
-          {messages.length > 1 && !isLoading && suggestions.length === 0 && (
-            <div className="mt-6 flex flex-wrap gap-2">
-              <QuickReplyButton text="Yes, sure!" onClick={() => sendMessage('Yes, sounds good!')} darkMode={darkMode} />
-              <QuickReplyButton text="No, thanks." onClick={() => sendMessage('No, Im good for now.')} darkMode={darkMode} />
+          {/* Quick mode shortcuts */}
+          {messages.length === 1 && !isLoading && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <QuickReplyButton text="💬 Explain code" onClick={() => sendMessage('Explain how this component works')} darkMode={darkMode} />
+              <QuickReplyButton text="🔧 Fix a bug" onClick={() => sendMessage('I have a bug, which component or file?')} darkMode={darkMode} />
+              <QuickReplyButton text="⚡ Improve" onClick={() => sendMessage('Improve the current file performance')} darkMode={darkMode} />
+              <QuickReplyButton text="✨ Generate" onClick={() => sendMessage('Generate a new component')} darkMode={darkMode} />
             </div>
           )}
 
@@ -178,15 +207,21 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
                   suggestion={suggestion}
                   applying={applyingId === suggestion.id}
                   onAsk={() => applySuggestion(suggestion)}
-                  onApply={
-                    suggestion.file && suggestion.instruction && generationId
-                      ? async () => {
-                          setApplyingId(suggestion.id)
-                          await applyToCode(suggestion, generationId, onFileApplied)
-                          setApplyingId(null)
-                        }
-                      : undefined
-                  }
+                  onApply={(() => {
+                    // Try to extract file from suggestion.file OR from description text
+                    const fileFromDesc = !suggestion.file
+                      ? (suggestion.description?.match(/\(?((?:src\/)?[^\s(),]+\.(?:tsx?|py|jsx?))\)?/)?.[1] ?? null)
+                      : null
+                    const resolvedFile = suggestion.file || fileFromDesc
+                    const resolvedInstruction = suggestion.instruction || suggestion.action || suggestion.description
+                    if (!resolvedFile || !resolvedInstruction) return undefined
+                    return async () => {
+                      if (!generationId) { alert('Open a project first to apply changes.'); return }
+                      setApplyingId(suggestion.id)
+                      await applyToCode({ ...suggestion, file: resolvedFile, instruction: resolvedInstruction }, generationId, onFileApplied)
+                      setApplyingId(null)
+                    }
+                  })()}
                   darkMode={darkMode}
                 />
               ))}
@@ -207,13 +242,13 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => {
+                onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     handleSendMessage()
                   }
                 }}
-                placeholder="Enter your message..."
+                placeholder="Explique, corrige, améliore ou génère..."
                 disabled={isLoading}
                 className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 transition-all text-sm ${
                   darkMode
@@ -242,7 +277,7 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
             </button>
           </div>
           <p className={`text-xs mt-3 ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>
-            💡 Tip: Ask TED for help with your UI generation
+            💬 Explique · 🔧 Corrige · ⚡ Améliore · ✨ Génère
           </p>
         </div>
       </div>
@@ -256,10 +291,72 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
 interface MessageBubbleProps {
   message: TedMessage
   darkMode: boolean
+  generationId?: string
+  accessToken?: string
+  onFileApplied?: () => void
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode }) => {
+/** Split text into plain text and code block segments */
+function parseMessageSegments(text: string): Array<{ type: 'text' | 'code'; content: string; lang?: string }> {
+  const segments: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = []
+  const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: 'text', content: text.slice(lastIndex, match.index) })
+    }
+    segments.push({ type: 'code', lang: match[1] || 'code', content: match[2].trim() })
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', content: text.slice(lastIndex) })
+  }
+  return segments
+}
+
+/** Extract file path from TED response: 📁 **File: `path`** */
+function extractFilePath(text: string): string | null {
+  // Match "File: `src/App.tsx`" or "Fichier : `App.tsx`"
+  const match = text.match(/(?:File|Fichier)\s*:\s*[`']?([\w./\-]+\.(?:tsx?|py|jsx?|css|json))[`']?/i)
+  return match ? match[1] : null
+}
+
+const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode, generationId, accessToken, onFileApplied }) => {
   const isUser = message.type === 'user'
+  const [copiedIdx, setCopiedIdx] = React.useState<number | null>(null)
+  const [applyingIdx, setApplyingIdx] = React.useState<number | null>(null)
+  const [appliedIdx, setAppliedIdx] = React.useState<number | null>(null)
+  const segments = parseMessageSegments(message.text)
+  const filePath = !isUser ? extractFilePath(message.text) : null
+
+  const handleCopy = (code: string, idx: number) => {
+    navigator.clipboard.writeText(code)
+    setCopiedIdx(idx)
+    setTimeout(() => setCopiedIdx(null), 1500)
+  }
+
+  const handleApply = async (code: string, idx: number) => {
+    if (!filePath || !accessToken) return
+    if (!generationId) {
+      alert('Ouvre un projet pour pouvoir appliquer ce fix.')
+      return
+    }
+    setApplyingIdx(idx)
+    try {
+      const { editFile } = await import('../api')
+      await editFile(generationId, filePath, `Apply this exact code to the file:\n\n\`\`\`\n${code}\n\`\`\``, accessToken)
+      setAppliedIdx(idx)
+      onFileApplied?.()
+    } catch (e: any) {
+      console.error('Apply failed:', e)
+      if (e?.message?.includes('401')) {
+        alert('Session expired. Please refresh the page.')
+      }
+    } finally {
+      setApplyingIdx(null)
+    }
+  }
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}>
@@ -278,7 +375,37 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode }) => {
                 : 'bg-gray-200 text-gray-900 rounded-bl-none border border-gray-300'
           }`}
         >
-          <p className="text-sm leading-relaxed">{message.text}</p>
+          {/* Render text + code blocks */}
+          {segments.map((seg, idx) =>
+            seg.type === 'code' ? (
+              <div key={idx} className="my-2 rounded-lg overflow-hidden border border-black/20">
+                {/* Code header */}
+                <div className={`flex items-center justify-between px-3 py-1 text-xs font-mono ${darkMode ? 'bg-slate-900 text-slate-300' : 'bg-gray-800 text-gray-300'}`}>
+                  <span>{seg.lang}{filePath ? ` · ${filePath.split('/').pop()}` : ''}</span>
+                  <div className="flex items-center gap-2">
+                    {filePath && accessToken && (
+                      <button
+                        onClick={() => handleApply(seg.content, idx)}
+                        disabled={applyingIdx === idx || appliedIdx === idx}
+                        className="text-green-400 hover:text-green-300 disabled:opacity-60 transition-colors font-medium"
+                      >
+                        {appliedIdx === idx ? '✓ Appliqué' : applyingIdx === idx ? '…' : '⚡ Appliquer'}
+                      </button>
+                    )}
+                    <button onClick={() => handleCopy(seg.content, idx)} className="hover:text-white transition-colors">
+                      {copiedIdx === idx ? '✓ Copié' : '⎘ Copier'}
+                    </button>
+                  </div>
+                </div>
+                {/* Code body */}
+                <pre className={`px-3 py-2 text-xs overflow-x-auto leading-relaxed ${darkMode ? 'bg-slate-950 text-green-300' : 'bg-gray-900 text-green-300'}`}>
+                  <code>{seg.content}</code>
+                </pre>
+              </div>
+            ) : (
+              <p key={idx} className="text-sm leading-relaxed whitespace-pre-wrap">{seg.content}</p>
+            )
+          )}
 
           {/* Action Steps */}
           {message.actionSteps && message.actionSteps.length > 0 && (
@@ -293,15 +420,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode }) => {
             </div>
           )}
 
-          <span
-            className={`text-xs mt-3 block opacity-70 ${
-              isUser ? 'text-blue-100' : ''
-            }`}
-          >
-            {message.timestamp.toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
+          <span className={`text-xs mt-3 block opacity-70 ${isUser ? 'text-blue-100' : ''}`}>
+            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
       </div>

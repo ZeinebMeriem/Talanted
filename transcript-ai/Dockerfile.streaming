@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Only install what's needed for the browser API (no sounddevice/portaudio)
+RUN pip install --no-cache-dir \
+    flask==3.0.0 \
+    flask-cors==4.0.0 \
+    requests>=2.31.0 \
+    python-dotenv>=1.0.0
+
+COPY api_browser.py .
+
+EXPOSE 5001
+
+ENV PIPELINE_API_URL=http://transcript-pipeline:8082
+
+CMD ["python", "api_browser.py"]

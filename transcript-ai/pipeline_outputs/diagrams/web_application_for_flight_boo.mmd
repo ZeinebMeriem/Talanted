@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant Brian
+    participant Ken
+    participant RequestHandler
+    Brian->>Ken: Authentication Request
+    Ken-->>Brian: Authentication Response
+    Ken->>RequestHandler: Valid Authentication Request
+    RequestHandler-->>Ken: Valid Authentication Response
+    Ken->>Brian: User Account Management Request
+    Brian-->>Ken: User Account Management Response
+    Ken->>RequestHandler: Payment Methods Request
+    RequestHandler-->>Ken: Payment Methods Response

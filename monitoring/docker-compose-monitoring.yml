@@ -7,8 +7,8 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -21,12 +21,6 @@ services:
     restart: unless-stopped
     networks:
       - ai-ui-generator_default
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   grafana:
     image: grafana/grafana:latest
@@ -43,20 +37,13 @@ services:
       - GF_SMTP_ENABLED=false
       - TZ=UTC
     volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
     depends_on:
-      prometheus:
-        condition: service_healthy
+      - prometheus
     restart: unless-stopped
     networks:
       - ai-ui-generator_default
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -75,11 +62,6 @@ services:
     restart: unless-stopped
     networks:
       - ai-ui-generator_default
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 volumes:
   prometheus_data:

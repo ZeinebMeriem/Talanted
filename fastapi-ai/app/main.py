@@ -39,14 +39,42 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+_ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:8081,http://ai-ui-spring-bff:8080"
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    allow_credentials=True,
 )
 
 orchestrator = Orchestrator()
+
+# ── Internal endpoint protection ─────────────────────────────────────────────
+_INTERNAL_SECRET = os.getenv("INTERNAL_API_SECRET", "")
+_ALLOWED_INTERNAL_HOSTS = {"ai-ui-spring-bff", "spring-bff", "localhost", "127.0.0.1"}
+
+@app.middleware("http")
+async def protect_internal_endpoints(request: Request, call_next):
+    """Block /internal/* requests from external networks only."""
+    if request.url.path.startswith("/internal/"):
+        client_host = (request.client.host if request.client else "") or ""
+        provided_secret = request.headers.get("X-Internal-Secret", "")
+        # Allow Docker internal network (172.x.x.x, 10.x.x.x, 192.168.x.x)
+        is_private_network = (
+            client_host.startswith("172.") or
+            client_host.startswith("10.") or
+            client_host.startswith("192.168.") or
+            client_host in _ALLOWED_INTERNAL_HOSTS
+        )
+        secret_ok = bool(_INTERNAL_SECRET) and provided_secret == _INTERNAL_SECRET
+        if not is_private_network and not secret_ok:
+            return JSONResponse(status_code=403, content={"detail": "Internal endpoint — access denied"})
+    return await call_next(request)
 
 # Import and register TED routes
 try:

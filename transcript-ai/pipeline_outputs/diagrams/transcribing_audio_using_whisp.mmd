@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant User
+    participant GoogleColab
+    User->>GoogleColab: Install Whisper and FFmpeg in Google Colab
+    GoogleColab-->>User: Successfully installed Whisper and FFmpeg
+    User->>GoogleColab: Upload audio file
+    GoogleColab-->>User: Audio file successfully uploaded
+    User->>GoogleColab: Select model (medium)
+    GoogleColab-->>User: Transcription completed
+    User->>GoogleColab: Download SRT and TXT files
+    GoogleColab-->>User: Files downloaded
+    User->>GoogleColab: Run again for another file
+    GoogleColab-->>User: Another transcription completed

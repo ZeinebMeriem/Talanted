@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant Elias
+    participant Ahmed
+    participant FlutterAppDevTeam
+    participant FirebaseAuth
+    participant FirestoreDB
+    participant ImageStorageService
+    participant NotificationService
+    Elias->>Ahmed: Project Specification Request
+    Ahmed-->>Elias: Mobile Application Requested
+    Ahmed->>FlutterAppDevTeam: Technologies Suggestion Request
+    FlutterAppDevTeam-->>Ahmed: Flutter Technology Suggestion
+    Ahmed-->>Elias: Confirm Flutter Choice
+    Elias-->>Ahmed: Reach Out When Done
+    Ahmed->>FirebaseAuth: Login/Signup System
+    Ahmed->>FirestoreDB: User Profiles, Messaging, Posts, Comments,
+    Ahmed->>ImageStorageService: Image Uploads and Storage
+    Ahmed->>NotificationService: Push Notifications for Activity Updates
+    alt Security Measures
+    FlutterAppDevTeam-->>Ahmed: Implement Encryption for Sensitive Data
+    end
+    alt Performance Optimization
+    FlutterAppDevTeam-->>Ahmed: Optimize Code for Faster Execution
+    end
+    Ahmed->>FlutterAppDevTeam: User Interface Design and Development
+    alt Database Integration
+    FirestoreDB->>FlutterAppDevTeam: Database Querying and Management
+    ImageStorageService->>FlutterAppDevTeam: Storage Synchronization with FirestoreDB
+    NotificationService->>FlutterAppDevTeam: Push Notification Handling
+    end

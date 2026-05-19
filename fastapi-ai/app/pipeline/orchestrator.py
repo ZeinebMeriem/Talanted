@@ -739,6 +739,21 @@ class Orchestrator:
                 full_path = os.path.join(src_dir, rel_path)
                 logger.info("edit_file: resolved '%s' -> '%s'", req.filePath, rel_path)
             else:
+                # If instruction contains code blocks, create the file instead of failing
+                import re as _re
+                code_in_instruction = _re.search(r"```[\w]*\n([\s\S]+?)```", req.instruction)
+                if code_in_instruction:
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    new_code = code_in_instruction.group(1).strip()
+                    with open(full_path, "w", encoding="utf-8") as fh:
+                        fh.write(new_code)
+                    logger.info("edit_file: created new file %s", rel_path)
+                    return EditFileResponse(
+                        generationId=req.generationId,
+                        filePath=rel_path,
+                        updatedCode=new_code,
+                        success=True,
+                    )
                 raise FileNotFoundError(f"File not found: {rel_path} (looked in {full_path})")
 
         with open(full_path, "r", encoding="utf-8") as fh:
@@ -754,7 +769,8 @@ class Orchestrator:
             # The coder fallback chain includes Claude Sonnet (200K context) which handles large files.
             code_for_llm = current_code
             extract_start = extract_end = None
-            logger.info("edit_file: sending full file (%d chars) to LLM", len(current_code))
+
+            logger.info("edit_file: sending code (%d chars) to LLM (fallback chain handles large files)", len(code_for_llm))
 
             # Build edit prompt with explicit completeness instructions
             is_partial = code_for_llm != current_code
@@ -775,19 +791,32 @@ class Orchestrator:
                 "Every element needs proper content and closing tags.\n"
             )
 
-            # Call the coder LLM
-            try:
-                system_msg = (
-                    "You are a precise code editor that generates COMPLETE, VALID code. "
-                    "NEVER truncate output - always finish all components, tags, and braces. "
-                    "Every JSX element must be properly closed. "
-                    "If editing App.tsx, ALWAYS include the App function and export default App. "
-                    "Return the complete file. No markdown, no explanation."
-                )
-                new_code = codegen_agent.provider.chat(system_msg, edit_prompt)
-            except Exception as exc:
-                logger.error("edit_file: LLM call failed — %s", exc)
-                raise
+            # Call the coder LLM — retry once on transient network errors
+            system_msg = (
+                "You are a precise code editor that generates COMPLETE, VALID code. "
+                "NEVER truncate output - always finish all components, tags, and braces. "
+                "Every JSX element must be properly closed. "
+                "If editing App.tsx, ALWAYS include the App function and export default App. "
+                "Return the complete file. No markdown, no explanation."
+            )
+            new_code = None
+            for attempt in range(2):
+                try:
+                    new_code = codegen_agent.provider.chat(system_msg, edit_prompt)
+                    break
+                except Exception as exc:
+                    err_str = str(exc)
+                    is_transient = any(k in err_str for k in (
+                        "peer closed", "incomplete chunked", "RemoteProtocol",
+                        "timeout", "timed out", "connection reset", "429", "503",
+                    ))
+                    if is_transient and attempt == 0:
+                        logger.warning("edit_file: transient error on attempt 1, retrying — %s", err_str[:80])
+                        continue
+                    logger.error("edit_file: LLM call failed — %s", exc)
+                    raise
+            if not new_code:
+                raise RuntimeError("edit_file: LLM returned empty response")
 
             # Strip markdown fences from the LLM output BEFORE patch-back.
             # If we strip AFTER, the fence ends up embedded inside the full file.

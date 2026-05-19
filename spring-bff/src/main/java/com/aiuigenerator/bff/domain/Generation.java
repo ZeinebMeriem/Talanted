@@ -4,9 +4,16 @@ import java.time.Instant;
 import java.util.List;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document(collection = "generations")
+@CompoundIndexes({
+    @CompoundIndex(name = "userId_createdAt", def = "{'userId': 1, 'createdAt': -1}"),
+    @CompoundIndex(name = "userId_status", def = "{'userId': 1, 'status': 1}")
+})
 public class Generation {
 
     @Id
@@ -26,6 +33,7 @@ public class Generation {
 
     private Instant updatedAt;
 
+    @Indexed
     private String userId;
 
     private String jiraIssueKey;

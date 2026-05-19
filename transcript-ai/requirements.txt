@@ -1,0 +1,32 @@
+# ── Core ──────────────────────────────────────────────
+python-dotenv>=1.0.0
+requests>=2.31.0
+numpy>=1.24.0,<2.0.0
+
+# ── ElevenLabs SDK (Scribe v2 speech-to-text) ────────
+elevenlabs>=1.0.0
+
+# ── Audio recording & processing ─────────────────────
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# ── Language detection ────────────────────────────────
+langdetect>=1.0.9
+
+# ── Flask API server (transcription endpoints) ───────
+flask>=3.0.0
+flask-cors>=4.0.0
+flask-socketio>=5.3.5
+python-socketio>=5.10.0
+
+# ── FastAPI pipeline server ──────────────────────────
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+
+# ── RAG / Vector store ──────────────────────────────
+chromadb>=0.4.22
+sentence-transformers>=2.3.0
+
+# ── PDF report generation ───────────────────────────
+reportlab>=4.0.0

@@ -5,16 +5,21 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Document(collection = "accessibility_audits")
+@CompoundIndex(name = "generationId_timestamp", def = "{'generationId': 1, 'timestamp': -1}")
 public class AccessibilityAudit {
 
     @Id
     private String id;
 
+    @Indexed
     private String generationId;
 
+    @Indexed
     private String userId;
 
     private Instant timestamp;

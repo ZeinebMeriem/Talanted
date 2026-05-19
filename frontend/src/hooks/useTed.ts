@@ -1,23 +1,65 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { tedSendMessage, tedGetSuggestions, editFile, type TedContext, type TedMessage as TedMessageType, type TedSuggestion as TedSuggestionType } from '../api'
 
-export type TedMessage = TedMessageType
+export type TedMode = 'explain' | 'fix' | 'improve' | 'generate'
+
+export type TedMessage = TedMessageType & { mode?: TedMode }
 export type TedSuggestion = TedSuggestionType
+
+const GREETING: TedMessage = {
+  id: '1',
+  type: 'bot',
+  text: "Hey! I'm TED, your UI assistant. What do you want to do — explain, fix, improve or generate code? 🚀",
+  timestamp: new Date(),
+}
+
+const storageKey = (id: string) => `ted_chat_${id}`
+
+function loadMessages(generationId: string): TedMessage[] {
+  try {
+    const raw = localStorage.getItem(storageKey(generationId))
+    if (!raw) return [GREETING]
+    const parsed = JSON.parse(raw) as TedMessage[]
+    // Restore Date objects
+    return parsed.map(m => ({ ...m, timestamp: new Date(m.timestamp) }))
+  } catch {
+    return [GREETING]
+  }
+}
+
+function saveMessages(generationId: string, msgs: TedMessage[]) {
+  try {
+    // Keep last 100 messages to avoid hitting storage limits
+    localStorage.setItem(storageKey(generationId), JSON.stringify(msgs.slice(-100)))
+  } catch { /* storage full — ignore */ }
+}
 
 interface UseTedOptions {
   accessToken?: string
   enabled?: boolean
+  generationId?: string
 }
 
-export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
-  const [messages, setMessages] = useState<TedMessage[]>([
-    {
-      id: '1',
-      type: 'bot',
-      text: "Hey! I'm TED, your AI generation assistant. I'm here to help you build amazing UIs! 🚀",
-      timestamp: new Date(),
-    },
-  ])
+export const useTed = ({ accessToken, enabled = true, generationId }: UseTedOptions) => {
+  const [messages, setMessages] = useState<TedMessage[]>(() =>
+    generationId ? loadMessages(generationId) : [GREETING]
+  )
+
+  // Load history when project changes
+  useEffect(() => {
+    if (generationId) {
+      setMessages(loadMessages(generationId))
+    } else {
+      setMessages([GREETING])
+    }
+  }, [generationId])
+
+  // Save history whenever messages change
+  useEffect(() => {
+    if (generationId && messages.length > 0) {
+      saveMessages(generationId, messages)
+    }
+  }, [generationId, messages])
 
   const [isLoading, setIsLoading] = useState(false)
   const [suggestions, setSuggestions] = useState<TedSuggestion[]>([])
@@ -91,6 +133,7 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
           text: response.response,
           timestamp: new Date(),
           actionSteps: response.actionSteps,
+          mode: (response as any).mode as TedMode,
         }
 
         setMessages((prev) => [...prev, botMessage])
@@ -109,7 +152,7 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
         const errorMessage: TedMessage = {
           id: `bot-error-${Date.now()}`,
           type: 'bot',
-          text: "Sorry, I encountered an error. Let me try again in a moment! 🔧",
+          text: "Sorry, something went wrong. Please try again! 🔧",
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, errorMessage])
@@ -185,16 +228,19 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
         const doneMsg: TedMessageType = {
           id: `bot-done-${Date.now()}`,
           type: 'bot',
-          text: `Done! \`${suggestion.file}\` has been updated. Check the editor to see the changes.`,
+          text: `✅ Applied! \`${suggestion.file}\` has been updated. The preview will reload automatically.`,
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, doneMsg])
         onSuccess?.()
       } catch (err: any) {
+        const isAuth = err?.message?.includes('401')
         const errMsg: TedMessageType = {
           id: `bot-err-${Date.now()}`,
           type: 'bot',
-          text: `Could not apply the change: ${err?.message ?? 'unknown error'}. You can still follow the suggestion manually.`,
+          text: isAuth
+            ? '⚠️ Session expired. Please refresh the page and try again.'
+            : `❌ Could not apply: ${err?.message?.split(':')[0] ?? 'unknown error'}. Try copying the code manually.`,
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, errMsg])
@@ -209,16 +255,16 @@ export const useTed = ({ accessToken, enabled = true }: UseTedOptions) => {
    * Clear chat history
    */
   const clearMessages = useCallback(() => {
-    setMessages([
-      {
-        id: '1',
-        type: 'bot',
-        text: "I've cleared our chat history. What would you like to work on? 🚀",
-        timestamp: new Date(),
-      },
-    ])
+    const reset: TedMessage = {
+      id: `1-${Date.now()}`,
+      type: 'bot',
+      text: "Chat cleared. What would you like to work on? 🚀",
+      timestamp: new Date(),
+    }
+    setMessages([reset])
     setSuggestions([])
-  }, [])
+    if (generationId) localStorage.removeItem(storageKey(generationId))
+  }, [generationId])
 
   return {
     messages,

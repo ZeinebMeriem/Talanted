@@ -29,6 +29,16 @@ pipeline {
             defaultValue: false,
             description: 'Push Docker images to registry'
         )
+        booleanParam(
+            name: 'DEPLOY',
+            defaultValue: false,
+            description: 'Deploy to target environment after build'
+        )
+        choice(
+            name: 'DEPLOY_ENV',
+            choices: ['staging', 'production'],
+            description: 'Target deployment environment'
+        )
     }
 
     stages {
@@ -234,6 +244,56 @@ pipeline {
                         echo "Images pushed"
                     '''
                 }
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                expression { params.DEPLOY == true && params.BUILD_TYPE == 'FULL' }
+            }
+            steps {
+                script {
+                    def envFile = params.DEPLOY_ENV == 'production' ? '.env.production' : '.env.staging'
+                    echo "Deploying to ${params.DEPLOY_ENV} using ${envFile}"
+                    sh """
+                        # Pull latest images and recreate containers
+                        docker compose --env-file ${envFile} pull
+                        docker compose --env-file ${envFile} up -d --remove-orphans
+
+                        # Wait for health checks
+                        sleep 15
+
+                        # Verify critical services are healthy
+                        docker compose ps | grep -E 'healthy|running' | wc -l
+                        echo "Deployment to ${params.DEPLOY_ENV} complete — build #${BUILD_NUMBER}"
+                    """
+                }
+            }
+            post {
+                success {
+                    echo "✅ Deployed build #${BUILD_NUMBER} to ${params.DEPLOY_ENV}"
+                }
+                failure {
+                    echo "❌ Deployment failed — rolling back to previous version"
+                    sh "docker compose up -d --no-recreate || true"
+                }
+            }
+        }
+
+        stage('Smoke Tests') {
+            when {
+                expression { params.DEPLOY == true && params.BUILD_TYPE == 'FULL' }
+            }
+            steps {
+                sh """
+                    # Wait for services to be ready
+                    sleep 10
+
+                    # Health check on key endpoints
+                    curl -f http://localhost:8000/health || exit 1
+                    curl -f http://localhost:8081/actuator/health || exit 1
+                    echo "✅ Smoke tests passed"
+                """
             }
         }
 

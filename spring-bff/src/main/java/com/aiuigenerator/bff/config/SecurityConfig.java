@@ -59,9 +59,9 @@ public class SecurityConfig {
                             oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
         }
 
-        // Allow framing for preview endpoints (SAMEORIGIN allows same-origin framing)
+        // Disable X-Frame-Options globally — preview endpoints need iframe embedding
         http.headers(headers -> headers
-                .frameOptions(frameOptions -> frameOptions.sameOrigin()));
+                .frameOptions(frameOptions -> frameOptions.disable()));
 
         return http.build();
     }

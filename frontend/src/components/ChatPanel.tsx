@@ -371,7 +371,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       : chatInput
 
     try {
-      const response = await editFile(selectedGenerationId, '', instruction, selectedModel, accessToken)
+      const response = await editFile(selectedGenerationId, '', instruction, accessToken ?? '', selectedModel)
 
       const edits = response.filePath ? [{
         file: response.filePath,

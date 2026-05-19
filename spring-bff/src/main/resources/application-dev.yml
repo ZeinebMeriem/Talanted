@@ -1,3 +1,5 @@
 app:
   security:
     dev-mode: true
+  bff:
+    base-url: http://localhost:8081

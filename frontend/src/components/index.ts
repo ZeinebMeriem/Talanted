@@ -12,6 +12,8 @@ export { AccessibilityReport } from './AccessibilityReport'
 export { AccountSettings } from './AccountSettings'
 export { DarkModeToggle } from './DarkModeToggle'
 export { HomePage, type HomePageProps } from './HomePage'
+export { NotFound } from './NotFound'
+export { MeetingRecorder } from './MeetingRecorder'
 
 // Enterprise UI Components
 export { ToastProvider, useToastContext, type ToastType, type ToastMessage } from './ui/Toast'

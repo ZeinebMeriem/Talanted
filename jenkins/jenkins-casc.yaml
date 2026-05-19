@@ -1,34 +1,15 @@
 jenkins:
   systemMessage: "AI UI Generator — Jenkins CI/CD Pipeline"
   securityRealm:
-    saml:
-      # Configure SAML if using SSO, otherwise use local auth
-      binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-      displayNameAttributeName: "displayName"
-      groupsAttributeName: "groups"
-      idpMetadataConfiguration:
-        url: "http://keycloak:8080/realms/ai-ui/protocol/saml/descriptor"
     local:
       allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin123"
 
   authorizationStrategy:
-    roleBased:
-      roles:
-        global:
-          - name: "admin"
-            permissions:
-              - "hudson.model.Hudson.Administer"
-          - name: "developer"
-            permissions:
-              - "hudson.model.Item.Build"
-              - "hudson.model.Item.Cancel"
-              - "hudson.model.Item.Read"
-              - "hudson.model.Run.Delete"
-              - "hudson.model.Run.Update"
-          - name: "viewer"
-            permissions:
-              - "hudson.model.Item.Read"
-              - "hudson.model.Hudson.Read"
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
 
   crumbIssuer:
     standard:
@@ -37,143 +18,40 @@ jenkins:
   remotingSecurity:
     enabled: true
 
-  # Global Pipeline Libraries
-  globalLibraries:
-    libraries:
-      - name: "shared-library"
-        defaultVersion: "main"
-        implicit: true
-        allowVersionOverride: true
-        includeInChangesets: false
-        scm:
-          git:
-            remote: "file:///var/jenkins_home/jenkins-config/shared-library"
-
 credentials:
   system:
     domainCredentials:
       - credentials:
-          # SonarQube Token
-          - sonarToken:
-              id: "sonar-token"
-              scope: GLOBAL
-              secret: "${SONAR_TOKEN}"
-              description: "SonarQube Analysis Token"
-
-          # GitHub Token (if using GitHub)
-          - string:
+          - usernamePassword:
               id: "github-token"
               scope: GLOBAL
-              secret: "${GITHUB_TOKEN}"
+              username: "${GITHUB_USER:-MeriemBoukraa}"
+              password: "${GITHUB_TOKEN:-changeme}"
               description: "GitHub Personal Access Token"
-
-          # GitLab Token (if using GitLab)
+          - string:
+              id: "sonar-token"
+              scope: GLOBAL
+              secret: "${SONAR_TOKEN:-changeme}"
+              description: "SonarQube Analysis Token"
           - string:
               id: "gitlab-token"
               scope: GLOBAL
-              secret: "${GITLAB_TOKEN}"
+              secret: "${GITLAB_TOKEN:-changeme}"
               description: "GitLab Personal Access Token"
-
-          # Docker Registry Credentials
-          - usernamePassword:
-              id: "docker-registry"
-              scope: GLOBAL
-              username: "${DOCKER_USERNAME}"
-              password: "${DOCKER_PASSWORD}"
-              description: "Docker Registry Credentials"
-
-          # SSH Key for Git
-          - basicSSHUserPrivateKey:
-              id: "git-ssh-key"
-              scope: GLOBAL
-              username: "git"
-              privateKeySource:
-                directEntry:
-                  privateKey: "${GIT_SSH_KEY}"
-              description: "SSH Key for Git Operations"
 
 unclassified:
   location:
-    url: "http://localhost:8080/"
+    url: "http://localhost:8090/"
 
-  # SonarQube Configuration
   sonarGlobalConfiguration:
     installations:
       - name: "SonarQube-Server"
-        serverUrl: "http://sonarqube:9000"
-        serverAuthenticationToken: "${SONAR_TOKEN}"
-        monoRepoEnabled: false
-        alwaysUseMasterToken: true
-
-  # Git Configuration
-  gitSCM:
-    createAccountBasedOnEmail: true
-    disableDefaults: false
-    ignoreNotifyCommit: false
-
-  # Pipeline Configuration
-  pipelineGlobals:
-    libraries:
-      - defaultVersion: "main"
-        implicit: true
-        name: "ai-ui-shared-lib"
-        allowVersionOverride: true
-
-  # Email Notification
-  mailer:
-    adminAddress: "ci@aiuigenerator.dev"
-    smtpHost: "smtp.mailtrap.io"
-    smtpPort: 2525
-    smtpAuthUsername: "${MAIL_USERNAME}"
-    smtpAuthPassword: "${MAIL_PASSWORD}"
-    charset: "UTF-8"
-    useSMTPAuth: true
-    useTLS: true
-
-  # AnsiColor Plugin
-  ansiColor:
-    colorMapName: "xterm"
-
-appearance:
-  pipelineViewOptions:
-    checkToHideDeclarativeSyntaxWarnings: true
-  themeManager:
-    disableUserThemes: false
-    theme: "dark"
+        serverUrl: "http://ai-ui-sonarqube:9000"
+        credentialsId: ""
+        mojoVersion: ""
 
 tool:
-  maven:
-    installations:
-      - name: "Maven 3.9"
-        home: "/usr/share/maven"
-        properties: []
-
-  jdk:
-    installations:
-      - name: "JDK 17"
-        home: "${JAVA_HOME}"
-
   git:
     installations:
       - name: "Git"
         home: "git"
-
-security:
-  scriptApproval:
-    # Whitelist scripts used in pipelines
-    scripts:
-      - "method org.jenkinsci.plugins.workflow.support.steps.build.RunWrapper getResult"
-      - "method hudson.model.ItemGroup getItem java.lang.String"
-
-unclassified:
-  htmlPublisher:
-    name: "HTML Files"
-    targets: []
-
-  saml:
-    binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-    displayNameAttributeName: "displayName"
-    fieldsDescription: "Groups: groups"
-    groupsAttributeName: "groups"
-    idpMetadataConfiguration:
-      url: "http://keycloak:8080/realms/ai-ui/protocol/saml/descriptor"

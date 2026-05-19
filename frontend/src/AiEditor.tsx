@@ -47,7 +47,7 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, MeetingRecorder, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
 
 type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
 
@@ -160,6 +160,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
   // TED Chatbot state
   const [isTedOpen, setIsTedOpen] = useState(false)
+  const [isMeetingRecorderOpen, setIsMeetingRecorderOpen] = useState(false)
   const [currentEditingFile, setCurrentEditingFile] = useState<string | null>(null)
   const lastEditTime = useRef<number>(0)
 
@@ -337,7 +338,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       : `Change the ${change.property} of ${elementDesc} to "${change.newValue}". Apply this exact value in the source code.`
 
     try {
-      const resp = await editFile(generationId, '', instruction, selectedModel, accessToken || '')
+      const resp = await editFile(generationId, '', instruction, accessToken || '', selectedModel)
       if (resp.buildSuccess) {
         setPreviewReloadCount(c => c + 1)
         void loadVersionsRef.current?.(generationId)
@@ -838,9 +839,9 @@ document.addEventListener('click', function(e) {
   }, [userScale])
 
   // Derived — always in sync with apiResult, no separate state needed
-  const bffBaseUrl = import.meta.env.VITE_BFF_BASE_URL || (typeof window !== 'undefined' ? window.location.origin.replace(':5173', ':8081') : '')
+  // Use relative path for iframe so it goes through Vite proxy (same-origin)
   const builtProjectUrl = apiResult?.generationId
-    ? `${bffBaseUrl}/preview/${apiResult.generationId}/dist/index.html`
+    ? `/preview/${apiResult.generationId}/dist/index.html`
     : null
 
 
@@ -1800,6 +1801,21 @@ document.addEventListener('click', function(e) {
                       >
                         📋 Import from Jira
                       </button>
+                      <button
+                        onClick={() => setIsMeetingRecorderOpen(true)}
+                        style={{
+                          border: 'none',
+                          borderRadius: 9,
+                          background: 'linear-gradient(135deg, #e6f0ff, #ede6ff)',
+                          color: '#3730a3',
+                          padding: '9px 13px',
+                          fontSize: 13,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🎙️ Import from Meeting
+                      </button>
                     </div>
 
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -2680,6 +2696,16 @@ document.addEventListener('click', function(e) {
             </div>
           </div>
         )}
+
+        {/* Meeting Recorder — available from the create page */}
+        <MeetingRecorder
+          isOpen={isMeetingRecorderOpen}
+          onClose={() => setIsMeetingRecorderOpen(false)}
+          onRequirementsExtracted={(prompt) => {
+            setCustomPrompt(prompt)
+            setIsMeetingRecorderOpen(false)
+          }}
+        />
       </div>
     )
   }
@@ -3218,6 +3244,16 @@ document.addEventListener('click', function(e) {
             }))}
             onFileApplied={() => {
               if (selectedGenerationId) loadGeneration(selectedGenerationId)
+            }}
+          />
+
+          {/* Meeting Recorder — Speech to Requirements */}
+          <MeetingRecorder
+            isOpen={isMeetingRecorderOpen}
+            onClose={() => setIsMeetingRecorderOpen(false)}
+            onRequirementsExtracted={(prompt) => {
+              setCustomPrompt(prompt)
+              setIsMeetingRecorderOpen(false)
             }}
           />
 

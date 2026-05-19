@@ -30,7 +30,7 @@ scrape_configs:
           service: 'bff'
           component: 'spring-boot'
     scrape_interval: 5s
-    scrape_timeout: 10s
+    scrape_timeout: 4s
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
@@ -45,7 +45,7 @@ scrape_configs:
           service: 'ai-pipeline'
           component: 'fastapi'
     scrape_interval: 5s
-    scrape_timeout: 10s
+    scrape_timeout: 4s
 
   # Node Exporter — system-level metrics
   - job_name: 'node-exporter'
@@ -66,7 +66,7 @@ scrape_configs:
           component: 'mongodb'
     scrape_interval: 10s
     scrape_timeout: 10s
-    metrics_relabel_configs:
+    metric_relabel_configs:
       # Keep important metrics
       - source_labels: [__name__]
         regex: 'mongodb_(connections|op_counters|storage|replset|process_virtual_memory_bytes|process_resident_memory_bytes)'

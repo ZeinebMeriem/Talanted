@@ -142,6 +142,7 @@ export function JiraImportPage({
                 borderRadius: 12,
                 fontSize: 14,
                 background: 'rgba(249,250,251,.8)',
+                color: '#111827',
                 transition: 'all 0.25s',
                 outline: 'none',
                 fontFamily: 'Inter, system-ui, sans-serif',

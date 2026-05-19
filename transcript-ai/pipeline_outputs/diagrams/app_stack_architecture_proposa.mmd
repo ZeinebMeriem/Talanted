@@ -1,0 +1,25 @@
+flowchart TD
+    subgraph Users
+        U1[Admin Users]
+        U2[Client Users]
+    end
+    subgraph Frontend
+        FE[React Web App]
+        MOB[Mobile App]
+    end
+    subgraph Backend
+        API[REST API Service]
+        AUTH[Auth Service]
+    end
+    subgraph Data
+        DB1[PostgreSQL Database]
+        DB2[MongoDB Database]
+    end
+    U1 --> FE
+    U2 --> MOB
+    FE --> API
+    MOB --> API
+    API --> DB1
+    API --> AUTH
+    FE --> DB2
+    MOB --> DB2
