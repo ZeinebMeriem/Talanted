@@ -8,9 +8,10 @@ pipeline {
     }
 
     environment {
-        // SonarQube — reachable because Jenkins is now on the ai-ui-generator_default network
         SONAR_HOST_URL = 'http://ai-ui-sonarqube:9000'
-        REGISTRY = 'docker.io'
+        REGISTRY       = 'docker.io'
+        // DOCKER_HOST is inherited from the Jenkins container environment (set in docker-compose-jenkins.yml).
+        // Override here only if you need to force TCP: DOCKER_HOST = 'tcp://host.docker.internal:2375'
     }
 
     parameters {
@@ -215,10 +216,21 @@ pipeline {
             }
             steps {
                 sh '''
-                    docker build -t ai-ui-generator-frontend:${BUILD_NUMBER} frontend/
-                    docker build -t ai-ui-generator-backend:${BUILD_NUMBER}  spring-bff/
-                    docker build -t ai-ui-generator-fastapi:${BUILD_NUMBER}  fastapi-ai/
-                    echo "Docker images built"
+                    echo "=== Docker connectivity check ==="
+                    docker info || {
+                        echo "ERROR: Docker daemon not reachable."
+                        echo "  Option A (socket already mounted): verify /var/run/docker.sock exists on the host."
+                        echo "  Option B (Docker Desktop TCP): Settings → General → Expose daemon on tcp://localhost:2375"
+                        echo "            then set DOCKER_HOST=tcp://host.docker.internal:2375 in jenkins/.env"
+                        exit 1
+                    }
+
+                    echo "=== Building images (build #${BUILD_NUMBER}) ==="
+                    docker build -t ai-ui-generator-frontend:${BUILD_NUMBER} -t ai-ui-generator-frontend:latest frontend/
+                    docker build -t ai-ui-generator-backend:${BUILD_NUMBER}  -t ai-ui-generator-backend:latest  spring-bff/
+                    docker build -t ai-ui-generator-fastapi:${BUILD_NUMBER}  -t ai-ui-generator-fastapi:latest  fastapi-ai/
+                    echo "=== Docker images built successfully ==="
+                    docker images | grep ai-ui-generator
                 '''
             }
         }
@@ -302,6 +314,16 @@ pipeline {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
             }
             steps {
+                // List what we found before archiving (helpful for debugging)
+                sh '''
+                    echo "=== JAR artifacts ==="
+                    find spring-bff/target -maxdepth 1 -name "*.jar" 2>/dev/null || echo "  (none)"
+                    echo "=== Frontend dist ==="
+                    find frontend/dist -maxdepth 1 2>/dev/null | head -5 || echo "  (none)"
+                    echo "=== Surefire reports ==="
+                    ls spring-bff/target/surefire-reports/ 2>/dev/null || echo "  (none — creating empty dir)"
+                    mkdir -p spring-bff/target/surefire-reports
+                '''
                 archiveArtifacts artifacts: 'spring-bff/target/*.jar,frontend/dist/**',
                                  allowEmptyArchive: true
                 junit testResults: 'spring-bff/target/surefire-reports/*.xml',

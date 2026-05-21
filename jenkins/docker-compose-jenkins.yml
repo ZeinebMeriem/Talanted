@@ -20,7 +20,7 @@ services:
 
   # SonarQube Server
   sonarqube:
-    image: sonarqube:10.3.0-community
+    image: sonarqube:10.5.1-community
     container_name: ai-ui-sonarqube
     restart: unless-stopped
     depends_on:
@@ -59,11 +59,19 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-changeme}
       GITHUB_USER: ${GITHUB_USER:-MeriemBoukraa}
       SONAR_TOKEN: ${SONAR_TOKEN:-changeme}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-changeme}
+      DOCKER_REGISTRY_USER: ${DOCKER_REGISTRY_USER:-}
+      DOCKER_REGISTRY_PASS: ${DOCKER_REGISTRY_PASS:-}
+      # DOCKER_HOST is picked up automatically from .env if set
+      DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/var/jenkins_home/jenkins-config
     user: root
+    extra_hosts:
+      # Makes host.docker.internal resolvable on Linux hosts (no-op on Docker Desktop)
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
       interval: 10s

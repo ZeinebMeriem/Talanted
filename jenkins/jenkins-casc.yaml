@@ -38,6 +38,12 @@ credentials:
               scope: GLOBAL
               secret: "${GITLAB_TOKEN:-changeme}"
               description: "GitLab Personal Access Token"
+          - usernamePassword:
+              id: "docker-registry-credentials"
+              scope: GLOBAL
+              username: "${DOCKER_REGISTRY_USER:-}"
+              password: "${DOCKER_REGISTRY_PASS:-}"
+              description: "Docker Hub credentials (set DOCKER_REGISTRY_USER / DOCKER_REGISTRY_PASS in jenkins/.env)"
 
 unclassified:
   location:

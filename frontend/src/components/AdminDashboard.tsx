@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { FolderIcon, CheckCircleIcon, UsersIcon, TrendingUpIcon, SettingsIcon } from '@heroicons/react/24/outline';
+import { Folder as FolderIcon, CheckCircle as CheckCircleIcon, Users as UsersIcon, TrendingUp as TrendingUpIcon } from 'lucide-react';
 
 // Types
 interface StatCard {
