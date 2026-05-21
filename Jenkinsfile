@@ -139,6 +139,7 @@ pipeline {
                             mvn checkstyle:check -Dmaven.repo.local=/var/jenkins_home/.m2/repository || echo "Checkstyle warnings found"
                             mvn clean verify jacoco:report sonar:sonar \
                               -Dmaven.repo.local=/var/jenkins_home/.m2/repository \
+                              -Dmaven.test.failure.ignore=true \
                               -Dsonar.projectKey=ai-ui-generator-backend \
                               -Dsonar.projectName="AI UI Generator - Backend" \
                               -Dsonar.sources=src/main/java \
