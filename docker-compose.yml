@@ -310,11 +310,12 @@ services:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_logs:/opt/sonarqube/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/health"]
-      interval: 15s
+      # /api/system/status does NOT require auth (unlike /api/system/health in SonarQube 10.x)
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q UP"]
+      interval: 30s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 120s
 
   # ── Transcript AI — Speech-to-Requirements ──────────────────────────────────
   transcript-streaming:

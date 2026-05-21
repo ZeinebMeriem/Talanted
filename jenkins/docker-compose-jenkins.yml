@@ -38,10 +38,11 @@ services:
       - sonarqube_extensions:/opt/sonarqube/extensions
       - sonarqube_logs:/opt/sonarqube/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/health"]
-      interval: 15s
-      timeout: 5s
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q UP"]
+      interval: 30s
+      timeout: 10s
       retries: 10
+      start_period: 120s
 
   # Jenkins Master
   jenkins:

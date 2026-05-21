@@ -3,15 +3,16 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 1, unit: 'HOURS')
+        timeout(time: 2, unit: 'HOURS')
         timestamps()
     }
 
     environment {
-        SONAR_HOST_URL = 'http://ai-ui-sonarqube:9000'
-        REGISTRY       = 'docker.io'
-        // DOCKER_HOST is inherited from the Jenkins container environment (set in docker-compose-jenkins.yml).
-        // Override here only if you need to force TCP: DOCKER_HOST = 'tcp://host.docker.internal:2375'
+        SONAR_HOST_URL  = 'http://ai-ui-sonarqube:9000'
+        REGISTRY        = 'docker.io'
+        // Shared Maven repo persisted in the Jenkins home volume — avoids re-downloading
+        // all dependencies (including the OWASP NVD database) on every build.
+        MAVEN_OPTS      = '-Dmaven.repo.local=/var/jenkins_home/.m2/repository'
     }
 
     parameters {
@@ -24,6 +25,11 @@ pipeline {
             name: 'RUN_SONARQUBE',
             defaultValue: true,
             description: 'Run SonarQube analysis'
+        )
+        booleanParam(
+            name: 'RUN_OWASP',
+            defaultValue: true,
+            description: 'Run OWASP Dependency Check (slow on first run — downloads NVD database)'
         )
         booleanParam(
             name: 'PUSH_DOCKER',
@@ -110,8 +116,8 @@ pipeline {
                     sh '''
                         echo "Java version:" && java -version
                         echo "Maven version:" && mvn --version
-                        mvn clean verify -DskipITs=false
-                        mvn checkstyle:check || echo "Checkstyle warnings found"
+                        mvn clean verify -DskipITs=false -Dmaven.repo.local=/var/jenkins_home/.m2/repository
+                        mvn checkstyle:check -Dmaven.repo.local=/var/jenkins_home/.m2/repository || echo "Checkstyle warnings found"
                         echo "Backend build OK"
                     '''
                 }
@@ -130,8 +136,9 @@ pipeline {
                     dir('spring-bff') {
                         sh '''
                             echo "Java version:" && java -version
-                            mvn checkstyle:check || echo "Checkstyle warnings found"
+                            mvn checkstyle:check -Dmaven.repo.local=/var/jenkins_home/.m2/repository || echo "Checkstyle warnings found"
                             mvn clean verify jacoco:report sonar:sonar \
+                              -Dmaven.repo.local=/var/jenkins_home/.m2/repository \
                               -Dsonar.projectKey=ai-ui-generator-backend \
                               -Dsonar.projectName="AI UI Generator - Backend" \
                               -Dsonar.sources=src/main/java \
@@ -151,16 +158,20 @@ pipeline {
 
         stage('Backend - OWASP Dependency Check') {
             when {
-                expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
+                expression {
+                    (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY') &&
+                    params.RUN_OWASP == true
+                }
             }
             steps {
                 dir('spring-bff') {
                     sh '''
-                        mvn dependency:tree || true
+                        echo "=== OWASP NVD database cached at /var/jenkins_home/.m2/repository ==="
                         mvn org.owasp:dependency-check-maven:check \
                           -DfailBuildOnCVSS=11 \
                           -DretireJsAnalyzerEnabled=false \
                           -DnodeAnalyzerEnabled=false \
+                          -Dmaven.repo.local=/var/jenkins_home/.m2/repository \
                           || echo "OWASP check completed (vulnerabilities may have been found)"
                     '''
                 }
