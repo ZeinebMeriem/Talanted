@@ -76,14 +76,14 @@ groups:
           description: "Memory usage is above 95% - immediate action needed"
 
       - alert: HighCPUUsage
-        expr: rate(node_cpu_seconds_total{mode!="idle"}[5m]) > 0.8
+        expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.8
         for: 10m
         labels:
           severity: warning
           component: system
         annotations:
           summary: "High CPU usage (> 80%)"
-          description: "CPU usage is above 80%"
+          description: "Aggregate CPU usage is above 80%"
 
       - alert: LowDiskSpace
         expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
@@ -137,19 +137,40 @@ groups:
           description: "Current thread count is above 100"
 
       # MongoDB
-      - alert: MongoDBSlowQueries
-        expr: histogram_quantile(0.95, rate(mongodb_server_query_exec_seconds_bucket[5m])) > 1
-        for: 10m
+      - alert: MongoDBHighConnections
+        expr: mongodb_connections{state="current"} > 100
+        for: 5m
         labels:
           severity: warning
           component: mongodb
         annotations:
-          summary: "MongoDB slow queries (p95 > 1 second)"
-          description: "95th percentile query time is above 1 second"
+          summary: "MongoDB high connection count (> 100)"
+          description: "Current MongoDB connections are above 100"
+
+      # AI Generation Pipeline
+      - alert: HighGenerationErrorRate
+        expr: (rate(generation_requests_total{status="error"}[5m]) / rate(generation_requests_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: fastapi-ai
+        annotations:
+          summary: "High AI generation error rate (> 10%)"
+          description: "More than 10% of generation requests are failing"
+
+      - alert: GenerationPipelineStalled
+        expr: active_generations > 10
+        for: 10m
+        labels:
+          severity: warning
+          service: fastapi-ai
+        annotations:
+          summary: "Too many concurrent generations (> 10 active)"
+          description: "The generation pipeline may be stalled — {{ $value }} requests in progress"
 
       # Config Reload
       - alert: PrometheusConfigReloadFailures
-        expr: increase(prometheus_config_last_reload_successful[15m]) == 0
+        expr: prometheus_config_last_reload_successful == 0
         for: 1m
         labels:
           severity: warning

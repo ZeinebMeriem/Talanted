@@ -8,7 +8,7 @@ global:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []
+        - targets: ['alertmanager:9093']
 
 rule_files:
   - '/etc/prometheus/alerts.yml'
@@ -25,7 +25,7 @@ scrape_configs:
   - job_name: 'spring-bff'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['spring-bff:8081']
+      - targets: ['spring-bff:8080']
         labels:
           service: 'bff'
           component: 'spring-boot'
@@ -34,7 +34,7 @@ scrape_configs:
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
-        replacement: 'spring-bff:8081'
+        replacement: 'spring-bff:8080'
 
   # FastAPI — if instrumented with prometheus_client
   - job_name: 'fastapi-ai'
@@ -60,7 +60,7 @@ scrape_configs:
   # MongoDB — if mongo-exporter is running
   - job_name: 'mongodb'
     static_configs:
-      - targets: ['mongo-exporter:9216']
+      - targets: ['mongodb-exporter:9216']
         labels:
           service: 'database'
           component: 'mongodb'
@@ -86,36 +86,44 @@ scrape_configs:
       username: 'admin'
       password: 'admin'
 
-  # SonarQube — optional code quality metrics
-  - job_name: 'sonarqube'
-    static_configs:
-      - targets: ['sonarqube:9000']
-        labels:
-          service: 'ci-cd'
-          component: 'sonarqube'
-    metrics_path: '/api/ce/info'
-    scrape_interval: 60s
-    scrape_timeout: 15s
+  # SonarQube — Community Edition does not expose Prometheus metrics natively.
+  # To enable: install the "Prometheus Exporter" plugin from the SonarQube marketplace,
+  # then uncomment the block below and set the correct metrics_path.
+  # - job_name: 'sonarqube'
+  #   static_configs:
+  #     - targets: ['sonarqube:9000']
+  #       labels:
+  #         service: 'ci-cd'
+  #         component: 'sonarqube'
+  #   metrics_path: '/api/monitoring/metrics'
+  #   scrape_interval: 60s
+  #   scrape_timeout: 15s
+  #   basic_auth:
+  #     username: 'admin'
+  #     password: 'admin'
 
-  # Keycloak — identity service (optional)
-  - job_name: 'keycloak'
-    static_configs:
-      - targets: ['keycloak:8080']
-        labels:
-          service: 'auth'
-          component: 'keycloak'
-    metrics_path: '/metrics'
-    scrape_interval: 30s
-    scrape_timeout: 15s
+  # Keycloak — metrics are exposed on the management port (9000), NOT the main port (8080).
+  # To enable: add KC_METRICS_ENABLED=true and expose port 9000 in docker-compose.yml.
+  # - job_name: 'keycloak'
+  #   static_configs:
+  #     - targets: ['keycloak:9000']
+  #       labels:
+  #         service: 'auth'
+  #         component: 'keycloak'
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 30s
+  #   scrape_timeout: 15s
 
-  # MinIO — object storage (optional)
-  - job_name: 'minio'
-    bearer_token: 'minioadmin'
-    static_configs:
-      - targets: ['minio:9000']
-        labels:
-          service: 'storage'
-          component: 'minio'
-    metrics_path: '/minio/v2/metrics/cluster'
-    scrape_interval: 30s
-    scrape_timeout: 15s
+  # MinIO — metrics endpoint requires a Prometheus-specific bearer token.
+  # Generate it with: mc admin prometheus generate <alias>
+  # Then replace the token below and uncomment.
+  # - job_name: 'minio'
+  #   bearer_token: '<generated-prometheus-token>'
+  #   static_configs:
+  #     - targets: ['minio:9000']
+  #       labels:
+  #         service: 'storage'
+  #         component: 'minio'
+  #   metrics_path: '/minio/v2/metrics/cluster'
+  #   scrape_interval: 30s
+  #   scrape_timeout: 15s

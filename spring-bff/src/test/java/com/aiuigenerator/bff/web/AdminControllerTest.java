@@ -27,6 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(AdminController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @TestPropertySource(properties = {
+    "app.security.dev-mode=true",
     "app.fastapi.base-url=http://localhost:8000",
     "app.keycloak.internal-url=http://localhost:8083",
     "app.minio.endpoint=http://localhost:9000"

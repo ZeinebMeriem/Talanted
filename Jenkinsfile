@@ -78,7 +78,7 @@ pipeline {
             }
         }
 
-        stage('Frontend - SonarQube') {
+        stage('Audit SonarQube - Frontend') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FRONTEND_ONLY') &&
@@ -89,11 +89,15 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('frontend') {
                         sh '''
+                            echo "=== Coverage report check ==="
+                            ls -lh coverage/lcov.info 2>/dev/null || echo "WARNING: lcov.info not found — coverage will show 0%"
+
                             npx sonar-scanner \
                               -Dsonar.projectKey=ai-ui-generator-frontend \
                               -Dsonar.projectName="AI UI Generator - Frontend" \
                               -Dsonar.sources=src \
-                              -Dsonar.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/node_modules/**" \
+                              -Dsonar.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/node_modules/**,**/dist/**,**/*.config.ts,**/*.config.js" \
+                              -Dsonar.coverage.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/index.ts" \
                               -Dsonar.sourceEncoding=UTF-8 \
                               -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
@@ -106,25 +110,25 @@ pipeline {
 
         stage('Backend Build') {
             when {
-                expression {
-                    (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY') &&
-                    params.RUN_SONARQUBE == false
-                }
+                expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
             }
             steps {
                 dir('spring-bff') {
                     sh '''
                         echo "Java version:" && java -version
                         echo "Maven version:" && mvn --version
-                        mvn clean verify -DskipITs=false -Dmaven.repo.local=/var/jenkins_home/.m2/repository
                         mvn checkstyle:check -Dmaven.repo.local=/var/jenkins_home/.m2/repository || echo "Checkstyle warnings found"
+                        mvn clean verify jacoco:report \
+                          -DskipITs=false \
+                          -Dmaven.test.failure.ignore=true \
+                          -Dmaven.repo.local=/var/jenkins_home/.m2/repository
                         echo "Backend build OK"
                     '''
                 }
             }
         }
 
-        stage('Backend Build + SonarQube') {
+        stage('Audit SonarQube - Backend') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY') &&
@@ -135,22 +139,25 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('spring-bff') {
                         sh '''
-                            echo "Java version:" && java -version
-                            mvn checkstyle:check -Dmaven.repo.local=/var/jenkins_home/.m2/repository || echo "Checkstyle warnings found"
-                            mvn clean verify jacoco:report sonar:sonar \
+                            echo "=== JaCoCo report check ==="
+                            ls -lh target/site/jacoco/jacoco.xml 2>/dev/null || echo "WARNING: jacoco.xml not found — coverage will show 0%"
+                            echo "=== Surefire reports check ==="
+                            ls target/surefire-reports/*.xml 2>/dev/null | wc -l || echo "0 surefire XML files found"
+
+                            mvn sonar:sonar \
                               -Dmaven.repo.local=/var/jenkins_home/.m2/repository \
-                              -Dmaven.test.failure.ignore=true \
                               -Dsonar.projectKey=ai-ui-generator-backend \
                               -Dsonar.projectName="AI UI Generator - Backend" \
                               -Dsonar.sources=src/main/java \
                               -Dsonar.tests=src/test/java \
                               -Dsonar.java.source=17 \
                               -Dsonar.java.binaries=target/classes \
+                              -Dsonar.exclusions="**/dto/**,**/domain/**,**/config/**" \
+                              -Dsonar.coverage.exclusions="**/*Config.java,**/*Application.java" \
                               -Dsonar.junit.reportPaths=target/surefire-reports \
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true
-                            echo "Backend build OK"
                         '''
                     }
                 }
@@ -197,7 +204,7 @@ pipeline {
             }
         }
 
-        stage('FastAPI - SonarQube') {
+        stage('Audit SonarQube - FastAPI') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FASTAPI_ONLY') &&
@@ -208,11 +215,18 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('fastapi-ai') {
                         sh '''
+                            echo "=== Coverage report check ==="
+                            ls -lh coverage.xml 2>/dev/null || echo "WARNING: coverage.xml not found — coverage will show 0%"
+
                             npx sonar-scanner \
                               -Dsonar.projectKey=ai-ui-generator-fastapi \
                               -Dsonar.projectName="AI UI Generator - FastAPI" \
                               -Dsonar.sources=app \
+                              -Dsonar.tests=tests \
                               -Dsonar.language=py \
+                              -Dsonar.python.version=3 \
+                              -Dsonar.exclusions="**/migrations/**,**/__pycache__/**,**/alembic/**" \
+                              -Dsonar.coverage.exclusions="tests/**,**/conftest.py" \
                               -Dsonar.python.coverage.reportPaths=coverage.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true

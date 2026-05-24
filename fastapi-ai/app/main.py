@@ -54,6 +54,35 @@ app.add_middleware(
 
 orchestrator = Orchestrator()
 
+# ── Prometheus metrics ────────────────────────────────────────────────────────
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Histogram, Gauge
+
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    should_respect_env_var=False,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics", "/health", "/docs", "/redoc", "/openapi.json"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+# Business metrics — generation pipeline
+generation_requests_total = Counter(
+    "generation_requests_total",
+    "Total AI generation requests",
+    ["type", "status"],  # type: generate|stream|edit  status: success|error
+)
+generation_duration_seconds = Histogram(
+    "generation_duration_seconds",
+    "End-to-end duration of a generation request in seconds",
+    ["type"],
+    buckets=[1, 5, 10, 30, 60, 120, 300, 600],
+)
+active_generations = Gauge(
+    "active_generations",
+    "Number of generation requests currently in progress",
+)
+
 # ── Internal endpoint protection ─────────────────────────────────────────────
 _INTERNAL_SECRET = os.getenv("INTERNAL_API_SECRET", "")
 _ALLOWED_INTERNAL_HOSTS = {"ai-ui-spring-bff", "spring-bff", "localhost", "127.0.0.1"}
@@ -140,7 +169,19 @@ def health() -> dict[str, str]:
 
 @app.post("/internal/generate", response_model=GenerateResponse)
 def internal_generate(payload: GenerateRequest) -> GenerateResponse:
-    return orchestrator.run(payload)
+    import time
+    active_generations.inc()
+    t0 = time.monotonic()
+    try:
+        result = orchestrator.run(payload)
+        generation_requests_total.labels(type="generate", status="success").inc()
+        return result
+    except Exception:
+        generation_requests_total.labels(type="generate", status="error").inc()
+        raise
+    finally:
+        generation_duration_seconds.labels(type="generate").observe(time.monotonic() - t0)
+        active_generations.dec()
 
 
 @app.post("/internal/generate/stream")
@@ -153,9 +194,24 @@ def internal_generate_stream(payload: GenerateRequest) -> StreamingResponse:
       data: {"type":"complete","progress":100,"result":{...}}\n\n
       data: {"type":"error","message":"..."}\n\n
     """
+    import time
+
     def _event_generator():
-        for event in orchestrator.run_stream(payload):
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        active_generations.inc()
+        t0 = time.monotonic()
+        status = "success"
+        try:
+            for event in orchestrator.run_stream(payload):
+                if event.get("type") == "error":
+                    status = "error"
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            generation_requests_total.labels(type="stream", status=status).inc()
+            generation_duration_seconds.labels(type="stream").observe(time.monotonic() - t0)
+            active_generations.dec()
 
     return StreamingResponse(
         _event_generator(),
@@ -170,7 +226,19 @@ def internal_generate_stream(payload: GenerateRequest) -> StreamingResponse:
 
 @app.post("/internal/edit-file", response_model=EditFileResponse)
 def internal_edit_file(payload: EditFileRequest) -> EditFileResponse:
-    return orchestrator.edit_file(payload)
+    import time
+    active_generations.inc()
+    t0 = time.monotonic()
+    try:
+        result = orchestrator.edit_file(payload)
+        generation_requests_total.labels(type="edit", status="success").inc()
+        return result
+    except Exception:
+        generation_requests_total.labels(type="edit", status="error").inc()
+        raise
+    finally:
+        generation_duration_seconds.labels(type="edit").observe(time.monotonic() - t0)
+        active_generations.dec()
 
 
 @app.post("/internal/projects/{generation_id}/apply-snippet")
