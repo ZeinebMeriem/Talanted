@@ -372,7 +372,7 @@ pipeline {
                     }
                 }
                 withCredentials([
-                    sshUserPrivateKey(credentialsId: 'azure-vm-ssh-key', keyFileVariable: 'SSH_KEY_FILE'),
+                    sshUserPrivateKey(credentialsId: 'azure-vm-ssh-ke', keyFileVariable: 'SSH_KEY_FILE'),
                     string(credentialsId: 'groq-api-key',               variable: 'GROQ_API_KEY'),
                     usernamePassword(
                         credentialsId:    'azure-acr-credentials',
