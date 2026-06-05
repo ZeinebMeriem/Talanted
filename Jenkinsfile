@@ -382,7 +382,7 @@ pipeline {
                 ]) {
                     sh '''
                         echo "=== Checking Ansible installation ==="
-                        which ansible-playbook || pip3 install --quiet ansible
+                        which ansible-playbook || (apt-get update -qq && apt-get install -y -qq ansible) || pip3 install --quiet ansible --break-system-packages
 
                         echo "=== Generating Ansible inventory ==="
                         cat > ${ANSIBLE_DIR}/inventory.ini <<EOF
