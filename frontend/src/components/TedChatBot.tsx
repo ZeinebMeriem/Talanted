@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { Bot, Zap, Sparkles, Moon, Sun, RotateCcw, X, SendHorizonal, Lightbulb } from 'lucide-react'
 import { useTed, type TedMessage, type TedSuggestion } from '../hooks/useTed'
 
 interface TedChatBotProps {
@@ -100,7 +101,7 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
               <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold shadow-lg text-lg ${
                 darkMode ? 'bg-blue-500' : 'bg-white/20 backdrop-blur-sm border border-white/30'
               }`}>
-                🤖
+                <Bot size={20} className="text-white" />
               </div>
               <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white"></div>
             </div>
@@ -114,10 +115,10 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
                   const mode = (lastBot as any)?.mode
                   if (!mode) return null
                   const modeConfig: Record<string, { label: string; color: string }> = {
-                    explain: { label: '💬 Explain', color: 'bg-blue-400/30' },
-                    fix:     { label: '🔧 Fix',     color: 'bg-red-400/30' },
-                    improve: { label: '⚡ Improve',  color: 'bg-yellow-400/30' },
-                    generate:{ label: '✨ Generate', color: 'bg-green-400/30' },
+                    explain: { label: 'Explain', color: 'bg-blue-400/30' },
+                    fix:     { label: 'Fix',     color: 'bg-red-400/30' },
+                    improve: { label: 'Improve',  color: 'bg-yellow-400/30' },
+                    generate:{ label: 'Generate', color: 'bg-green-400/30' },
                   }
                   const cfg = modeConfig[mode]
                   return cfg ? (
@@ -137,21 +138,21 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
               title="Toggle theme"
             >
-              {darkMode ? '☀️' : '🌙'}
+              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
             <button
               onClick={() => clearMessages()}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
               title="Clear chat"
             >
-              🔄
+              <RotateCcw size={15} />
             </button>
             <button
               onClick={onClose}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
               title="Close"
             >
-              ✕
+              <X size={15} />
             </button>
           </div>
         </div>
@@ -175,7 +176,7 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
           {isTyping && (
             <div className="flex items-center gap-2 mb-2">
               <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
-                <span className="text-white font-bold text-sm">🤖</span>
+                <Bot size={16} className="text-white" />
               </div>
               <div className={`flex gap-1.5 items-center px-4 py-2.5 rounded-2xl ${
                 darkMode ? 'bg-slate-700' : 'bg-white border border-gray-200'
@@ -190,17 +191,17 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
           {/* Quick mode shortcuts */}
           {messages.length === 1 && !isLoading && (
             <div className="mt-4 flex flex-wrap gap-2">
-              <QuickReplyButton text="💬 Explain code" onClick={() => sendMessage('Explain how this component works')} darkMode={darkMode} />
-              <QuickReplyButton text="🔧 Fix a bug" onClick={() => sendMessage('I have a bug, which component or file?')} darkMode={darkMode} />
-              <QuickReplyButton text="⚡ Improve" onClick={() => sendMessage('Improve the current file performance')} darkMode={darkMode} />
-              <QuickReplyButton text="✨ Generate" onClick={() => sendMessage('Generate a new component')} darkMode={darkMode} />
+              <QuickReplyButton text="Explain code" onClick={() => sendMessage('Explain how this component works')} darkMode={darkMode} />
+              <QuickReplyButton text="Fix a bug" onClick={() => sendMessage('I have a bug, which component or file?')} darkMode={darkMode} />
+              <QuickReplyButton text="Improve" onClick={() => sendMessage('Improve the current file performance')} darkMode={darkMode} />
+              <QuickReplyButton text="Generate" onClick={() => sendMessage('Generate a new component')} darkMode={darkMode} />
             </div>
           )}
 
           {/* Suggestions */}
           {suggestions.length > 0 && !isLoading && (
             <div className="mt-6 space-y-2">
-              <div className="px-2 text-xs font-semibold text-gray-500">💡 Suggestions</div>
+              <div className="px-2 text-xs font-semibold text-gray-500 flex items-center gap-1.5"><Lightbulb size={12} /> Suggestions</div>
               {suggestions.map((suggestion) => (
                 <SuggestionButton
                   key={suggestion.id}
@@ -260,7 +261,7 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 px-2"
                 title="Emoji"
               >
-                😊
+                <Sparkles size={14} />
               </button>
             </div>
             <button
@@ -273,11 +274,11 @@ export const TedChatBot: React.FC<TedChatBotProps> = ({
               } text-white disabled:cursor-not-allowed shadow-lg hover:shadow-xl`}
               title="Send message (Enter)"
             >
-              ➤
+              <SendHorizonal size={16} />
             </button>
           </div>
           <p className={`text-xs mt-3 ${darkMode ? 'text-slate-400' : 'text-gray-500'}`}>
-            💬 Explique · 🔧 Corrige · ⚡ Améliore · ✨ Génère
+            Explain · Fix · Improve · Generate
           </p>
         </div>
       </div>
@@ -389,7 +390,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, darkMode, genera
                         disabled={applyingIdx === idx || appliedIdx === idx}
                         className="text-green-400 hover:text-green-300 disabled:opacity-60 transition-colors font-medium"
                       >
-                        {appliedIdx === idx ? '✓ Appliqué' : applyingIdx === idx ? '…' : '⚡ Appliquer'}
+                        {appliedIdx === idx ? '✓ Applied' : applyingIdx === idx ? '…' : <><Zap size={11} /> Apply</>}
                       </button>
                     )}
                     <button onClick={() => handleCopy(seg.content, idx)} className="hover:text-white transition-colors">
@@ -472,7 +473,7 @@ const SuggestionButton: React.FC<SuggestionButtonProps> = ({ suggestion, applyin
               darkMode ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
           >
-            {applying ? 'Applying…' : '⚡ Apply'}
+            {applying ? 'Applying…' : <span className="flex items-center gap-1 justify-center"><Zap size={11} /> Apply</span>}
           </button>
         )}
       </div>

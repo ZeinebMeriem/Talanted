@@ -36,7 +36,7 @@ interface Segment {
 interface MeetingRecorderProps {
   isOpen: boolean
   onClose: () => void
-  onRequirementsExtracted: (prompt: string) => void
+  onRequirementsExtracted: (prompt: string, analysis: AnalysisResult) => void
 }
 
 const SPEAKER_COLORS = [
@@ -71,6 +71,9 @@ export const MeetingRecorder: React.FC<MeetingRecorderProps> = ({
   const [recordingTime, setRecordingTime] = useState(0)
   const [activeTab, setActiveTab] = useState<Tab>('transcript')
   const [pipelineProgress, setPipelineProgress] = useState<string[]>([])
+  const [specStatus, setSpecStatus] = useState<'idle' | 'generating' | 'done' | 'error'>('idle')
+  const [specUrl, setSpecUrl] = useState<string | null>(null)
+  const [specError, setSpecError] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -93,6 +96,9 @@ export const MeetingRecorder: React.FC<MeetingRecorderProps> = ({
     setAnalysis(null)
     setRecordingTime(0)
     setPipelineProgress([])
+    setSpecStatus('idle')
+    setSpecUrl(null)
+    setSpecError(null)
     speakerColorMap.current = {}
     colorIdx.current = 0
 
@@ -169,6 +175,27 @@ export const MeetingRecorder: React.FC<MeetingRecorderProps> = ({
       }
     } catch { /* pipeline is optional */ }
     setStatus('done')
+  }
+
+  const generateSpec = async () => {
+    if (!analysis) return
+    setSpecStatus('generating')
+    setSpecError(null)
+    try {
+      const resp = await fetch('/transcript/stream/api/generate-specification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pipeline_results: analysis }),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      if (data.error) throw new Error(data.error)
+      setSpecUrl(`/transcript/stream${data.download_url}`)
+      setSpecStatus('done')
+    } catch (e: unknown) {
+      setSpecError(e instanceof Error ? e.message : String(e))
+      setSpecStatus('error')
+    }
   }
 
   const buildPrompt = () => {
@@ -723,8 +750,32 @@ export const MeetingRecorder: React.FC<MeetingRecorderProps> = ({
             >
               Cancel
             </button>
+            {analysis && (
+              specStatus === 'done' && specUrl ? (
+                <a
+                  href={specUrl}
+                  download
+                  className="px-4 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold flex items-center gap-1.5"
+                >
+                  ⬇ Download PDF
+                </a>
+              ) : (
+                <button
+                  onClick={generateSpec}
+                  disabled={specStatus === 'generating'}
+                  className="px-4 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg font-semibold flex items-center gap-1.5"
+                >
+                  {specStatus === 'generating'
+                    ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating…</>
+                    : '📋 Project Specification'}
+                </button>
+              )
+            )}
+            {specStatus === 'error' && specError && (
+              <span className="text-xs text-red-600 self-center">⚠ {specError}</span>
+            )}
             <button
-              onClick={() => { onRequirementsExtracted(buildPrompt()); onClose() }}
+              onClick={() => { onRequirementsExtracted(buildPrompt(), analysis!); onClose() }}
               disabled={!rawTranscript.trim()}
               className="px-4 py-1.5 text-sm bg-violet-600 hover:bg-violet-700 disabled:bg-slate-300 text-white rounded-lg font-semibold flex items-center gap-1.5"
             >

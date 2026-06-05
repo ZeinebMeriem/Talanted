@@ -855,43 +855,73 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
       )}
 
-      {/* Input */}
-      <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,.07)', background: 'rgba(15,23,42,.6)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
+      {/* Input — Lovable-style floating dark prompt bar */}
+      <div style={{
+        padding: '12px 14px 14px',
+        borderTop: '1px solid rgba(255,255,255,.06)',
+        background: 'linear-gradient(to top, rgba(10,10,20,.95) 0%, rgba(15,23,42,.85) 100%)',
+        flexShrink: 0,
+        animation: 'slideUpPrompt .3s cubic-bezier(.4,0,.2,1)',
+      }}>
+        <style>{`
+          @keyframes slideUpPrompt {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
+        {selectedZone && (
+          <div style={{ fontSize: 11, color: '#a78bfa', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#a78bfa', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
+            Editing: {selectedZone.label}
+          </div>
+        )}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'rgba(255,255,255,.07)',
+          border: '1px solid rgba(255,255,255,.12)',
+          borderRadius: 14,
+          padding: '6px 8px 6px 14px',
+          boxShadow: '0 4px 24px rgba(0,0,0,.35)',
+          transition: 'border-color .2s',
+        }}
+          onFocusCapture={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(139,92,246,.5)'}
+          onBlurCapture={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,.12)'}
+        >
           <input
             ref={inputRef}
             type="text"
-            placeholder={selectedZone ? `Describe your change for ${selectedZone.label}…` : 'What would you like to change?'}
+            placeholder={selectedZone ? `Change ${selectedZone.label}…` : 'Ask Talanted to edit…'}
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                void sendChat()
-              }
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendChat() }
             }}
             disabled={isSending || !selectedGenerationId}
             style={{
-              flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13,
-              background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)',
-              color: '#e2e8f0', outline: 'none',
-              opacity: (isSending || !selectedGenerationId) ? 0.5 : 1,
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              fontSize: 14, color: '#f1f5f9', fontFamily: 'inherit',
+              opacity: (isSending || !selectedGenerationId) ? 0.45 : 1,
             }}
           />
           <button
             onClick={() => void sendChat()}
             disabled={!chatInput.trim() || isSending || !selectedGenerationId}
             style={{
-              padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
-              background: (!chatInput.trim() || isSending || !selectedGenerationId) ? '#1e293b' : 'linear-gradient(135deg,#6366f1,#a855f7)',
+              width: 34, height: 34, borderRadius: 10, border: 'none', flexShrink: 0,
+              background: (!chatInput.trim() || isSending || !selectedGenerationId)
+                ? 'rgba(255,255,255,.08)'
+                : 'linear-gradient(135deg,#6366f1,#a855f7)',
               color: (!chatInput.trim() || isSending || !selectedGenerationId) ? '#475569' : '#fff',
               cursor: (!chatInput.trim() || isSending || !selectedGenerationId) ? 'not-allowed' : 'pointer',
-              transition: 'all .2s', flexShrink: 0,
+              transition: 'all .2s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16, fontWeight: 700,
+              boxShadow: (!chatInput.trim() || isSending || !selectedGenerationId) ? 'none' : '0 2px 10px rgba(99,102,241,.4)',
             }}
           >
-            {isSending ? '…' : 'Apply'}
+            {isSending ? <span style={{ fontSize: 11 }}>…</span> : '↑'}
           </button>
         </div>
+        <p style={{ fontSize: 10, color: 'rgba(255,255,255,.25)', margin: '6px 0 0 4px' }}>Enter to send · Ctrl+Enter in prompt box to generate</p>
       </div>
     </div>
   )

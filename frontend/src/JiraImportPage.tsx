@@ -4,435 +4,297 @@ import { getJiraIssue, listJiraFrontendTasks, streamGeneration, type JiraIssue, 
 function extractIssueKey(input: string): string | null {
   const s = (input || '').trim()
   if (!s) return null
-
-  // Accept raw key: ABC-123
   const direct = s.match(/\b([A-Z][A-Z0-9]+-\d+)\b/)
   if (direct) return direct[1]
-
-  // Try parse URL
   try {
     const u = new URL(s)
     const m = u.pathname.match(/\/browse\/([A-Z][A-Z0-9]+-\d+)/)
     if (m) return m[1]
-  } catch {
-    // ignore
-  }
-
+  } catch { /* ignore */ }
   return null
 }
 
-export function JiraImportPage({
-  accessToken,
-}: {
+interface JiraImportModalProps {
+  isOpen: boolean
+  onClose: () => void
   accessToken?: string
-}) {
-  const [jiraInput, setJiraInput] = useState('')
+}
+
+export function JiraImportPage({ isOpen, onClose, accessToken }: JiraImportModalProps) {
+  const [jiraInput, setJiraInput]       = useState('')
   const issueKey = useMemo(() => extractIssueKey(jiraInput), [jiraInput])
-
-  const [issue, setIssue] = useState<JiraIssue | null>(null)
-  const [taskList, setTaskList] = useState<JiraIssueListItem[] | null>(null)
+  const [issue, setIssue]               = useState<JiraIssue | null>(null)
+  const [taskList, setTaskList]         = useState<JiraIssueListItem[] | null>(null)
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
-  const [previewKey, setPreviewKey] = useState<string | null>(null)
+  const [previewKey, setPreviewKey]     = useState<string | null>(null)
+  const [fetching, setFetching]         = useState(false)
+  const [generating, setGenerating]     = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const [progress, setProgress]         = useState<{ stage?: string; message?: string; pct?: number } | null>(null)
 
-  const [fetching, setFetching] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [progress, setProgress] = useState<{ stage?: string; message?: string; progress?: number } | null>(null)
+  if (!isOpen) return null
+
+  const reset = () => {
+    setJiraInput(''); setIssue(null); setTaskList(null)
+    setSelectedKeys([]); setPreviewKey(null); setError(null); setProgress(null)
+  }
+
+  const handleClose = () => { reset(); onClose() }
 
   const doFetch = async () => {
-    setError(null)
-    setIssue(null)
-    setTaskList(null)
-    setSelectedKeys([])
-    setPreviewKey(null)
-    setProgress(null)
-
+    setError(null); setIssue(null); setTaskList(null)
+    setSelectedKeys([]); setPreviewKey(null); setProgress(null)
     setFetching(true)
     try {
-      if (issueKey) {
-        const data = await getJiraIssue(issueKey, accessToken)
-        setIssue(data)
-        return
-      }
-
-      // Not an issue URL — treat input as a project/board URL and list frontend tasks
+      if (issueKey) { setIssue(await getJiraIssue(issueKey, accessToken)); return }
       const list = await listJiraFrontendTasks(jiraInput, accessToken)
       setTaskList(list)
-      if (!list.length) {
-        setError(
-          'No frontend tasks found for this URL. Ensure tasks are labeled with: ui, interface, or ux (see JIRA_FRONTEND_LABELS config)'
-        )
-      }
-    } catch (e: any) {
-      setError(e?.message || String(e))
-    } finally {
-      setFetching(false)
-    }
+      if (!list.length) setError('No frontend tasks found. Ensure tasks are labeled with: ui, interface, or ux.')
+    } catch (e: any) { setError(e?.message || String(e)) }
+    finally { setFetching(false) }
   }
 
   const doGenerate = async () => {
-    setError(null)
-    setProgress(null)
-
-    const keysToGenerate = issueKey ? [issueKey] : selectedKeys
-    if (!keysToGenerate.length) {
-      setError('Select one or more Jira issues from the list, or paste an issue URL.')
-      return
-    }
-
+    setError(null); setProgress(null)
+    const keys = issueKey ? [issueKey] : selectedKeys
+    if (!keys.length) { setError('Select one or more Jira issues, or paste an issue URL.'); return }
     setGenerating(true)
     try {
-      for await (const ev of streamGeneration('', [], accessToken, null, undefined, undefined, keysToGenerate)) {
+      for await (const ev of streamGeneration('', [], accessToken, null, undefined, undefined, keys)) {
         const e = ev as SseEvent
-        if (e.type === 'progress') {
-          setProgress({ stage: e.stage, message: e.message, progress: e.progress })
-        }
-        if (e.type === 'error') {
-          throw new Error(e.message)
-        }
+        if (e.type === 'progress') setProgress({ stage: e.stage, message: e.message, pct: e.progress })
+        if (e.type === 'error') throw new Error(e.message)
         if (e.type === 'complete') {
           const gid = e.result?.generationId
-          if (gid) {
-            window.location.assign(`/?gen=${encodeURIComponent(gid)}`)
-          }
+          if (gid) window.location.assign(`/?gen=${encodeURIComponent(gid)}`)
         }
       }
-    } catch (e: any) {
-      setError(e?.message || String(e))
-    } finally {
-      setGenerating(false)
-    }
+    } catch (e: any) { setError(e?.message || String(e)) }
+    finally { setGenerating(false) }
   }
 
+  const canGenerate = !!(selectedKeys.length || issueKey) && !generating
+  const hasContent  = !!(taskList || issue)
+
   return (
-    <div style={{ minHeight: '100vh', paddingTop: 0, fontFamily: 'Inter, system-ui, sans-serif', background: 'linear-gradient(135deg, #f8fafc 0%, #f0f4f9 100%)' }}>
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', background: 'rgba(255,255,255,.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(84,128,186,.1)', position: 'sticky', top: 0, zIndex: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: '#5480ba' }}>📋 Import from Jira</div>
-        <a href='/?mode=create' style={{ color: '#5480ba', fontWeight: 700, textDecoration: 'none', transition: 'all 0.2s', fontSize: 13, padding: '8px 12px', borderRadius: 8 }} onMouseEnter={(e) => { (e.target as HTMLAnchorElement).style.background = 'rgba(84,128,186,.08)' }} onMouseLeave={(e) => { (e.target as HTMLAnchorElement).style.background = 'transparent' }}>← Back to editor</a>
-      </div>
-
-      <div style={{ padding: '32px 24px 40px 24px', maxWidth: 1260, margin: '0 auto' }}>
-
-        {/* ── Hero Section ── */}
-        <div style={{ marginBottom: 36, animation: 'fadeUp 0.6s ease both' }}>
-          <div style={{ display: 'inline-block', marginBottom: 12, padding: '6px 12px', background: 'linear-gradient(135deg, rgba(84,128,186,.12) 0%, rgba(84,128,186,.06) 100%)', border: '1px solid rgba(84,128,186,.2)', borderRadius: 10, fontSize: 11, fontWeight: 700, color: '#5480ba', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Jira Integration
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={handleClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden"
+        style={{ maxWidth: 780, maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ── Header ── */}
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 text-white" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)' }}>
+          <div>
+            <h2 className="text-base font-bold">📋 Import from Jira</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'rgba(196,181,253,.85)' }}>Fetch → Select tasks → Generate UI</p>
           </div>
-          <h1 style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 900, color: '#1a1a2e', marginBottom: 12, lineHeight: 1.1 }}>
-            Import from <span style={{ background: 'linear-gradient(135deg, #5480ba 0%, #3d6494 100%)', backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Jira</span>
-          </h1>
-          <p style={{ fontSize: 15, color: '#6b7280', marginBottom: 0, maxWidth: 600, lineHeight: 1.6 }}>
-            Connect your Jira project and automatically generate beautiful UIs from frontend task descriptions and mockups.
-          </p>
+          <button onClick={handleClose} className="p-1.5 rounded-lg text-white hover:bg-white/20 transition-colors">✕</button>
         </div>
 
-        {/* ── Input Card ── */}
-        <div style={{ background: 'rgba(255,255,255,.88)', backdropFilter: 'blur(24px)', borderRadius: 16, padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,.04), 0 8px 24px rgba(84,128,186,.08)', border: '1px solid rgba(255,255,255,.95)', marginBottom: 28 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#4b5563', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Jira Project URL or Board</label>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            <input
-              value={jiraInput}
-              onChange={(e) => setJiraInput(e.target.value)}
-              placeholder='Paste your Jira board URL (e.g., testetvalidation.atlassian.net/jira/...)'
-              style={{
-                flex: 1,
-                padding: '14px 16px',
-                border: '1.5px solid #e5e7eb',
-                borderRadius: 12,
-                fontSize: 14,
-                background: 'rgba(249,250,251,.8)',
-                color: '#111827',
-                transition: 'all 0.25s',
-                outline: 'none',
-                fontFamily: 'Inter, system-ui, sans-serif',
-              }}
-              onFocus={(e) => {
-                ;(e.target as HTMLInputElement).style.borderColor = '#5480ba'
-                ;(e.target as HTMLInputElement).style.boxShadow = '0 0 0 4px rgba(84,128,186,.12)'
-              }}
-              onBlur={(e) => {
-                ;(e.target as HTMLInputElement).style.borderColor = '#e5e7eb'
-                ;(e.target as HTMLInputElement).style.boxShadow = 'none'
-              }}
-            />
-            <button
-              onClick={() => void doFetch()}
-              disabled={fetching}
-              style={{
-                padding: '12px 20px',
-                borderRadius: 12,
-                border: 'none',
-                background: fetching ? '#cbd5e1' : 'linear-gradient(135deg, #5480ba 0%, #3d6494 100%)',
-                color: '#fff',
-                fontWeight: 800,
-                cursor: fetching ? 'not-allowed' : 'pointer',
-                boxShadow: fetching ? 'none' : '0 4px 15px -3px rgba(84,128,186,.4)',
-                transition: 'all 0.2s',
-                fontSize: 13,
-                whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={(e) => {
-                if (!fetching) {
-                  ;(e.target as HTMLButtonElement).style.transform = 'translateY(-2px)'
-                  ;(e.target as HTMLButtonElement).style.boxShadow = '0 10px 30px -8px rgba(84,128,186,.3)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                ;(e.target as HTMLButtonElement).style.transform = 'translateY(0)'
-                ;(e.target as HTMLButtonElement).style.boxShadow = fetching ? 'none' : '0 4px 15px -3px rgba(84,128,186,.4)'
-              }}
-            >
-              {fetching ? '⟳ Fetching…' : '🔍 Fetch'}
-            </button>
-            <button
-              onClick={() => void doGenerate()}
-              disabled={!(selectedKeys.length || issueKey) || generating}
-              style={{
-                padding: '12px 20px',
-                borderRadius: 12,
-                border: '1.5px solid #e5e7eb',
-                background: !(selectedKeys.length || issueKey) || generating ? '#f3f4f6' : '#fff',
-                color: !(selectedKeys.length || issueKey) || generating ? '#9ca3af' : '#5480ba',
-                fontWeight: 800,
-                cursor: !(selectedKeys.length || issueKey) || generating ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s',
-                fontSize: 13,
-                whiteSpace: 'nowrap',
-              }}
-              title={!(selectedKeys.length || issueKey) ? 'Fetch a list and select one or more tickets, or paste an issue URL' : 'Generate UI'}
-              onMouseEnter={(e) => {
-                if (selectedKeys.length || issueKey && !generating) {
-                  ;(e.target as HTMLButtonElement).style.background = 'rgba(84,128,186,.05)'
-                  ;(e.target as HTMLButtonElement).style.borderColor = '#5480ba'
-                }
-              }}
-              onMouseLeave={(e) => {
-                ;(e.target as HTMLButtonElement).style.background = '#fff'
-                ;(e.target as HTMLButtonElement).style.borderColor = '#e5e7eb'
-              }}
-            >
-              {generating ? '⚡ Generating…' : '✨ Generate UI'}
-            </button>
-          </div>
-
+        {/* ── Controls bar ── */}
+        <div className="shrink-0 flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50 flex-wrap">
+          <input
+            value={jiraInput}
+            onChange={e => setJiraInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void doFetch()}
+            placeholder="Paste your Jira board URL or issue key (e.g., ABC-123)"
+            className="flex-1 min-w-0 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700"
+            style={{ minWidth: 220 }}
+          />
+          <button
+            onClick={() => void doFetch()}
+            disabled={fetching || !jiraInput.trim()}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #6366f1)', boxShadow: '0 2px 8px rgba(124,58,237,.3)' }}
+          >
+            {fetching
+              ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Fetching…</>
+              : '🔍 Fetch'}
+          </button>
           {issueKey && (
-            <div style={{ marginTop: 12, padding: 10, background: 'linear-gradient(135deg, rgba(84,128,186,.06) 0%, rgba(84,128,186,.02) 100%)', borderRadius: 10, fontSize: 12, color: '#5480ba', fontWeight: 600 }}>
-              ✓ Detected: <b>{issueKey}</b>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-violet-200 bg-violet-50 text-violet-700">
+              ✓ <b>{issueKey}</b> detected
             </div>
           )}
           {!issueKey && selectedKeys.length > 0 && (
-            <div style={{ marginTop: 12, padding: 10, background: 'linear-gradient(135deg, rgba(84,128,186,.06) 0%, rgba(84,128,186,.02) 100%)', borderRadius: 10, fontSize: 12, color: '#5480ba', fontWeight: 600 }}>
-              ✓ Selected: <b>{selectedKeys.length} task{selectedKeys.length !== 1 ? 's' : ''}</b> {selectedKeys.length <= 4 ? `(${selectedKeys.join(', ')})` : ''}
-            </div>
-          )}
-
-          {progress && (
-            <div style={{ marginTop: 16, padding: 14, borderRadius: 12, border: '1px solid #e5e7eb', background: 'linear-gradient(135deg, rgba(84,128,186,.05) 0%, rgba(84,128,186,.02) 100%)' }}>
-              <div style={{ fontWeight: 800, marginBottom: 8, color: '#1a1a2e', fontSize: 13 }}>⚙️ {progress.stage || 'Processing'}</div>
-              <div style={{ color: '#6b7280', fontSize: 12, marginBottom: 10, lineHeight: 1.4 }}>{progress.message || 'Building your UI…'}</div>
-              <div style={{ height: 6, background: '#e5e7eb', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.max(0, Math.min(100, progress.progress ?? 0))}%`, height: '100%', background: 'linear-gradient(135deg, #5480ba 0%, #3d6494 100%)', borderRadius: 999, transition: 'width 0.3s' }} />
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: '#fff5f5', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 13 }}>
-              ⚠️ {error}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-violet-200 bg-violet-50 text-violet-700">
+              ✓ {selectedKeys.length} task{selectedKeys.length !== 1 ? 's' : ''} selected
             </div>
           )}
         </div>
 
-      </div>
-
-      {/* ── Task List Section ── */}
-      {taskList && taskList.length > 0 && (
-        <div style={{ padding: '0 24px 40px 24px', maxWidth: 1260, margin: '0 auto' }}>
-          <div style={{ marginBottom: 20 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 900, color: '#1a1a2e', marginBottom: 8 }}>Available Frontend Tasks</h2>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>Select one or more tasks to generate their UI. Only tasks with UI/frontend labels (ui, interface, ux, design, etc.) are shown.</p>
+        {/* ── Error ── */}
+        {error && (
+          <div className="mx-5 mt-3 shrink-0 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            ⚠️ {error}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
-            {taskList.map((t, idx) => {
-              const selected = selectedKeys.includes(t.key)
-              const active = previewKey === t.key
+        )}
 
-              return (
-                <div
-                  key={t.key}
-                  style={{
-                    padding: 16,
-                    borderRadius: 14,
-                    border: active ? '2px solid #5480ba' : '1.5px solid #e5e7eb',
-                    background: active ? 'linear-gradient(135deg, rgba(84,128,186,.08) 0%, rgba(84,128,186,.04) 100%)' : 'rgba(255,255,255,.8)',
-                    display: 'flex',
-                    gap: 12,
-                    alignItems: 'flex-start',
-                    transition: 'all 0.2s',
-                    cursor: 'pointer',
-                    backdropFilter: 'blur(8px)',
-                    animation: `fadeUp 0.5s ease ${idx * 0.05}s both`,
-                  }}
-                  onMouseEnter={(e) => {
-                    ;(e.currentTarget as HTMLDivElement).style.borderColor = '#5480ba'
-                    ;(e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 15px -3px rgba(84,128,186,.2)'
-                    ;(e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)'
-                  }}
-                  onMouseLeave={(e) => {
-                    ;(e.currentTarget as HTMLDivElement).style.borderColor = active ? '#5480ba' : '#e5e7eb'
-                    ;(e.currentTarget as HTMLDivElement).style.boxShadow = 'none'
-                    ;(e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'
-                  }}
-                >
-                  <input
-                    type='checkbox'
-                    checked={selected}
-                    onChange={() => {
-                      setSelectedKeys((prev) => (prev.includes(t.key) ? prev.filter((k) => k !== t.key) : [...prev, t.key]))
-                    }}
-                    style={{ marginTop: 4, cursor: 'pointer' }}
-                    aria-label={`Select ${t.key}`}
-                  />
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 900, fontSize: 14, color: '#1a1a2e', marginBottom: 4 }}>
-                          {t.key}
-                        </div>
-                        <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2 }}>
-                          {t.summary}
-                        </div>
-                      </div>
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation()
-                          setPreviewKey(t.key)
-                          setError(null)
-                          setIssue(null)
-                          try {
-                            const data = await getJiraIssue(t.key, accessToken)
-                            setIssue(data)
-                          } catch (e: any) {
-                            setError(e?.message || String(e))
-                          }
-                        }}
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: 10,
-                          border: '1px solid #e5e7eb',
-                          background: '#fff',
-                          fontWeight: 700,
-                          color: '#5480ba',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                          transition: 'all 0.2s',
-                          fontSize: 12,
-                        }}
-                        onMouseEnter={(e) => {
-                          ;(e.target as HTMLButtonElement).style.borderColor = '#5480ba'
-                          ;(e.target as HTMLButtonElement).style.backgroundColor = 'rgba(84,128,186,.05)'
-                        }}
-                        onMouseLeave={(e) => {
-                          ;(e.target as HTMLButtonElement).style.borderColor = '#e5e7eb'
-                          ;(e.target as HTMLButtonElement).style.backgroundColor = '#fff'
-                        }}
-                      >
-                        👁️ View
-                      </button>
-                    </div>
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
-                      {(t.status ? `Status: ${t.status}` : '')}{t.issueType ? ` • ${t.issueType}` : ''}{t.priority ? ` • ${t.priority}` : ''}
-                    </div>
-                    {t.labels && t.labels.length > 0 && (
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {t.labels.slice(0, 3).map(label => (
-                          <span key={label} style={{ fontSize: 10, padding: '3px 8px', background: 'linear-gradient(135deg, rgba(84,128,186,.1) 0%, rgba(84,128,186,.05) 100%)', border: '1px solid rgba(84,128,186,.2)', borderRadius: 6, color: '#5480ba', fontWeight: 600 }}>
-                            {label}
-                          </span>
-                        ))}
-                        {t.labels.length > 3 && (
-                          <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>+{t.labels.length - 3} more</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Issue Detail Section ── */}
-      {issue && (
-        <div style={{ padding: '0 24px 40px 24px', maxWidth: 1260, margin: '0 auto' }}>
-          <div style={{ background: 'rgba(255,255,255,.88)', backdropFilter: 'blur(24px)', borderRadius: 16, padding: '28px', boxShadow: '0 2px 8px rgba(0,0,0,.04), 0 8px 24px rgba(84,128,186,.08)', border: '1px solid rgba(255,255,255,.95)' }}>
-            <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 16, marginBottom: 24 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#5480ba', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Task Details</div>
-                <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a1a2e', margin: 0, marginBottom: 6 }}>
-                  {issue.key}: {issue.summary}
-                </h2>
-              </div>
-              {issue.webUrl && (
-                <a href={issue.webUrl} target='_blank' rel='noreferrer' style={{ fontWeight: 700, textDecoration: 'none', color: '#5480ba', fontSize: 13, padding: '8px 14px', background: 'linear-gradient(135deg, rgba(84,128,186,.1) 0%, rgba(84,128,186,.05) 100%)', border: '1px solid rgba(84,128,186,.2)', borderRadius: 10, whiteSpace: 'nowrap', transition: 'all 0.2s' }} onMouseEnter={(e) => { (e.target as HTMLAnchorElement).style.background = 'linear-gradient(135deg, rgba(84,128,186,.15) 0%, rgba(84,128,186,.1) 100%)' }} onMouseLeave={(e) => { (e.target as HTMLAnchorElement).style.background = 'linear-gradient(135deg, rgba(84,128,186,.1) 0%, rgba(84,128,186,.05) 100%)' }}>→ View in Jira</a>
-              )}
+        {/* ── Progress ── */}
+        {progress && (
+          <div className="mx-5 mt-3 shrink-0 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+            <div className="text-xs font-bold text-violet-700 mb-1">⚙️ {progress.stage || 'Processing'}</div>
+            <div className="text-xs text-slate-500 mb-2">{progress.message || 'Building your UI…'}</div>
+            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, progress.pct ?? 0)}%`, background: 'linear-gradient(135deg,#7c3aed,#6366f1)' }} />
             </div>
+          </div>
+        )}
 
-            {(issue.description || issue.acceptanceCriteria) && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                <div style={{ border: '1.5px solid #e5e7eb', borderRadius: 14, padding: '16px', background: 'linear-gradient(135deg, rgba(84,128,186,.04) 0%, rgba(84,128,186,.02) 100%)' }}>
-                  <div style={{ fontWeight: 800, marginBottom: 12, color: '#1a1a2e', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    📝 Description
-                  </div>
-                  <div style={{ whiteSpace: 'pre-wrap', color: '#6b7280', fontSize: 13, lineHeight: 1.6 }}>{issue.description || '—'}</div>
-                </div>
-                <div style={{ border: '1.5px solid #e5e7eb', borderRadius: 14, padding: '16px', background: 'linear-gradient(135deg, rgba(84,128,186,.04) 0%, rgba(84,128,186,.02) 100%)' }}>
-                  <div style={{ fontWeight: 800, marginBottom: 12, color: '#1a1a2e', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    ✓ Acceptance Criteria
-                  </div>
-                  <div style={{ whiteSpace: 'pre-wrap', color: '#6b7280', fontSize: 13, lineHeight: 1.6 }}>{issue.acceptanceCriteria || '—'}</div>
-                </div>
+        {/* ── Scrollable body ── */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* Empty state */}
+          {!hasContent && !fetching && !error && (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <div className="text-5xl mb-4">📋</div>
+              <p className="text-sm font-semibold text-slate-500">Paste a Jira URL or issue key above</p>
+              <p className="text-xs mt-1 text-slate-400">Fetch your board to see frontend tasks, or paste an issue URL directly</p>
+            </div>
+          )}
+
+          {/* Fetching spinner */}
+          {fetching && (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <span className="w-8 h-8 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mb-4" />
+              <p className="text-sm text-slate-500">Fetching from Jira…</p>
+            </div>
+          )}
+
+          {/* ── Task list ── */}
+          {taskList && taskList.length > 0 && (
+            <div className="p-5">
+              <div className="mb-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Frontend Tasks ({taskList.length})</h3>
+                <p className="text-xs text-slate-400">Select tasks to generate their UI. Only tasks with UI/frontend labels are shown.</p>
               </div>
-            )}
-
-            {issue.attachments && issue.attachments.length > 0 && (
-              <div>
-                <div style={{ fontWeight: 800, marginBottom: 14, color: '#1a1a2e', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  🎨 Mockups & Designs ({issue.attachments.length})
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                  {issue.attachments.map((a, idx) => (
-                    <div key={a.filename} style={{ border: '1.5px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', background: 'linear-gradient(135deg, rgba(84,128,186,.06) 0%, rgba(84,128,186,.02) 100%)', transition: 'all 0.2s', animation: `fadeUp 0.5s ease ${idx * 0.1}s both` }} onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 15px -3px rgba(84,128,186,.2)'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)' }} onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'none'; (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)' }}>
-                      <div style={{ padding: 12, fontSize: 12, fontWeight: 800, borderBottom: '1px solid #e5e7eb', color: '#5480ba', background: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {a.filename}</div>
-                      <img
-                        alt={a.filename}
-                        src={`data:${a.mimeType};base64,${a.content}`}
-                        style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
+              <div className="space-y-2">
+                {taskList.map(t => {
+                  const selected = selectedKeys.includes(t.key)
+                  const active   = previewKey === t.key
+                  return (
+                    <div
+                      key={t.key}
+                      className={`flex gap-3 p-3 rounded-xl border transition-all cursor-pointer ${active ? 'border-violet-400 bg-violet-50' : selected ? 'border-violet-300 bg-violet-50/50' : 'border-slate-200 bg-white hover:border-violet-300'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => setSelectedKeys(prev => prev.includes(t.key) ? prev.filter(k => k !== t.key) : [...prev, t.key])}
+                        className="mt-1 cursor-pointer accent-violet-600 shrink-0"
+                        aria-label={`Select ${t.key}`}
                       />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <div className="flex-1">
+                            <span className="text-xs font-bold text-violet-700 mr-2">{t.key}</span>
+                            <span className="text-sm text-slate-700 leading-snug">{t.summary}</span>
+                          </div>
+                          <button
+                            onClick={async e => {
+                              e.stopPropagation()
+                              setPreviewKey(t.key); setError(null); setIssue(null)
+                              try { setIssue(await getJiraIssue(t.key, accessToken)) }
+                              catch (err: any) { setError(err?.message || String(err)) }
+                            }}
+                            className="shrink-0 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-violet-600 hover:border-violet-400 hover:bg-violet-50 transition-colors"
+                          >
+                            👁 View
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {[t.status && `${t.status}`, t.issueType, t.priority].filter(Boolean).map((s, i) => (
+                            <span key={i} className="text-xs text-slate-400">{s}</span>
+                          ))}
+                          {t.labels?.slice(0, 3).map(l => (
+                            <span key={l} className="text-xs px-2 py-0.5 bg-violet-100 border border-violet-200 rounded-full text-violet-600 font-medium">{l}</span>
+                          ))}
+                          {(t.labels?.length ?? 0) > 3 && <span className="text-xs text-slate-400">+{t.labels!.length - 3} more</span>}
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
-            )}
+            </div>
+          )}
+
+          {/* ── Issue detail ── */}
+          {issue && (
+            <div className="p-5">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-1">Task Details</p>
+                    <h3 className="text-sm font-bold text-slate-800">{issue.key}: {issue.summary}</h3>
+                  </div>
+                  {issue.webUrl && (
+                    <a href={issue.webUrl} target="_blank" rel="noreferrer"
+                      className="shrink-0 text-xs font-semibold text-violet-600 px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors">
+                      → View in Jira
+                    </a>
+                  )}
+                </div>
+                {(issue.description || issue.acceptanceCriteria) && (
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="p-3 bg-white border border-slate-200 rounded-lg">
+                      <p className="text-xs font-bold text-slate-500 mb-1.5">📝 Description</p>
+                      <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{issue.description || '—'}</p>
+                    </div>
+                    <div className="p-3 bg-white border border-slate-200 rounded-lg">
+                      <p className="text-xs font-bold text-slate-500 mb-1.5">✓ Acceptance Criteria</p>
+                      <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{issue.acceptanceCriteria || '—'}</p>
+                    </div>
+                  </div>
+                )}
+                {issue.attachments && issue.attachments.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 mb-2">🎨 Mockups ({issue.attachments.length})</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {issue.attachments.map(a => (
+                        <div key={a.filename} className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                          <p className="text-xs font-semibold text-violet-600 px-2 py-1 border-b border-slate-200 truncate">📄 {a.filename}</p>
+                          <img alt={a.filename} src={`data:${a.mimeType};base64,${a.content}`} className="w-full h-24 object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="shrink-0 border-t border-slate-100 px-5 py-3 flex items-center justify-between bg-slate-50">
+          <span className="text-xs text-slate-400">
+            {selectedKeys.length > 0
+              ? `${selectedKeys.length} task${selectedKeys.length !== 1 ? 's' : ''} selected`
+              : issueKey
+              ? `Issue ${issueKey} ready`
+              : 'Paste a Jira URL or issue key'}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={handleClose} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={() => void doGenerate()}
+              disabled={!canGenerate}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white rounded-lg transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+              style={canGenerate ? { background: 'linear-gradient(135deg,#7c3aed,#6366f1)' } : {}}
+            >
+              {generating
+                ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating…</>
+                : '✨ Generate UI'}
+            </button>
           </div>
         </div>
-      )}
-
-      <style>{`
-        @keyframes fadeUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
+      </div>
     </div>
   )
 }

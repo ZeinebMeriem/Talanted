@@ -19,6 +19,8 @@ interface PreviewProps {
   onElementSelected?: (elementInfo: ElementInfo) => void
   onStyleChange?: (change: StyleChange) => void | Promise<void>
   previewOverrideCSS?: string | null
+  onRepair?: () => void
+  isRepairing?: boolean
 }
 
 export interface ElementInfo {
@@ -330,6 +332,8 @@ export const Preview: React.FC<PreviewProps> = ({
   onElementSelected,
   onStyleChange,
   previewOverrideCSS,
+  onRepair,
+  isRepairing,
 }) => {
   const previewContainerRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -510,10 +514,19 @@ export const Preview: React.FC<PreviewProps> = ({
       )}
 
       {buildError && (
-        <div className="bg-red-900 bg-opacity-30 px-4 py-2 border-b border-red-700">
-          <div className="text-xs text-red-300">
+        <div style={{ background: 'rgba(127,29,29,.25)', borderBottom: '1px solid rgba(185,28,28,.4)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, fontSize: 12, color: '#fca5a5' }}>
             <strong>Build Error:</strong> {buildError}
           </div>
+          {onRepair && (
+            <button
+              onClick={onRepair}
+              disabled={isRepairing}
+              style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: isRepairing ? 'rgba(99,102,241,.4)' : 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: isRepairing ? 'not-allowed' : 'pointer' }}
+            >
+              {isRepairing ? '⟳ Fixing…' : '🔧 Fix with AI'}
+            </button>
+          )}
         </div>
       )}
 
@@ -555,16 +568,25 @@ export const Preview: React.FC<PreviewProps> = ({
             ) : (
               <div className="w-full h-screen flex items-center justify-center bg-slate-100 text-slate-500">
                 <div className="text-center max-w-md px-6">
-                  <div className="text-4xl mb-4">🚀</div>
-                  <p className="font-medium mb-2">No preview available</p>
-                  <p className="text-xs text-slate-400 mb-4">
-                    {iframeError 
-                      ? `Failed to load: ${builtProjectUrl}` 
+                  <div className="text-4xl mb-4">{iframeError ? '⚠️' : '🚀'}</div>
+                  <p className="font-medium mb-2">{iframeError ? 'Preview failed to load' : 'No preview available'}</p>
+                  <p className="text-xs text-slate-400 mb-5">
+                    {iframeError
+                      ? 'The project build may have errors or is not ready yet.'
                       : 'Generate a project to see the preview'}
                   </p>
-                  {iframeError && builtProjectUrl && (
+                  {(iframeError || buildError) && onRepair && (
+                    <button
+                      onClick={onRepair}
+                      disabled={isRepairing}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 24px', borderRadius: 10, border: 'none', background: isRepairing ? 'rgba(99,102,241,.5)' : 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: isRepairing ? 'not-allowed' : 'pointer', boxShadow: '0 4px 16px rgba(99,102,241,.35)', marginBottom: 12 }}
+                    >
+                      {isRepairing ? '⟳ AI is fixing the build…' : '🔧 Fix Build Errors with AI'}
+                    </button>
+                  )}
+                  {iframeError && !onRepair && (
                     <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-lg">
-                      The project files may not be built yet. Try clicking the refresh button or use the CODE tab to view files.
+                      Try clicking the refresh button or use the CODE tab to view files.
                     </p>
                   )}
                 </div>
