@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Mic, FileText, Zap, LayoutDashboard, Rocket, ShoppingCart, Briefcase, Bot, Sparkles, Eye, Code2, Star, GitBranch, Download, Upload, Settings, ChevronRight, CheckCircle2, Clock, AlertTriangle, Plus, Layers, BarChart3, Users, Activity, XCircle, HeartPulse, FolderKanban, Timer, Award, Globe } from 'lucide-react'
 import {
   streamGeneration,
   createGeneration,
@@ -11,7 +12,9 @@ import {
   downloadCleanZip,
   deleteGeneration,
   renameGeneration,
+  attachMeetingAnalysis,
   getAdminActivity,
+  getAdminAuditLog,
   getAdminDailyChart,
   getAdminFailed,
   getAdminServiceHealth,
@@ -35,7 +38,11 @@ import {
   editFile,
   rollbackGeneration,
   setAdminUserEnabled,
+  setAdminUserRole,
+  retryAdminGeneration,
   getChatHistory,
+  shareProject,
+  unshareProject,
   type AdminStats,
   type AdminUser,
   type AuditEventListItem,
@@ -43,15 +50,17 @@ import {
   type DailyChartItem,
   type GenerationListItem,
   type GenerationVersionsResponse,
+  type AdminAuditEvent,
   type ServiceHealth,
   type UserProfile,
   type UserStats,
 } from './api'
 import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, MeetingRecorder, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { JiraImportPage } from './JiraImportPage'
 
 type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
 
-type RightTab = 'chat' | 'console' | 'versions'
+type RightTab = 'chat' | 'console' | 'versions' | 'meeting'
 
 
 type CodeFile = { path: string; content: string }
@@ -161,6 +170,8 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   // TED Chatbot state
   const [isTedOpen, setIsTedOpen] = useState(false)
   const [isMeetingRecorderOpen, setIsMeetingRecorderOpen] = useState(false)
+  const [isJiraModalOpen, setIsJiraModalOpen] = useState(false)
+  const [pendingMeetingAnalysis, setPendingMeetingAnalysis] = useState<any>(null)
   const [currentEditingFile, setCurrentEditingFile] = useState<string | null>(null)
   const lastEditTime = useRef<number>(0)
 
@@ -223,7 +234,14 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [adminFailed, setAdminFailed] = useState<GenerationListItem[]>([])
   const [adminDailyChart, setAdminDailyChart] = useState<DailyChartItem[]>([])
   const [adminHealth, setAdminHealth] = useState<ServiceHealth | null>(null)
-  const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'users' | 'activity' | 'failed' | 'health'>('overview')
+  const [adminActiveTab, setAdminActiveTab] = useState<'overview' | 'users' | 'activity' | 'failed' | 'health' | 'audit'>('overview')
+  const [adminAudit, setAdminAudit] = useState<AdminAuditEvent[]>([])
+  const [adminChartDays, setAdminChartDays] = useState<30 | 7>(30)
+  const [adminSearchQuery, setAdminSearchQuery] = useState('')
+  const [adminProjectSearch, setAdminProjectSearch] = useState('')
+  const [adminProjectStatus, setAdminProjectStatus] = useState<'all' | 'COMPLETED' | 'PROCESSING' | 'FAILED'>('all')
+  const [adminActivityFilter, setAdminActivityFilter] = useState<'all' | 'COMPLETED' | 'FAILED' | 'PROCESSING'>('all')
+  const [retryingId, setRetryingId] = useState<string | null>(null)
 
   // IDE
   const [ideVisible, setIdeVisible] = useState(false)
@@ -264,6 +282,14 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null)
   const [showAllProjects, setShowAllProjects] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [homePanelTab, setHomePanelTab] = useState<'mine' | 'recent'>('mine')
+  const [projectSearch, setProjectSearch] = useState('')
+  const [projectFilter, setProjectFilter] = useState<'all'|'prompt'|'meeting'|'jira'>('all')
+  const [projectSort, setProjectSort] = useState<'date'|'name'>('date')
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('talanted_recent_views') || '[]') } catch { return [] }
+  })
 
   const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null)
   const [selectedGeneration, setSelectedGeneration] = useState<any>(null)
@@ -315,6 +341,10 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   // Deploy modal
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false)
   const [liveDeployUrl, setLiveDeployUrl] = useState<string | undefined>(undefined)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  const [isSharing, setIsSharing] = useState(false)
+  const [showSharePopover, setShowSharePopover] = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
 
   // Handle element selection from inspect mode
   const handleElementSelected = useCallback((info: ElementInfo) => {
@@ -507,15 +537,15 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       // Debug log
       console.log('🔍 Loading admin dashboard with token:', accessToken?.substring(0, 30) + '...')
 
-      const [users, stats, activity, failed, chart, health] = await Promise.all([
+      const [users, stats, activity, failed, chart, health, audit] = await Promise.all([
         getAdminUsers(accessToken),
         getAdminStats(accessToken),
         getAdminActivity(accessToken),
         getAdminFailed(accessToken),
-        getAdminDailyChart(accessToken),
+        getAdminDailyChart(accessToken, 30),
         getAdminServiceHealth(accessToken),
+        getAdminAuditLog(accessToken),
       ])
-      console.log('✅ Admin data loaded:', { users: users.length, stats, activity: activity.length, failed: failed.length, chart: chart.length, health })
 
       setAdminUsers(users)
       setAdminStats(stats)
@@ -523,6 +553,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       setAdminFailed(failed)
       setAdminDailyChart(chart)
       setAdminHealth(health)
+      setAdminAudit(audit)
     } catch (e: any) {
       const errMsg = e?.message ?? 'Failed to load admin data'
       console.error('❌ Admin dashboard error:', errMsg, e)
@@ -565,6 +596,15 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       void loadAdminDashboard()
     }
   }, [homeTab, accessToken, loadAdminDashboard])
+
+  // Auto-refresh health every 30 seconds when on health tab
+  useEffect(() => {
+    if (homeTab !== 'admin' || adminActiveTab !== 'health') return
+    const id = setInterval(() => {
+      getAdminServiceHealth(accessToken).then(setAdminHealth).catch(() => {})
+    }, 30000)
+    return () => clearInterval(id)
+  }, [homeTab, adminActiveTab, accessToken])
 
   useEffect(() => {
     if (ideVisible) {
@@ -1090,7 +1130,9 @@ document.addEventListener('click', function(e) {
 
       setLiveScores(null)
       setDocsGenerated(false)
-      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel, undefined, undefined, selectedTheme)) {
+      const capturedMeetingAnalysis = pendingMeetingAnalysis
+      setPendingMeetingAnalysis(null)
+      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel, undefined, undefined, selectedTheme, capturedMeetingAnalysis)) {
         if (event.type === 'progress') {
           setBuildPct(event.progress)
           setBuildMsg(event.message)
@@ -1469,10 +1511,9 @@ document.addEventListener('click', function(e) {
     }
 
     const CardFooter = ({
-      g, displayName,
+      g,
     }: {
       g: typeof validProjects[0]
-      displayName: string
     }) => {
       const [editing, setEditing] = React.useState(false)
       const [nameValue, setNameValue] = React.useState(g.name || projectName2(g.prompt))
@@ -1521,9 +1562,6 @@ document.addEventListener('click', function(e) {
       return (
         <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, background: '#ffffff' }}
           onClick={e => e.stopPropagation()}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-            {displayName.charAt(0).toUpperCase()}
-          </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             {editing ? (
               <input
@@ -1549,7 +1587,26 @@ document.addEventListener('click', function(e) {
                 </svg>
               </p>
             )}
-            <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+            <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 4px' }}>Edited {timeAgo(g.updatedAt || g.createdAt)}</p>
+            {(() => {
+              const hasMeeting = !!(g as any).meetingAnalysis
+              const hasJira = !!(g as any).jiraIssueKey || !!((g as any).jiraIssueKeys?.length)
+              if (hasMeeting) return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#f3e8ff', color: '#7c3aed', border: '1px solid #e9d5ff' }}>
+                  🎙 Meeting
+                </span>
+              )
+              if (hasJira) return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>
+                  🔗 Jira
+                </span>
+              )
+              return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                  💬 Prompt
+                </span>
+              )
+            })()}
           </div>
 
           {/* Delete */}
@@ -1597,8 +1654,13 @@ document.addEventListener('click', function(e) {
 
     const validProjects = history.filter(g => g.generationId)
 
+    const isDark = false
+    const sidebarText = 'rgba(0,0,0,.55)'
+    const sidebarBorder = '#e5e7eb'
+    const sidebarLabel = 'rgba(0,0,0,.35)'
+
     return (
-      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: '#ffffff' }}>
+      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: homeTab === 'create' ? '#f5f3ff' : '#ffffff' }}>
 
         {/* Brand color bar */}
         <div className="talan-color-bar">
@@ -1611,13 +1673,15 @@ document.addEventListener('click', function(e) {
 
         {/* ── SIDEBAR ── */}
         <aside style={{
-          width: 260, background: '#ffffff', borderRight
-            : '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto'
+          width: 280, background: '#ffffff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto',
+          transform: sidebarOpen ? 'translateX(0)' : 'translateX(-280px)',
+          transition: 'transform .3s cubic-bezier(.4,0,.2,1)',
         }}>
 
           {/* Logo */}
-          <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid #e5e7eb', background: 'linear-gradient(135deg, #faf5ff 0%, #f0f4ff 100%)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <svg width="32" height="32" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb', background: 'linear-gradient(135deg, #faf5ff 0%, #f0f4ff 100%)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Logo left-aligned */}
+            <svg width="30" height="30" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
               <defs>
                 <linearGradient id="slg" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#6366f1" />
@@ -1635,6 +1699,13 @@ document.addEventListener('click', function(e) {
               background: 'linear-gradient(135deg, #6366f1, #a855f7)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
             }}>Talanted</span>
+            {/* Close button pushed to the right */}
+            <button onClick={() => setSidebarOpen(false)} title="Close sidebar"
+              style={{ marginLeft: 'auto', width: 28, height: 28, borderRadius: 7, border: 'none', background: 'rgba(99,102,241,.08)', color: '#6366f1', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .15s' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.18)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            </button>
           </div>
 
           {/* Workspace */}
@@ -1660,7 +1731,9 @@ document.addEventListener('click', function(e) {
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
                 className={`sidebar-nav-item${item.active ? ' active' : ''}`}
-                style={{ width: '100%', border: 'none', textAlign: 'left', marginBottom: 2 }}>
+                style={{ width: '100%', border: 'none', textAlign: 'left', marginBottom: 2, color: item.active ? (isDark ? '#a5b4fc' : undefined) : sidebarText, background: item.active && isDark ? 'rgba(99,102,241,.15)' : undefined }}
+                onMouseEnter={e => { if (!item.active) { (e.currentTarget as HTMLElement).style.background = isDark ? 'rgba(255,255,255,.05)' : ''; (e.currentTarget as HTMLElement).style.color = isDark ? '#e2e8f0' : '' } }}
+                onMouseLeave={e => { if (!item.active) { (e.currentTarget as HTMLElement).style.background = ''; (e.currentTarget as HTMLElement).style.color = '' } }}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
                 {item.label}
               </button>
@@ -1679,46 +1752,54 @@ document.addEventListener('click', function(e) {
           {/* Recents */}
           {validProjects.length > 0 && (
             <div style={{ padding: '16px 10px 8px', flex: 1 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,.35)', textTransform: 'uppercase', letterSpacing: '0.12em', padding: '0 13px', marginBottom: 6 }}>Recents</p>
-              {validProjects.slice(0, 8).map(g => (
-                <button key={g.generationId}
-                  onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 13px', borderRadius: 9, marginBottom: 1, background: 'transparent', color: 'rgba(0,0,0,.45)', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', transition: 'all .15s' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(99,102,241,.07)'; el.style.color = '#1f2937' }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = 'rgba(0,0,0,.45)' }}>
-                  <span style={{ fontSize: 13, opacity: 0.4, flexShrink: 0 }}>□</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{g.name || projectName2(g.prompt)}</span>
-                </button>
-              ))}
+              <p style={{ fontSize: 11, fontWeight: 700, color: sidebarLabel, textTransform: 'uppercase', letterSpacing: '0.12em', padding: '0 13px', marginBottom: 6 }}>Recents</p>
+              {validProjects.slice(0, 8).map(g => {
+                const hasMeeting = !!(g as any).meetingAnalysis
+                const hasJira = !!(g as any).jiraIssueKey || !!((g as any).jiraIssueKeys?.length)
+                const srcEmoji = hasMeeting ? '🎙' : hasJira ? '🔗' : '💬'
+                return (
+                  <button key={g.generationId}
+                    onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '7px 13px', borderRadius: 9, marginBottom: 1, background: 'transparent', color: sidebarText, border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', transition: 'all .15s' }}
+                    onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = isDark ? 'rgba(99,102,241,.12)' : 'rgba(99,102,241,.07)'; el.style.color = isDark ? '#c7d2fe' : '#1f2937' }}
+                    onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = sidebarText }}>
+                    <span style={{ fontSize: 11, flexShrink: 0, width: 18, textAlign: 'center' }}>{srcEmoji}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontWeight: 500 }}>{g.name || projectName2(g.prompt)}</span>
+                    {loadingProjectId === g.generationId && (
+                      <div style={{ width: 10, height: 10, border: '1.5px solid rgba(99,102,241,.2)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
 
           <div style={{ flex: 1 }} />
 
           {/* Bottom: user + sign out */}
-          <div style={{ padding: '12px 14px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ padding: '12px 14px', borderTop: `1px solid ${sidebarBorder}`, display: 'flex', alignItems: 'center', gap: 10 }}>
             {!isAdmin && (
               <>
                 <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
                   {displayName.charAt(0)}
                 </div>
                 <div onClick={() => setHomeTab('profile')} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
-                  {email && <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</p>}
+                  <p style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#e2e8f0' : '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
+                  {email && <p style={{ fontSize: 11, color: sidebarLabel, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</p>}
                 </div>
               </>
             )}
             {isAdmin && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Admin</p>
-                <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: 0 }}>Dashboard</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#e2e8f0' : '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Admin</p>
+                <p style={{ fontSize: 11, color: sidebarLabel, margin: 0 }}>Dashboard</p>
               </div>
             )}
             {onLogout && (
               <button onClick={onLogout}
-                style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.35)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 9px', borderRadius: 7, transition: 'all .15s' }}
+                style={{ background: 'none', border: 'none', color: sidebarLabel, cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 9px', borderRadius: 7, transition: 'all .15s' }}
                 onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = '#f87171'; el.style.background = 'rgba(248,113,113,.08)' }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = 'rgba(0,0,0,.35)'; el.style.background = 'none' }}>
+                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = sidebarLabel; el.style.background = 'none' }}>
                 Sign out
               </button>
             )}
@@ -1726,7 +1807,16 @@ document.addEventListener('click', function(e) {
         </aside>
 
         {/* ── MAIN CONTENT ── */}
-        <main style={{ marginLeft: 260, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4, background: '#ffffff' }}>
+        <main style={{ marginLeft: sidebarOpen ? 280 : 0, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4, background: 'transparent', transition: 'margin-left .3s cubic-bezier(.4,0,.2,1)', position: 'relative' }}>
+          {/* Floating open-sidebar button when closed */}
+          {!sidebarOpen && (
+            <button onClick={() => setSidebarOpen(true)} title="Open sidebar"
+              style={{ position: 'fixed', top: 12, left: 12, zIndex: 50, width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(99,102,241,.2)', background: '#fff', color: '#6366f1', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 12px rgba(99,102,241,.15)', transition: 'all .2s', animation: 'fadeUp .2s ease' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#6366f1'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.color = '#6366f1' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          )}
 
           {/* ── HOME PAGE ── */}
           {homeTab === 'create' && !showCreateForm && (
@@ -1748,314 +1838,143 @@ document.addEventListener('click', function(e) {
 
           {/* ── NEW PROJECT ── */}
           {homeTab === 'create' && (showCreateForm || createMode !== 'scratch') && createMode === 'scratch' && (
-            <div className="home-container"
-              onMouseMove={e => {
-                const el = e.currentTarget as HTMLElement
-                const rect = el.getBoundingClientRect()
-                const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1)
-                const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1)
-                el.style.setProperty('--mx', `${x}%`)
-                el.style.setProperty('--my', `${y}%`)
-              }}>
+            <div className="home-container">
+              {/* Extra aurora blobs */}
+              <div aria-hidden="true" style={{ position: 'absolute', top: '25%', left: '-5%', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,.22) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0, animation: 'auroraBlob2 24s ease-in-out infinite' }} />
+              <div aria-hidden="true" style={{ position: 'absolute', bottom: '5%', right: '15%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(196,181,253,.35) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0, animation: 'auroraBlob4 18s ease-in-out infinite' }} />
+              {/* ✦ Sparkles */}
+              {[
+                { top:'8%',  left:'12%', size:7,  delay:0,    dur:2.8 },
+                { top:'15%', left:'72%', size:5,  delay:0.6,  dur:3.2 },
+                { top:'22%', left:'88%', size:9,  delay:1.1,  dur:2.5 },
+                { top:'38%', left:'6%',  size:6,  delay:0.3,  dur:3.6 },
+                { top:'45%', left:'55%', size:4,  delay:1.8,  dur:2.2 },
+                { top:'60%', left:'82%', size:8,  delay:0.9,  dur:3.0 },
+                { top:'70%', left:'28%', size:5,  delay:2.1,  dur:2.7 },
+                { top:'78%', left:'65%', size:7,  delay:0.4,  dur:3.4 },
+                { top:'12%', left:'42%', size:4,  delay:1.5,  dur:2.9 },
+                { top:'55%', left:'18%', size:6,  delay:0.7,  dur:3.1 },
+                { top:'30%', left:'95%', size:5,  delay:1.3,  dur:2.6 },
+                { top:'85%', left:'48%', size:8,  delay:0.2,  dur:3.8 },
+                { top:'5%',  left:'58%', size:4,  delay:1.9,  dur:2.4 },
+                { top:'50%', left:'38%', size:6,  delay:0.8,  dur:3.3 },
+                { top:'92%', left:'22%', size:5,  delay:1.6,  dur:2.8 },
+              ].map((s, i) => (
+                <svg key={i} aria-hidden="true" className="sparkle"
+                  style={{ top: s.top, left: s.left, width: s.size, height: s.size, animation: `sparkleDrift ${s.dur}s ${s.delay}s ease-in-out infinite` }}
+                  viewBox="0 0 24 24">
+                  <path d="M12 2 L13.5 10.5 L22 12 L13.5 13.5 L12 22 L10.5 13.5 L2 12 L10.5 10.5 Z"
+                    fill="rgba(139,92,246,.7)" />
+                </svg>
+              ))}
+              {/* ── HERO: centered prompt area ── */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 48px 40px 80px', position: 'relative', zIndex: 1, boxSizing: 'border-box', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
 
-              {/* ── MODE TOGGLE: Scratch vs Jira ── */}
-              <div style={{ maxWidth: 1240, margin: '0 auto 14px', padding: '0 20px', position: 'relative', zIndex: 2 }}>
-                <div style={{
-                  borderRadius: 16,
-                  border: '1px solid rgba(84,128,186,.18)',
-                  background: 'linear-gradient(135deg, rgba(255,255,255,.95) 0%, rgba(246,248,255,.92) 100%)',
-                  boxShadow: '0 14px 40px rgba(84,128,186,.14)',
-                  padding: 14,
-                  backdropFilter: 'blur(10px)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ display: 'inline-flex', gap: 6, background: '#eef3fb', border: '1px solid #d7e1f0', borderRadius: 12, padding: 4 }}>
-                      <button
-                        onClick={() => setCreateMode('scratch')}
-                        style={{
-                          border: 'none',
-                          borderRadius: 9,
-                          background: '#ffffff',
-                          color: '#20304a',
-                          padding: '9px 13px',
-                          fontSize: 13,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 8px rgba(15,23,42,.08)',
-                        }}
-                      >
-                        ✨ Create from Scratch
-                      </button>
-                      <button
-                        onClick={() => { window.location.href = '/jira' }}
-                        style={{
-                          border: 'none',
-                          borderRadius: 9,
-                          background: 'linear-gradient(135deg, #efe6f9, #e6ecff)',
-                          color: '#4c2e67',
-                          padding: '9px 13px',
-                          fontSize: 13,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        📋 Import from Jira
-                      </button>
-                      <button
-                        onClick={() => setIsMeetingRecorderOpen(true)}
-                        style={{
-                          border: 'none',
-                          borderRadius: 9,
-                          background: 'linear-gradient(135deg, #e6f0ff, #ede6ff)',
-                          color: '#3730a3',
-                          padding: '9px 13px',
-                          fontSize: 13,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        🎙️ Import from Meeting
-                      </button>
-                    </div>
+                {/* Hero heading */}
+                <h1 style={{ textAlign: 'center', fontSize: 'clamp(26px,3.2vw,42px)', fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.03em', color: '#1e1b4b', margin: '0 0 8px', animation: 'fadeUp .5s .05s both' }}>
+                  What should we build, <span style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed 50%,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{firstName || username}?</span>
+                </h1>
+                <p style={{ textAlign: 'center', fontSize: 14, color: '#6b7280', marginBottom: 24, animation: 'fadeUp .5s .1s both', maxWidth: 520 }}>
+                  Describe your idea — our AI agents will generate production-ready UI in seconds.
+                </p>
 
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {['Connect Jira', 'Select stories', 'Generate mapped UI'].map((step, idx) => (
-                        <span key={step} style={{ fontSize: 11, fontWeight: 700, color: '#5f4c73', background: 'rgba(111,53,157,.08)', border: '1px solid rgba(111,53,157,.18)', borderRadius: 999, padding: '4px 10px' }}>
-                          {idx + 1}. {step}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                {/* Mode pills */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 20, animation: 'fadeUp .5s .15s both', alignItems: 'center' }}>
+                  <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all .25s', border: '1.5px solid rgba(99,102,241,.5)', background: 'rgba(99,102,241,.12)', color: '#4f46e5', backdropFilter: 'blur(8px)', boxShadow: '0 2px 8px rgba(99,102,241,.12)' }}>
+                    <Sparkles size={13} /> From Scratch
+                  </button>
+                  <select
+                    defaultValue=""
+                    onChange={e => {
+                      if (e.target.value === 'meeting') setIsMeetingRecorderOpen(true)
+                      else if (e.target.value === 'jira') setIsJiraModalOpen(true)
+                      e.target.value = ''
+                    }}
+                    style={{ padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '1.5px solid rgba(255,255,255,.7)', background: 'rgba(255,255,255,.6)', color: '#6b7280', backdropFilter: 'blur(8px)', outline: 'none', transition: 'all .25s', appearance: 'none', WebkitAppearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+                    onFocus={e => { const el = e.currentTarget; el.style.borderColor = 'rgba(99,102,241,.4)'; el.style.background = 'rgba(255,255,255,.8)' }}
+                    onBlur={e => { const el = e.currentTarget; el.style.borderColor = 'rgba(255,255,255,.7)'; el.style.background = 'rgba(255,255,255,.6)' }}>
+                    <option value="" disabled>⬇ Import...</option>
+                    <option value="meeting">🎙 From Meeting</option>
+                    <option value="jira">🔗 From Jira</option>
+                  </select>
                 </div>
-              </div>
 
-              {/* ── Compact header ── */}
-              <div style={{ maxWidth: 1240, margin: '0 auto 10px', padding: '0 20px', position: 'relative', zIndex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#6366f1', background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', borderRadius: 999, padding: '5px 10px', marginBottom: 8 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'inline-block' }} />
-                      ✨ Talanted Platform
-                    </div>
-                    <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.08, fontWeight: 900, color: '#18233a' }}>
-                      What should we <span style={{ color: '#4f46e5' }}>build</span> today?
-                    </h1>
-                    <p style={{ margin: '6px 0 0', fontSize: 14, color: '#667085', fontWeight: 500 }}>
-                      Describe your idea and generate production-ready UI in seconds.
-                    </p>
-                  </div>
-                  <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, background: 'rgba(255,255,255,.72)', border: '1px solid rgba(84,128,186,.16)', borderRadius: 10, padding: '6px 10px' }}>
-                    Structured flow: Brief {'->'} Generate {'->'} Refine
-                  </div>
-                </div>
-              </div>
+                {/* ── Prompt card + pipeline flex row ── */}
+                <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', justifyContent: 'center', width: '100%', maxWidth: (isBuilding || buildPct > 0) ? 1000 : 760, transition: 'max-width .45s cubic-bezier(.4,0,.2,1)', animation: 'fadeUp .5s .25s both' }}>
+                <div className="home-form-card" style={{ flex: 1, minWidth: 0 }}>
 
-              {/* ── Stats strip ── */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap', position: 'relative', zIndex: 1, padding: '0 20px' }}>
-                {[
-                  { icon: '🤖', label: '4 AI Agents', sub: 'in sequence' },
-                  { icon: '⚛', label: 'React & Tailwind', sub: 'production code' },
-                  { icon: '⚡', label: 'Live Preview', sub: 'instant render' },
-                  { icon: '📦', label: 'Export Ready', sub: 'download ZIP' },
-                ].map((s, i) => (
-                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(255,255,255,.78)', border: '1px solid rgba(84,128,186,.15)', backdropFilter: 'blur(8px)', animation: `fadeUp .5s ease ${i * 0.08}s both`, transition: 'transform .2s, box-shadow .2s' }}
-                    onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 6px 20px rgba(84,128,186,.18)' }}
-                    onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = ''; el.style.boxShadow = '' }}>
-                    <span style={{ fontSize: 15 }}>{s.icon}</span>
-                    <div>
-                      <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#1f2937' }}>{s.label}</p>
-                      <p style={{ margin: 0, fontSize: 10, color: '#9ca3af' }}>{s.sub}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* ── 2-column layout ── */}
-              <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 20px 18px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 350px', alignItems: 'start', gap: 14, position: 'relative', zIndex: 1 }}>
-
-                {/* LEFT — Form */}
-                <div className="home-form-card" style={{
-                  marginBottom: 0,
-                  borderLeft: '3px solid #5480ba',
-                  maxWidth: 'none',
-                  width: '100%',
-                  padding: '24px 24px 20px',
-                  borderRadius: 18,
-                  background: '#ffffff',
-                  border: '1px solid #dbe5f2',
-                  boxShadow: '0 8px 24px rgba(15,23,42,.08)',
-                }}>
-
-                  {/* Name + Stack */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginBottom: 14 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5 }}>Project Name</label>
+                  {/* Top row: project name + textarea side by side */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', padding: '16px 20px 14px', gap: 12, borderBottom: '1px solid rgba(0,0,0,.05)' }}>
+                    {/* Project name pill */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingTop: 2 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Project</span>
                       <input
-                        className="home-input"
-                        placeholder="my-awesome-app"
+                        placeholder="my-app"
                         value={projectName}
                         onChange={e => setProjectName(e.target.value)}
+                        style={{ width: 110, padding: '2px 8px', fontSize: 13, fontWeight: 600, border: '1px solid rgba(99,102,241,.2)', borderRadius: 6, outline: 'none', background: 'rgba(99,102,241,.04)', color: '#1e293b', fontFamily: 'inherit' }}
                       />
                     </div>
-                  </div>
-
-                  {/* AI Model Selector */}
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5, display: 'block' }}>AI Model</label>
-                    <select
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        fontSize: 13,
-                        fontWeight: 500,
-                        border: '1.5px solid #d1d5db',
-                        borderRadius: 10,
-                        background: '#fff',
-                        color: '#374151',
-                        cursor: 'pointer',
-                        outline: 'none',
-                        transition: 'all .2s'
-                      }}
-                      onFocus={(e) => { e.currentTarget.style.borderColor = '#5480ba'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(84,128,186,.1)' }}
-                      onBlur={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.boxShadow = 'none' }}
-                    >
-                      <option value="gemini">🔮 Gemini 2.0 Flash (Fast & Smart)</option>
-                      <option value="claude">🧠 Claude Sonnet 4 (Best Quality)</option>
-                      <option value="gpt">⚡ GPT-4o (Balanced)</option>
-                      <option value="groq">🚀 Llama 3.3 70B (Free)</option>
-                    </select>
-                  </div>
-
-                  {/* Design Theme Selector */}
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: '#4b5563', marginBottom: 5, display: 'block' }}>Design Theme</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {([
-                        { value: null, label: '✨ Auto', desc: 'AI chooses' },
-                        { value: 'minimal', label: '⬜ Minimal', desc: 'Clean & light' },
-                        { value: 'corporate', label: '🏢 Corporate', desc: 'Professional' },
-                        { value: 'vibrant', label: '🌈 Vibrant', desc: 'Bold colors' },
-                        { value: 'dark', label: '🌙 Dark', desc: 'Dark mode' },
-                        { value: 'natural', label: '🌿 Natural', desc: 'Earth tones' },
-                      ] as { value: string | null; label: string; desc: string }[]).map(t => (
-                        <button
-                          key={t.value ?? 'auto'}
-                          type="button"
-                          onClick={() => setSelectedTheme(t.value)}
-                          title={t.desc}
-                          style={{
-                            padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                            border: selectedTheme === t.value ? '1.5px solid #6366f1' : '1.5px solid #e2e8f0',
-                            background: selectedTheme === t.value ? 'linear-gradient(135deg, #f5f3ff, #ede9fe)' : '#fff',
-                            color: selectedTheme === t.value ? '#6366f1' : '#6b7280',
-                            transition: 'all .15s',
-                          }}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Prompt */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                      <label style={{ fontSize: 12, fontWeight: 600, color: '#4b5563' }}>Describe your application</label>
-                      <button style={{ fontSize: 11, fontWeight: 500, color: '#5480ba', background: 'none', border: 'none', cursor: 'pointer' }}
-                        onClick={() => setCustomPrompt('Build a SaaS analytics dashboard with a fixed left sidebar, 4-column KPI card grid, revenue line chart, plan distribution donut chart, and a user data table with status badges.')}>
-                        Try example →
-                      </button>
-                    </div>
+                    {/* Textarea — grows horizontally */}
                     <textarea
-                      className="home-textarea"
                       style={{
-                        minHeight: 128,
-                        width: '100%',
-                        borderRadius: 12,
-                        border: '1.5px solid #d1d5db',
-                        padding: '12px 14px',
-                        fontSize: 14,
-                        lineHeight: 1.55,
-                        color: '#334155',
-                        background: '#ffffff',
-                        resize: 'vertical',
+                        flex: 1, minHeight: 72, maxHeight: 180, padding: '2px 0',
+                        background: 'transparent', border: 'none', outline: 'none', resize: 'none',
+                        fontSize: 15, lineHeight: 1.6, color: '#1e293b', fontFamily: 'inherit',
+                        boxSizing: 'border-box',
                       }}
-                      placeholder="E.g. Build a modern dashboard with sidebar navigation, KPI cards, charts, and a data table…"
+                      placeholder="Ask Talanted to build…"
                       value={customPrompt}
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomPrompt(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && customPrompt.trim() && projectName) startBuild() }}
                     />
-                    {customPrompt && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                        <div style={{ height: 3, flex: 1, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', borderRadius: 3, width: `${Math.min(customPrompt.split(/\s+/).filter(Boolean).length / 50 * 100, 100)}%`, background: 'linear-gradient(90deg,#5480ba,#6b367d)', transition: 'width .3s ease' }} />
-                        </div>
-                        <span style={{ fontSize: 10, color: customPrompt.split(/\s+/).filter(Boolean).length > 40 ? '#5480ba' : '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          {customPrompt.split(/\s+/).filter(Boolean).length} words
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Template chips */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-                    {[
-                      { label: '📊 Dashboard', prompt: 'Build a SaaS analytics dashboard with sidebar, KPI cards, Chart.js revenue charts, and user data table' },
-                      { label: '🚀 Landing Page', prompt: 'Build a modern SaaS landing page with hero section, features grid, pricing table, and CTA' },
-                      { label: '🛒 E-commerce', prompt: 'Build an e-commerce store with product grid, filters sidebar, product detail modal, and cart' },
-                      { label: '🎨 Portfolio', prompt: 'Build a minimal portfolio with hero, skills section, projects showcase, and contact form' },
-                    ].map(t => (
-                      <button key={t.label} onClick={() => setCustomPrompt(t.prompt)} className="template-chip">
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Generate row + attach */}
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    {/* Generate button — inline right */}
                     <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
-                      className={`btn-generate ${isBuilding || !projectName || !customPrompt ? 'disabled' : 'enabled'}`}
-                      style={{ flex: 1 }}>
-                      {isBuilding ? (
-                        <>
-                          <div style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                          {buildMsg}
-                        </>
-                      ) : (
-                        <>
-                          ⚡ Generate App
-                          {projectName && customPrompt && (
-                            <span style={{ marginLeft: 6, fontSize: 10, opacity: .65, background: 'rgba(255,255,255,.25)', padding: '2px 6px', borderRadius: 5 }}>⌘ ↵</span>
-                          )}
-                        </>
-                      )}
+                      style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0, marginTop: 2, cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? '#e2e8f0' : 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 4px 14px rgba(99,102,241,.4)' }}
+                      onMouseEnter={e => { if (!isBuilding && projectName && customPrompt) (e.currentTarget as HTMLElement).style.transform = 'scale(1.08)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = '' }}
+                      title="Generate (Ctrl+Enter)">
+                      {isBuilding
+                        ? <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                        : <Zap size={16} />
+                      }
                     </button>
-                    <label title="Attach files"
-                      style={{ width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.04)', border: '1.5px solid #e5e7eb', cursor: 'pointer', fontSize: 18, flexShrink: 0, transition: 'all .2s' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#5480ba' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}>
+                  </div>
+
+                  {/* Bottom bar: chips + attach */}
+                  <div style={{ padding: '10px 16px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/* Template chips */}
+                    <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+                      {[
+                        { icon: <LayoutDashboard size={13} />, label: 'Dashboard',  prompt: 'Build a SaaS analytics dashboard with sidebar, KPI cards, Chart.js revenue charts, and user data table' },
+                        { icon: <Rocket size={13} />,          label: 'Landing',    prompt: 'Build a modern SaaS landing page with hero section, features grid, pricing table, and CTA' },
+                        { icon: <ShoppingCart size={13} />,    label: 'E-commerce', prompt: 'Build an e-commerce store with product grid, filters sidebar, product detail modal, and cart' },
+                        { icon: <Briefcase size={13} />,       label: 'Portfolio',  prompt: 'Build a minimal portfolio with hero, skills section, projects showcase, and contact form' },
+                      ].map(t => (
+                        <button key={t.label} onClick={() => setCustomPrompt(t.prompt)} className="template-chip" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          {t.icon}{t.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Attach */}
+                    <label title="Attach files" style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,.06)', border: '1px solid rgba(99,102,241,.15)', cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'all .2s', color: '#6366f1' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.12)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.06)' }}>
                       📎
                       <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.mmd,.excalidraw" style={{ display: 'none' }}
                         onChange={e => { if (e.target.files) setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
                     </label>
                   </div>
 
-                  {!isBuilding && (!projectName || !customPrompt) && (
-                    <p style={{ margin: '8px 0 0', fontSize: 11, color: '#64748b', fontWeight: 600 }}>
-                      Add a project name and a prompt to enable generation.
-                    </p>
-                  )}
-
                   {/* Attached files chips */}
                   {attachedFiles.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                    <div style={{ padding: '6px 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {attachedFiles.map((f, i) => (
-                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(84,128,186,.1)', border: '1px solid rgba(84,128,186,.25)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#5480ba' }}>
+                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#4f46e5' }}>
                           {f.name}
                           <button onClick={() => setAttachedFiles(prev => prev.filter((_, j) => j !== i))}
-                            style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                            style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
                         </span>
                       ))}
                     </div>
@@ -2063,162 +1982,403 @@ document.addEventListener('click', function(e) {
 
                   {/* Progress bar */}
                   {isBuilding && (
-                    <div style={{ marginTop: 14 }}>
-                      <div style={{ height: 3, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden', marginBottom: 6 }}>
-                        <div className="progress-bar" style={{ height: '100%', borderRadius: 3, width: `${buildPct}%`, background: 'linear-gradient(90deg,#5480ba,#6b367d)' }} />
+                    <div style={{ padding: '0 16px 14px' }}>
+                      <div style={{ height: 3, borderRadius: 3, background: '#e2e8f0', overflow: 'hidden', marginBottom: 6 }}>
+                        <div className="progress-bar" style={{ height: '100%', borderRadius: 3, width: `${buildPct}%`, background: 'linear-gradient(90deg,#6366f1,#a855f7)' }} />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' }}>
                         <span>{buildMsg}</span>
-                        <span style={{ fontWeight: 700, color: '#5480ba' }}>{Math.floor(buildPct)}%</span>
+                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{Math.floor(buildPct)}%</span>
                       </div>
                     </div>
                   )}
 
                   {buildError && !isBuilding && (
-                    <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(224,69,128,.07)', border: '1px solid rgba(224,69,128,.2)', color: '#c03060', fontSize: 13 }}>
+                    <div style={{ margin: '0 14px 12px', padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.2)', color: '#dc2626', fontSize: 13 }}>
                       {buildError} — check My Projects.
                     </div>
                   )}
                 </div>
 
-                {/* RIGHT column */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                  {/* Agent Pipeline — compact */}
-                  <div className="home-agent-card" style={{
-                    background: '#ffffff',
-                    border: '1px solid #dbe5f2',
-                    borderRadius: 16,
-                    padding: 14,
-                    boxShadow: '0 6px 16px rgba(15,23,42,.06)',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                      <p style={{ fontSize: 10, fontWeight: 800, color: '#5480ba', textTransform: 'uppercase', letterSpacing: '0.14em', margin: 0 }}>Agent Pipeline</p>
-                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,.3)', fontWeight: 500 }}>4 in sequence</span>
+                {/* ── Agent Pipeline panel (appears to the right when building) ── */}
+                {(isBuilding || buildPct > 0) && (
+                  <div style={{ width: 240, flexShrink: 0, background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(20px)', borderRadius: 18, padding: '20px 18px', border: '1px solid rgba(255,255,255,.9)', boxShadow: '0 4px 24px rgba(99,102,241,.1)', animation: 'fadeUp .3s ease' }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(99,102,241,.7)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14, margin: '0 0 14px' }}>Agent Pipeline</p>
+                    {[
+                      { icon: '◎', label: 'Planner',  desc: 'Architecture',  pct: 10, color: '#6366f1' },
+                      { icon: '◈', label: 'Designer', desc: 'Design system', pct: 35, color: '#7c3aed' },
+                      { icon: '</>', label: 'Coder',   desc: 'Code gen',      pct: 60, color: '#a855f7' },
+                      { icon: '✓',  label: 'Validator',desc: 'QA check',     pct: 88, color: '#059669' },
+                    ].map((a, idx) => {
+                      const active = buildPct >= a.pct
+                      const running = active && buildPct < (a.pct + 25) && isBuilding
+                      const done = buildPct >= (a.pct + 25) || (!isBuilding && active)
+                      return (
+                        <div key={a.label} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: idx < 3 ? '1px solid rgba(0,0,0,.04)' : 'none', position: 'relative' }}>
+                          {idx < 3 && <div style={{ position: 'absolute', left: 13, top: 32, width: 2, height: 20, background: active ? a.color + '30' : '#e5e7eb' }} />}
+                          <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, background: active ? a.color : '#f1f5f9', color: active ? '#fff' : '#94a3b8', transition: 'all .4s', boxShadow: running ? `0 4px 14px ${a.color}40` : 'none' }}>
+                            {running ? <div style={{ width: 10, height: 10, border: '2px solid rgba(255,255,255,.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : done ? '✓' : a.icon}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 13, fontWeight: 700, color: active ? '#1e293b' : '#94a3b8', margin: '0 0 2px' }}>{a.label}</p>
+                            <p style={{ fontSize: 11, color: active ? '#64748b' : '#cbd5e1', margin: 0 }}>{a.desc}</p>
+                            {running && <span style={{ fontSize: 9, fontWeight: 700, color: a.color, background: a.color + '15', padding: '2px 6px', borderRadius: 4, marginTop: 3, display: 'inline-block' }}>● Running</span>}
+                            {done && <span style={{ fontSize: 9, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 6px', borderRadius: 4, marginTop: 3, display: 'inline-block' }}>✓ Done</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <div style={{ marginTop: 14, padding: 12, background: 'rgba(99,102,241,.05)', borderRadius: 10, border: '1px solid rgba(99,102,241,.1)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280', marginBottom: 6 }}>
+                        <span style={{ fontWeight: 600 }}>{buildMsg}</span>
+                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{Math.floor(buildPct)}%</span>
+                      </div>
+                      <div style={{ height: 4, background: '#e5e7eb', borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', background: 'linear-gradient(90deg,#6366f1,#a855f7)', width: buildPct + '%', transition: 'width .3s ease', borderRadius: 2 }} />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
-                      {/* Timeline connector */}
-                      <div style={{ position: 'absolute', left: 19, top: 30, bottom: 30, width: 1, background: 'linear-gradient(to bottom, #5480ba, #8f9424, #e04580, #1d662e)', opacity: .25, pointerEvents: 'none' }} />
+                  </div>
+                )}
+
+                </div>{/* end flex row */}
+
+                {/* ── placeholder so the old grid is gone ── */}
+                <div style={{ display: 'none' }}>
+
+                  {/* LEFT: Agent Pipeline */}
+                  <div>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(79,70,229,.6)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 10 }}>Agent Pipeline</p>
+                    <div style={{ display: 'flex', gap: 8 }}>
                       {[
-                        { icon: '◎', agent: 'Planner', desc: 'Architecture & plan', pct: 10, color: '#5480ba', bg: 'rgba(84,128,186,.1)' },
-                        { icon: '◈', agent: 'Designer', desc: 'Design system', pct: 25, color: '#8f9424', bg: 'rgba(143,148,36,.1)' },
-                        { icon: '</>', agent: 'Coder', desc: 'Code generation', pct: 50, color: '#e04580', bg: 'rgba(224,69,128,.08)' },
-                        { icon: '✓', agent: 'Validator', desc: 'Quality check', pct: 90, color: '#1d662e', bg: 'rgba(29,102,46,.08)' },
+                        { icon: '◎', agent: 'Planner', desc: 'Architecture', pct: 10, color: '#6366f1', bg: 'rgba(99,102,241,.07)' },
+                        { icon: '◈', agent: 'Designer', desc: 'Design system', pct: 25, color: '#7c3aed', bg: 'rgba(124,58,237,.07)' },
+                        { icon: '</>', agent: 'Coder', desc: 'Code gen', pct: 50, color: '#a855f7', bg: 'rgba(168,85,247,.07)' },
+                        { icon: '✓', agent: 'Validator', desc: 'QA check', pct: 90, color: '#059669', bg: 'rgba(5,150,105,.07)' },
                       ].map((a, idx) => {
                         const active = buildPct >= a.pct
                         const running = active && buildPct < (a.pct + 25) && isBuilding
                         return (
-                          <div key={a.agent} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: idx === 0 ? '8px 9px 8px 10px' : '5px 9px 8px 10px', borderRadius: 9, background: active ? a.bg : 'transparent', border: `1px solid ${active ? a.color + '35' : 'transparent'}`, transition: 'all .4s', marginBottom: 1 }}>
-                            <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: active ? a.color : 'rgba(0,0,0,.07)', color: active ? '#fff' : 'rgba(0,0,0,.25)', transition: 'all .4s', position: 'relative', zIndex: 1, boxShadow: active ? `0 0 0 3px ${a.color}25` : 'none' }}>
-                              {a.icon}
+                          <div key={a.agent} style={{ flex: 1, borderRadius: 12, padding: '12px 8px', background: active ? a.bg : 'rgba(255,255,255,.65)', border: `1px solid ${active ? a.color + '30' : 'rgba(255,255,255,.8)'}`, transition: 'all .4s', textAlign: 'center', boxShadow: active ? `0 4px 16px ${a.color}20` : '0 2px 8px rgba(0,0,0,.04)', backdropFilter: 'blur(8px)' }}>
+                            <div style={{ width: 28, height: 28, borderRadius: 8, margin: '0 auto 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, background: active ? a.color : '#f1f5f9', color: active ? '#fff' : '#94a3b8', boxShadow: active ? `0 4px 12px ${a.color}35` : 'none', transition: 'all .4s' }}>
+                              {running ? <div style={{ width: 10, height: 10, border: '2px solid rgba(255,255,255,.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : a.icon}
                             </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: active ? '#111827' : '#9ca3af' }}>{a.agent}</span>
-                                <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: running ? a.color : active ? a.bg : 'rgba(0,0,0,.04)', color: running ? '#fff' : active ? a.color : '#9ca3af' }}>
-                                  {running ? '⚡ Running' : active ? '✓ Done' : 'Idle'}
-                                </span>
-                              </div>
-                              <p style={{ fontSize: 11, color: active ? '#6b7280' : '#9ca3af', margin: 0 }}>{a.desc}</p>
-                            </div>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: active ? '#1e293b' : '#94a3b8', margin: '0 0 2px' }}>{a.agent}</p>
+                            <p style={{ fontSize: 10, color: active ? '#64748b' : '#cbd5e1', margin: 0 }}>{a.desc}</p>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 5, fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 20, background: running ? a.color : active ? `${a.color}15` : '#f1f5f9', color: running ? '#fff' : active ? a.color : '#cbd5e1' }}>
+                              {running ? '⚡ Running' : active ? '✓ Done' : (
+                                <><span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block', animation: `pulse ${1.2 + idx * 0.3}s ease-in-out infinite` }} /> Ready</>
+                              )}
+                            </span>
                           </div>
                         )
                       })}
                     </div>
                   </div>
 
-                  {/* Recent Projects — compact list */}
-                  {validProjects.length > 0 && (
-                    <div className="home-agent-card" style={{
-                      background: '#ffffff',
-                      border: '1px solid #dbe5f2',
-                      borderRadius: 16,
-                      padding: 14,
-                      boxShadow: '0 6px 16px rgba(15,23,42,.06)',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                        <p style={{ fontSize: 10, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Recent</p>
-                        <button onClick={() => setHomeTab('projects')}
-                          style={{ background: 'none', border: 'none', color: '#5480ba', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                          All →
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {validProjects.slice(0, 4).map(g => (
-                          <div key={g.generationId}
-                            style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', borderRadius: 8, cursor: 'pointer', transition: 'background .15s', background: loadingProjectId === g.generationId ? 'rgba(84,128,186,.08)' : 'transparent' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.04)' }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = loadingProjectId === g.generationId ? 'rgba(84,128,186,.08)' : 'transparent' }}
-                            onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
-                            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'linear-gradient(135deg,#5480ba,#6b367d)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                              {displayName.charAt(0).toUpperCase()}
-                            </div>
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <p style={{ fontSize: 12, fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName2(g.prompt)}</p>
-                              <p style={{ fontSize: 10, color: '#9ca3af', margin: 0 }}>{timeAgo(g.updatedAt || g.createdAt)}</p>
-                            </div>
-                            {loadingProjectId === g.generationId && (
-                              <div style={{ width: 14, height: 14, border: '2px solid rgba(84,128,186,.2)', borderTopColor: '#5480ba', borderRadius: '50%', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                  {/* RIGHT: Recent Projects */}
+                  <div>
+                    {validProjects.length > 0 && (<>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(79,70,229,.6)', textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Recent Projects</p>
+                      <button onClick={() => setHomeTab('projects')} style={{ background: 'none', border: 'none', color: '#6366f1', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                        Browse all ({validProjects.length}) →
+                      </button>
                     </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                      {validProjects.slice(0, 6).map(g => {
+                        const hasMeeting = !!(g as any).meetingAnalysis
+                        const hasJira = !!(g as any).jiraIssueKey || !!((g as any).jiraIssueKeys?.length)
+                        const srcEmoji = hasMeeting ? '🎙' : hasJira ? '🔗' : '💬'
+                        const srcLabel = hasMeeting ? 'Meeting' : hasJira ? 'Jira' : 'Prompt'
+                        return (
+                          <div key={g.generationId}
+                            className="group"
+                            style={{ borderRadius: 12, overflow: 'hidden', background: '#fff', border: '1px solid #e5e7eb', cursor: 'pointer', transition: 'all .2s', boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}
+                            onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#a5b4fc'; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 28px rgba(99,102,241,.18)' }}
+                            onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#e5e7eb'; el.style.transform = ''; el.style.boxShadow = '0 2px 6px rgba(0,0,0,.05)' }}
+                            onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
+                            {/* Live preview thumbnail */}
+                            <div style={{ position: 'relative', height: 150, background: '#f8fafc', overflow: 'hidden' }}>
+                              {g.generationId && g.status === 'COMPLETED'
+                                ? <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
+                                : <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}><CardThumbnail prompt={g.prompt} /></div>}
+                              {loadingProjectId === g.generationId && (
+                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                                  <div style={{ width: 20, height: 20, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                </div>
+                              )}
+                              <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(15,15,35,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'opacity .18s', zIndex: 5 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, padding: '7px 18px', borderRadius: 8, background: '#6366f1', color: '#fff', boxShadow: '0 4px 16px rgba(99,102,241,.4)' }}>Open →</span>
+                              </div>
+                            </div>
+                            {/* Footer */}
+                            <div style={{ padding: '9px 11px 11px', background: '#fff', borderTop: '1px solid #f3f4f6' }}>
+                              <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {g.name || projectName2(g.prompt)}
+                              </p>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#6b7280' }}>
+                                <span style={{ fontWeight: 600, color: hasMeeting ? '#7c3aed' : hasJira ? '#ea580c' : '#4f46e5' }}>{srcEmoji} {srcLabel}</span>
+                                <span style={{ color: '#d1d5db' }}>·</span>
+                                <span>{timeAgo(g.updatedAt || g.createdAt)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    </>)}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* ── BOTTOM: light project panel ── */}
+              {validProjects.length > 0 && (() => {
+                const recentProjects = recentlyViewedIds
+                  .map(id => validProjects.find(p => p.generationId === id))
+                  .filter(Boolean) as typeof validProjects
+                const panelProjects = homePanelTab === 'recent' ? recentProjects : validProjects
+                const displayProjects = panelProjects.slice(0, 6)
+                return (
+                <div style={{ background: 'rgba(255,255,255,.82)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderRadius: '24px 24px 0 0', padding: '32px 48px 48px', margin: '0 20px', position: 'relative', zIndex: 1, borderTop: '1px solid rgba(255,255,255,.9)', boxShadow: '0 -4px 32px rgba(99,102,241,.08)' }}>
+                  {/* Tabs + Browse all */}
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 28 }}>
+                    <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,.04)', borderRadius: 10, padding: 3 }}>
+                      {(['mine', 'recent'] as const).map(tab => (
+                        <button key={tab} onClick={() => setHomePanelTab(tab)}
+                          style={{ padding: '6px 18px', borderRadius: 8, fontSize: 13, border: 'none', cursor: 'pointer', transition: 'all .15s',
+                            fontWeight: homePanelTab === tab ? 600 : 500,
+                            background: homePanelTab === tab ? '#fff' : 'transparent',
+                            color: homePanelTab === tab ? '#1f2937' : '#9ca3af',
+                            boxShadow: homePanelTab === tab ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                          }}>
+                          {tab === 'mine' ? 'My projects' : 'Recently viewed'}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setHomeTab('projects')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6366f1', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'opacity .15s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '.7'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}>
+                      Browse all ({validProjects.length}) →
+                    </button>
+                  </div>
+                  {/* Cards grid */}
+                  {homePanelTab === 'recent' && recentProjects.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>👁</div>
+                      <p style={{ fontSize: 14, fontWeight: 500, margin: 0 }}>No recently viewed projects yet</p>
+                      <p style={{ fontSize: 12, margin: '4px 0 0', color: '#d1d5db' }}>Click any project to track it here</p>
+                    </div>
+                  ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+                    {displayProjects.map(g => {
+                      const hasMeeting = !!(g as any).meetingAnalysis
+                      const hasJira = !!(g as any).jiraIssueKey || !!((g as any).jiraIssueKeys?.length)
+                      const srcEmoji = hasMeeting ? '🎙' : hasJira ? '🔗' : '💬'
+                      const srcLabel = hasMeeting ? 'Meeting' : hasJira ? 'Jira' : 'Prompt'
+                      return (
+                        <div key={g.generationId}
+                          className="group"
+                          style={{ borderRadius: 16, overflow: 'hidden', background: '#fff', border: '1px solid #e5e7eb', cursor: 'pointer', transition: 'all .25s cubic-bezier(.4,0,.2,1)', boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}
+                          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#a5b4fc'; el.style.transform = 'translateY(-5px) scale(1.01)'; el.style.boxShadow = '0 20px 48px rgba(99,102,241,.18)' }}
+                          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#e5e7eb'; el.style.transform = ''; el.style.boxShadow = '0 2px 12px rgba(0,0,0,.06)' }}
+                          onClick={() => {
+                            setLoadingProjectId(g.generationId ?? null)
+                            if (g.generationId) {
+                              const updated = [g.generationId, ...recentlyViewedIds.filter(id => id !== g.generationId)].slice(0, 12)
+                              setRecentlyViewedIds(updated)
+                              localStorage.setItem('talanted_recent_views', JSON.stringify(updated))
+                            }
+                            loadGeneration(g.generationId!)
+                          }}>
+                          <div style={{ position: 'relative', height: 200, background: '#f8fafc', overflow: 'hidden' }}>
+                            {g.generationId && g.status === 'COMPLETED'
+                              ? <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
+                              : <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}><CardThumbnail prompt={g.prompt} /></div>}
+                            {loadingProjectId === g.generationId && (
+                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                                <div style={{ width: 22, height: 22, border: '2px solid rgba(99,102,241,.25)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                              </div>
+                            )}
+                            <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(15,15,40,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'opacity .2s', zIndex: 5, backdropFilter: 'blur(2px)' }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, padding: '9px 24px', borderRadius: 10, background: '#fff', color: '#4f46e5', boxShadow: '0 4px 20px rgba(0,0,0,.15)' }}>Open →</span>
+                            </div>
+                          </div>
+                          <div style={{ padding: '14px 18px 16px', background: '#fff', borderTop: '1px solid #f3f4f6' }}>
+                            <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {g.name || projectName2(g.prompt)}
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#9ca3af' }}>
+                              <span style={{ fontWeight: 600, color: hasMeeting ? '#7c3aed' : hasJira ? '#ea580c' : '#6366f1' }}>{srcEmoji} {srcLabel}</span>
+                              <span>·</span>
+                              <span>{timeAgo(g.updatedAt || g.createdAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                   )}
                 </div>
-              </div>
+                )
+              })()}
             </div>
           )}
 
           {/* ── MY PROJECTS ── */}
           {homeTab === 'projects' && (
             <div style={{ padding: '48px 40px 80px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                 <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{isAdmin ? 'All Projects' : 'My Projects'}</h1>
+                  <h1 style={{ fontSize: 30, fontWeight: 800, margin: '0 0 4px', fontFamily: "'Inter',sans-serif", background: 'linear-gradient(135deg,#7c3aed,#a855f7,#6366f1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                    {isAdmin ? 'All Projects' : 'My Projects'}
+                  </h1>
                   <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>{isAdmin ? adminActivity.length : validProjects.length} project{(isAdmin ? adminActivity.length : validProjects.length) !== 1 ? 's' : ''} generated</p>
                 </div>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <button onClick={() => void loadHistory()} style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.45)', borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>↻ Refresh</button>
-                  {!showAllProjects && validProjects.length > 6 && (
-                    <button onClick={() => setShowAllProjects(true)} style={{ background: 'none', border: 'none', color: '#5480ba', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-                      Browse all ({validProjects.length}) →
-                    </button>
-                  )}
-                  {showAllProjects && (
-                    <button onClick={() => setShowAllProjects(false)} style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.4)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Show less</button>
-                  )}
-                </div>
+                <button onClick={() => void loadHistory()} style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.45)', borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>↻ Refresh</button>
               </div>
 
-              {isAdmin ? (
-                /* Admin: show all projects as a list */
-                adminActivity.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(0,0,0,.08)', borderRadius: 20 }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>✦</div>
-                    <p style={{ fontSize: 20, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>No projects yet</p>
-                    <p style={{ fontSize: 15, color: 'rgba(0,0,0,.4)' }}>No generations have been created on this platform.</p>
+              {/* Search + filter + sort toolbar (non-admin only) */}
+              {!isAdmin && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 28, flexWrap: 'wrap' }}>
+                  {/* Search */}
+                  <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 360 }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input
+                      placeholder="Search projects…"
+                      value={projectSearch}
+                      onChange={e => setProjectSearch(e.target.value)}
+                      style={{ width: '100%', padding: '9px 12px 9px 36px', borderRadius: 10, border: '1px solid rgba(0,0,0,.1)', fontSize: 13, color: '#111827', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                      onFocus={e => (e.currentTarget.style.borderColor = '#a5b4fc')}
+                      onBlur={e => (e.currentTarget.style.borderColor = 'rgba(0,0,0,.1)')}
+                    />
                   </div>
-                ) : (
-                  <div style={{ background: 'rgba(0,0,0,.02)', border: '1px solid rgba(0,0,0,.05)', borderRadius: 20, overflow: 'hidden' }}>
-                    {adminActivity.map((g, i) => (
-                      <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none' }}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
-                          background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
-                          color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24'
+                  {/* Filter pills */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(['all', 'prompt', 'meeting', 'jira'] as const).map(f => (
+                      <button key={f} onClick={() => setProjectFilter(f)}
+                        style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: '1px solid', cursor: 'pointer', transition: 'all .15s',
+                          background: projectFilter === f ? 'linear-gradient(135deg,#7c3aed,#6366f1)' : '#fff',
+                          color: projectFilter === f ? '#fff' : '#6b7280',
+                          borderColor: projectFilter === f ? 'transparent' : 'rgba(0,0,0,.1)',
+                          boxShadow: projectFilter === f ? '0 2px 8px rgba(99,102,241,.3)' : 'none',
                         }}>
-                          {g.status}
-                        </span>
-                        <p style={{ flex: 1, fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
-                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', flexShrink: 0 }}>
-                          {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                        </span>
-                      </div>
+                        {f === 'all' ? 'All' : f === 'prompt' ? '💬 Prompt' : f === 'meeting' ? '🎙 Meeting' : '🔗 Jira'}
+                      </button>
                     ))}
                   </div>
+                  {/* Sort */}
+                  <select value={projectSort} onChange={e => setProjectSort(e.target.value as 'date'|'name')}
+                    style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(0,0,0,.1)', fontSize: 13, color: '#374151', background: '#fff', cursor: 'pointer', outline: 'none', marginLeft: 'auto' }}>
+                    <option value="date">Date edited</option>
+                    <option value="name">Name</option>
+                  </select>
+                </div>
+              )}
+
+              {isAdmin ? (() => {
+                const userMap = new Map(adminUsers.map(u => [u.userId, u]))
+                const filtered = adminActivity.filter(g => {
+                  if (adminProjectStatus !== 'all' && g.status !== adminProjectStatus) return false
+                  if (adminProjectSearch) {
+                    const q = adminProjectSearch.toLowerCase()
+                    const name = (g.name || projectName2(g.prompt)).toLowerCase()
+                    return name.includes(q) || (g.prompt ?? '').toLowerCase().includes(q)
+                  }
+                  return true
+                })
+                const statusColor = (s?: string) => s === 'COMPLETED' ? { bg: 'rgba(16,185,129,.9)', text: '#fff' } : s === 'FAILED' ? { bg: 'rgba(239,68,68,.9)', text: '#fff' } : { bg: 'rgba(245,158,11,.9)', text: '#fff' }
+                return (
+                  <>
+                    {/* Search + filter toolbar */}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+                      <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input placeholder="Rechercher un projet…" value={adminProjectSearch} onChange={e => setAdminProjectSearch(e.target.value)}
+                          style={{ width: '100%', padding: '9px 12px 9px 34px', borderRadius: 10, border: '1px solid rgba(0,0,0,.1)', fontSize: 13, color: '#111827', background: '#fff', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {(['all', 'COMPLETED', 'PROCESSING', 'FAILED'] as const).map(s => (
+                          <button key={s} onClick={() => setAdminProjectStatus(s)}
+                            style={{ padding: '7px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: '1px solid', cursor: 'pointer',
+                              background: adminProjectStatus === s ? 'linear-gradient(135deg,#7c3aed,#6366f1)' : '#fff',
+                              color: adminProjectStatus === s ? '#fff' : '#6b7280',
+                              borderColor: adminProjectStatus === s ? 'transparent' : 'rgba(0,0,0,.1)' }}>
+                            {s === 'all' ? 'Tous' : s}
+                          </button>
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>{filtered.length} résultat(s)</span>
+                    </div>
+
+                    {filtered.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(0,0,0,.08)', borderRadius: 20 }}>
+                        <p style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>Aucun projet trouvé</p>
+                        <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)' }}>Essayez d'ajuster votre recherche ou vos filtres.</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
+                        {filtered.map((g, i) => {
+                          const creator = g.userId ? userMap.get(g.userId) : undefined
+                          const creatorName = creator ? ([creator.firstName, creator.lastName].filter(Boolean).join(' ') || creator.username || '?') : '—'
+                          const name = g.name || projectName2(g.prompt)
+                          const sc = statusColor(g.status)
+                          return (
+                            <div key={g.generationId || i}
+                              style={{ borderRadius: 16, overflow: 'hidden', background: '#fff', border: '1px solid rgba(0,0,0,.08)', boxShadow: '0 2px 8px rgba(0,0,0,.04)', transition: 'all .2s', cursor: 'pointer' }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 32px rgba(99,102,241,.15)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(124,58,237,.3)' }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,.04)'; (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,0,0,.08)' }}
+                              onClick={() => { if (g.generationId) { setLoadingProjectId(g.generationId); loadGeneration(g.generationId) } }}>
+                              {/* Thumbnail */}
+                              <div style={{ position: 'relative', height: 160, background: '#f1f5f9', overflow: 'hidden' }}>
+                                {g.generationId && g.status === 'COMPLETED'
+                                  ? <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
+                                  : <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}><CardThumbnail prompt={g.prompt} /></div>
+                                }
+                                {loadingProjectId === g.generationId && (
+                                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                                    <div style={{ width: 24, height: 24, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                  </div>
+                                )}
+                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity .2s', zIndex: 5 }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0'}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 10, background: 'linear-gradient(135deg,#7c3aed,#6366f1)', color: '#fff' }}>Ouvrir →</span>
+                                </div>
+                                <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: sc.bg, color: sc.text }}>
+                                  {g.status}
+                                </span>
+                                <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.55)', borderRadius: 20, padding: '2px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#fff' }}>
+                                    {creatorName.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span style={{ fontSize: 10, color: '#fff', fontWeight: 600 }}>{creatorName}</span>
+                                </div>
+                              </div>
+                              {/* Footer */}
+                              <div style={{ padding: '12px 14px 14px' }}>
+                                <p style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+                                <p title={g.prompt || ''} style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.5 }}>{g.prompt || 'Sans description'}</p>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>{creatorName}</span>
+                                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                                    {g.createdAt ? new Date(g.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
                 )
-              ) : historyLoading ? (
+              })() : historyLoading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
                   {[1, 2, 3, 4, 5, 6].map(i => (
                     <div key={i} style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}>
@@ -2230,59 +2390,93 @@ document.addEventListener('click', function(e) {
                     </div>
                   ))}
                 </div>
-              ) : validProjects.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(0,0,0,.08)', borderRadius: 20 }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>✦</div>
-                  <p style={{ fontSize: 20, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>No projects yet</p>
-                  <p style={{ fontSize: 15, color: 'rgba(0,0,0,.4)', marginBottom: 28 }}>Generate your first app to get started</p>
-                  <button onClick={() => setHomeTab('create')} style={{ background: '#5480ba', color: '#fff', border: 'none', borderRadius: 12, padding: '13px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-                    + New Project
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
-                  {validProjects.slice(0, showAllProjects ? undefined : 6).map(g => (
-                    <div key={g.generationId}
-                      className="group"
-                      style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.1)', cursor: 'pointer', transition: 'all .2s', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}
-                      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(99,102,241,.4)'; el.style.boxShadow = '0 8px 40px rgba(84,128,186,.15)'; el.style.transform = 'translateY(-2px)' }}
-                      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(0,0,0,.1)'; el.style.boxShadow = '0 2px 8px rgba(0,0,0,.04)'; el.style.transform = 'none' }}
-                      onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
-                      {/* Thumbnail — live scaled preview, fallback to wireframe on error */}
-                      <div style={{ position: 'relative', height: 200, background: '#f1f5f9', overflow: 'hidden' }}>
-                        {g.generationId ? (
-                          <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
-                        ) : (
-                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}>
-                            <CardThumbnail prompt={g.prompt} />
+              ) : (() => {
+                const filtered = validProjects
+                  .filter(g => {
+                    if (projectSearch) {
+                      const q = projectSearch.toLowerCase()
+                      if (!(g.name || projectName2(g.prompt)).toLowerCase().includes(q) && !(g.prompt || '').toLowerCase().includes(q)) return false
+                    }
+                    if (projectFilter !== 'all') {
+                      const hasMeeting = !!(g as any).meetingAnalysis
+                      const hasJira = !!(g as any).jiraIssueKey || !!((g as any).jiraIssueKeys?.length)
+                      if (projectFilter === 'meeting' && !hasMeeting) return false
+                      if (projectFilter === 'jira' && !hasJira) return false
+                      if (projectFilter === 'prompt' && (hasMeeting || hasJira)) return false
+                    }
+                    return true
+                  })
+                  .sort((a, b) => {
+                    if (projectSort === 'name') return (a.name || projectName2(a.prompt)).localeCompare(b.name || projectName2(b.prompt))
+                    return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
+                  })
+                const displayed = filtered.slice(0, showAllProjects ? undefined : 12)
+                if (filtered.length === 0) return (
+                  <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(0,0,0,.08)', borderRadius: 20 }}>
+                    <div style={{ fontSize: 40, marginBottom: 14 }}>✦</div>
+                    <p style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>
+                      {validProjects.length === 0 ? 'No projects yet' : 'No results found'}
+                    </p>
+                    <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', marginBottom: 24 }}>
+                      {validProjects.length === 0 ? 'Generate your first app to get started' : 'Try adjusting your search or filters'}
+                    </p>
+                    {validProjects.length === 0 && (
+                      <button onClick={() => setHomeTab('create')} style={{ background: 'linear-gradient(135deg,#7c3aed,#6366f1)', color: '#fff', border: 'none', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                        + New Project
+                      </button>
+                    )}
+                  </div>
+                )
+                return (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 22, maxWidth: 1300 }}>
+                      {displayed.map(g => (
+                        <div key={g.generationId}
+                          className="group"
+                          style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.1)', cursor: 'pointer', transition: 'all .2s', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}
+                          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(124,58,237,.35)'; el.style.boxShadow = '0 8px 40px rgba(124,58,237,.14)'; el.style.transform = 'translateY(-2px)' }}
+                          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(0,0,0,.1)'; el.style.boxShadow = '0 2px 8px rgba(0,0,0,.04)'; el.style.transform = 'none' }}
+                          onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
+                          <div style={{ position: 'relative', height: 200, background: '#f1f5f9', overflow: 'hidden' }}>
+                            {g.generationId && g.status === 'COMPLETED' ? (
+                              <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
+                            ) : (
+                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}>
+                                <CardThumbnail prompt={g.prompt} />
+                              </div>
+                            )}
+                            {loadingProjectId === g.generationId && (
+                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                                <div style={{ width: 26, height: 26, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                              </div>
+                            )}
+                            <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.52)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'opacity .2s', zIndex: 5 }}>
+                              <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'linear-gradient(135deg,#7c3aed,#6366f1)', color: '#fff', boxShadow: '0 4px 20px rgba(99,102,241,.4)' }}>Open →</span>
+                              <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'rgba(255,255,255,.95)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
+                                onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇ ZIP</span>
+                            </div>
                           </div>
-                        )}
-                        {loadingProjectId === g.generationId && (
-                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                            <div style={{ width: 26, height: 26, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                          </div>
-                        )}
-                        <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'opacity .2s', zIndex: 5 }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: '#5480ba', color: '#fff', boxShadow: '0 4px 20px rgba(99,102,241,.4)' }}>Open →</span>
-                          <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'rgba(255,255,255,.95)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
-                            onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇ ZIP</span>
+                          <CardFooter g={g} />
                         </div>
-                      </div>
-                      {/* Card footer */}
-                      <CardFooter g={g} displayName={displayName} />
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {!isAdmin && !showAllProjects && validProjects.length > 6 && (
-                <div style={{ textAlign: 'center', marginTop: 36 }}>
-                  <button onClick={() => setShowAllProjects(true)}
-                    style={{ background: 'rgba(99,102,241,.1)', color: '#5480ba', border: '1px solid rgba(99,102,241,.2)', borderRadius: 12, padding: '13px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-                    Browse all {validProjects.length} projects →
-                  </button>
-                </div>
-              )}
+                    {!showAllProjects && filtered.length > 12 && (
+                      <div style={{ textAlign: 'center', marginTop: 36 }}>
+                        <button onClick={() => setShowAllProjects(true)}
+                          style={{ background: 'rgba(124,58,237,.08)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)', borderRadius: 12, padding: '12px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                          Show all {filtered.length} projects →
+                        </button>
+                      </div>
+                    )}
+                    {showAllProjects && filtered.length > 12 && (
+                      <div style={{ textAlign: 'center', marginTop: 36 }}>
+                        <button onClick={() => setShowAllProjects(false)}
+                          style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.4)', borderRadius: 12, padding: '12px 36px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Show less</button>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
 
@@ -2292,7 +2486,7 @@ document.addEventListener('click', function(e) {
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
                 <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 6px', fontFamily: "'Syne',sans-serif" }}>Admin Dashboard</h1>
+                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 6px', fontFamily: "'Inter',sans-serif" }}>Admin Dashboard</h1>
                   <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>Platform overview and user management</p>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -2322,18 +2516,85 @@ document.addEventListener('click', function(e) {
                 </div>
               </div>
 
-              {/* Stats cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
-                {[
-                  { label: 'Total Users', value: adminStats?.totalUsers ?? '—', icon: '👥', color: '#5480ba' },
-                  { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', icon: '⊞', color: '#8b5cf6' },
-                  { label: 'Completed', value: adminStats?.completedProjects ?? '—', icon: '✓', color: '#34d399' },
-                  { label: 'Success Rate', value: adminStats?.successRate != null ? `${adminStats.successRate}%` : '—', icon: '◎', color: '#a78bfa' },
-                ].map(stat => (
-                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '22px 20px' }}>
-                    <div style={{ fontSize: 20, marginBottom: 10 }}>{stat.icon}</div>
-                    <p style={{ fontSize: 28, fontWeight: 900, color: '#111827', margin: '0 0 4px', fontFamily: "'Syne',sans-serif" }}>{String(stat.value)}</p>
-                    <p style={{ fontSize: 13, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
+              {/* ── ALERTS BANNER ── */}
+              {(() => {
+                const downServices = adminHealth ? Object.entries(adminHealth).filter(([, v]) => v.status === 'DOWN').map(([k]) => k) : []
+                const total = adminStats?.totalProjects ?? 0
+                const failed = adminStats?.failedProjects ?? 0
+                const failRate = total > 0 ? Math.round((failed / total) * 100) : 0
+                const alerts: { level: 'error' | 'warn'; msg: string }[] = []
+                if (downServices.length > 0) alerts.push({ level: 'error', msg: `Service(s) DOWN: ${downServices.join(', ')}` })
+                if (failRate >= 30 && total > 0) alerts.push({ level: 'warn', msg: `Taux d'échec élevé: ${failRate}% (${failed}/${total} projets)` })
+                if (alerts.length === 0) return null
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+                    {alerts.map((a, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderRadius: 12, background: a.level === 'error' ? 'rgba(239,68,68,.08)' : 'rgba(245,158,11,.08)', border: `1px solid ${a.level === 'error' ? 'rgba(239,68,68,.2)' : 'rgba(245,158,11,.2)'}` }}>
+                        <AlertTriangle size={15} color={a.level === 'error' ? '#ef4444' : '#f59e0b'} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: a.level === 'error' ? '#ef4444' : '#d97706' }}>{a.msg}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+
+              {/* Stats cards — row 1: activity */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 14 }}>
+                {([
+                  { label: 'Total Users', value: adminStats?.totalUsers ?? '—', Icon: Users, color: '#5480ba', bg: 'rgba(84,128,186,.08)' },
+                  { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', Icon: FolderKanban, color: '#8b5cf6', bg: 'rgba(139,92,246,.08)' },
+                  { label: 'Completed', value: adminStats?.completedProjects ?? '—', Icon: CheckCircle2, color: '#10b981', bg: 'rgba(16,185,129,.08)' },
+                  { label: 'Processing', value: adminStats?.processingProjects ?? '—', Icon: Clock, color: '#f59e0b', bg: 'rgba(245,158,11,.08)' },
+                  { label: 'Success Rate', value: adminStats?.successRate != null ? `${adminStats.successRate}%` : '—', Icon: BarChart3, color: '#8b5cf6', bg: 'rgba(139,92,246,.08)' },
+                ] as { label: string; value: string | number; Icon: React.FC<{ size?: number; color?: string }>; color: string; bg: string }[]).map(stat => (
+                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '18px 16px' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                      <stat.Icon size={18} color={stat.color} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>{String(stat.value)}</p>
+                    <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+              {/* Stats cards — row 2: quality & integrations */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 28 }}>
+                {([
+                  {
+                    label: 'Avg. Gen. Time',
+                    value: adminStats?.avgGenerationSeconds != null
+                      ? adminStats.avgGenerationSeconds >= 60
+                        ? `${Math.floor(adminStats.avgGenerationSeconds / 60)}m ${adminStats.avgGenerationSeconds % 60}s`
+                        : `${adminStats.avgGenerationSeconds}s`
+                      : '—',
+                    Icon: Timer, color: '#06b6d4', bg: 'rgba(6,182,212,.08)'
+                  },
+                  {
+                    label: 'Avg. Quality Score',
+                    value: adminStats?.avgQualityScore != null ? `${adminStats.avgQualityScore}/100` : '—',
+                    Icon: Award, color: '#f59e0b', bg: 'rgba(245,158,11,.08)'
+                  },
+                  {
+                    label: 'Failed',
+                    value: adminStats?.failedProjects ?? '—',
+                    Icon: XCircle, color: '#ef4444', bg: 'rgba(239,68,68,.08)'
+                  },
+                  {
+                    label: 'Deployed',
+                    value: adminStats?.deployedCount ?? '—',
+                    Icon: Globe, color: '#10b981', bg: 'rgba(16,185,129,.08)'
+                  },
+                  {
+                    label: 'GitLab Pushes',
+                    value: adminStats?.gitlabCount ?? '—',
+                    Icon: GitBranch, color: '#fc6d26', bg: 'rgba(252,109,38,.08)'
+                  },
+                ] as { label: string; value: string | number; Icon: React.FC<{ size?: number; color?: string }>; color: string; bg: string }[]).map(stat => (
+                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '18px 16px' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                      <stat.Icon size={18} color={stat.color} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>{String(stat.value)}</p>
+                    <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
                   </div>
                 ))}
               </div>
@@ -2341,178 +2602,465 @@ document.addEventListener('click', function(e) {
               {/* Inner tabs */}
               <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#ffffff', borderRadius: 12, padding: 4, width: 'fit-content' }}>
                 {([
-                  { key: 'overview', label: '⊞ Overview' },
-                  { key: 'users', label: '👥 Users' },
-                  { key: 'activity', label: '⚡ Activity' },
-                  { key: 'failed', label: '✕ Failed' },
-                  { key: 'health', label: '◉ Health' },
-                ] as { key: typeof adminActiveTab; label: string }[]).map(t => (
+                  { key: 'overview', label: 'Vue d\'ensemble', Icon: LayoutDashboard },
+                  { key: 'users', label: 'Utilisateurs', Icon: Users },
+                  { key: 'activity', label: 'Activité', Icon: Activity },
+                  { key: 'failed', label: 'Échoués', Icon: XCircle },
+                  { key: 'health', label: 'Santé', Icon: HeartPulse },
+                  { key: 'audit', label: 'Audit', Icon: FileText },
+                ] as { key: typeof adminActiveTab; label: string; Icon: React.FC<{ size?: number }> }[]).map(t => (
                   <button key={t.key} onClick={() => setAdminActiveTab(t.key)}
-                    style={{ background: adminActiveTab === t.key ? 'rgba(99,102,241,.12)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#5480ba' : '#64748b', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ background: adminActiveTab === t.key ? 'rgba(99,102,241,.12)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#5480ba' : '#64748b', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <t.Icon size={14} />
                     {t.label}
                   </button>
                 ))}
               </div>
 
-              {adminError && <div style={{ padding: '16px 20px', color: '#e04580', fontSize: 14, background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.15)', borderRadius: 12, marginBottom: 20 }}>⚠ {adminError}</div>}
+              {adminError && <div style={{ padding: '16px 20px', color: '#e04580', fontSize: 14, background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.15)', borderRadius: 12, marginBottom: 20 }}>{adminError}</div>}
 
-              {/* ── OVERVIEW TAB: chart ── */}
-              {adminActiveTab === 'overview' && (
-                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '28px 28px 20px' }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 24px' }}>Generations — last 7 days</h3>
-                  {adminDailyChart.length === 0
-                    ? <p style={{ color: '#94a3b8', fontSize: 14 }}>No data yet</p>
-                    : (() => {
-                      const max = Math.max(...adminDailyChart.map(d => d.count), 1)
-                      return (
-                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 140 }}>
-                          {adminDailyChart.map(d => (
-                            <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: '#5480ba' }}>{d.count || ''}</span>
-                              <div style={{ width: '100%', background: 'linear-gradient(to top,#6366f1,#a78bfa)', borderRadius: '6px 6px 0 0', height: `${Math.max((d.count / max) * 100, d.count ? 4 : 0)}px`, minHeight: d.count ? 4 : 0, transition: 'height .3s' }} />
-                              <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
+              {/* ── OVERVIEW TAB ── */}
+              {adminActiveTab === 'overview' && (() => {
+                const completed = adminStats?.completedProjects ?? 0
+                const processing = adminStats?.processingProjects ?? 0
+                const total = adminStats?.totalProjects ?? 0
+                const failed = Math.max(0, total - completed - processing)
+                const failedLast24h = adminFailed.filter(g => g.createdAt && (Date.now() - new Date(g.createdAt).getTime()) < 86400000).length
+                const topUsers = [...adminUsers].sort((a, b) => (b.projectCount ?? 0) - (a.projectCount ?? 0)).slice(0, 5)
+                const completedDeg = total > 0 ? (completed / total) * 360 : 0
+                const processingDeg = total > 0 ? (processing / total) * 360 : 0
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* Row 1: Donut + Top Users */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      {/* Status donut */}
+                      <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '24px 28px' }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 20px' }}>Distribution des statuts</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+                          {/* Donut */}
+                          <div style={{ position: 'relative', flexShrink: 0 }}>
+                            <div style={{
+                              width: 110, height: 110, borderRadius: '50%',
+                              background: total === 0
+                                ? '#f1f5f9'
+                                : `conic-gradient(#34d399 0deg ${completedDeg}deg, #fbbf24 ${completedDeg}deg ${completedDeg + processingDeg}deg, #f87171 ${completedDeg + processingDeg}deg 360deg)`,
+                            }} />
+                            <div style={{ position: 'absolute', inset: '22%', borderRadius: '50%', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ fontSize: 18, fontWeight: 900, color: '#111827', lineHeight: 1 }}>{total}</span>
+                              <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 600 }}>total</span>
                             </div>
+                          </div>
+                          {/* Legend */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+                            {[
+                              { label: 'Completed', value: completed, color: '#34d399' },
+                              { label: 'Processing', value: processing, color: '#fbbf24' },
+                              { label: 'Failed', value: failed, color: '#f87171' },
+                            ].map(s => (
+                              <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ width: 10, height: 10, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 13, color: '#475569' }}>{s.label}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{s.value}</span>
+                                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{total > 0 ? Math.round((s.value / total) * 100) : 0}%</span>
+                                </div>
+                              </div>
+                            ))}
+                            {failedLast24h > 0 && (
+                              <div style={{ marginTop: 4, background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.2)', borderRadius: 8, padding: '5px 10px', fontSize: 12, color: '#e04580', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <AlertTriangle size={13} /> {failedLast24h} échec(s) dans les dernières 24h
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Top Users */}
+                      <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '24px 28px' }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Top utilisateurs</h3>
+                        {topUsers.length === 0
+                          ? <p style={{ fontSize: 13, color: '#94a3b8' }}>Aucun utilisateur</p>
+                          : topUsers.map((u, i) => {
+                            const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '?'
+                            const maxProjects = topUsers[0]?.projectCount ?? 1
+                            return (
+                              <div key={u.userId || i} style={{ marginBottom: 12 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? '#f59e0b' : '#94a3b8', minWidth: 16 }}>#{i + 1}</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>{name}</span>
+                                    {u.roles?.includes('admin') && <span style={{ fontSize: 10, background: 'rgba(99,102,241,.1)', color: '#6366f1', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
+                                  </div>
+                                  <span style={{ fontSize: 13, fontWeight: 800, color: '#5480ba' }}>{u.projectCount ?? 0}</span>
+                                </div>
+                                <div style={{ height: 4, borderRadius: 4, background: 'rgba(0,0,0,.05)', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', borderRadius: 4, background: i === 0 ? 'linear-gradient(to right,#6366f1,#a78bfa)' : '#cbd5e1', width: `${((u.projectCount ?? 0) / (maxProjects || 1)) * 100}%`, transition: 'width .5s' }} />
+                                </div>
+                              </div>
+                            )
+                          })
+                        }
+                      </div>
+                    </div>
+
+                    {/* Row 2: Bar chart */}
+                    <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '24px 28px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>Générations — {adminChartDays} derniers jours</h3>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {([7, 30] as const).map(d => (
+                            <button key={d} onClick={() => {
+                              setAdminChartDays(d)
+                              void getAdminDailyChart(accessToken, d).then(setAdminDailyChart)
+                            }} style={{ background: adminChartDays === d ? '#6366f1' : 'rgba(0,0,0,.05)', border: 'none', color: adminChartDays === d ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                              {d}j
+                            </button>
                           ))}
                         </div>
-                      )
-                    })()
-                  }
-                </div>
-              )}
+                      </div>
+                      {adminDailyChart.every(d => d.count === 0)
+                        ? <p style={{ color: '#94a3b8', fontSize: 14, textAlign: 'center', padding: '32px 0' }}>Aucune génération sur cette période</p>
+                        : (() => {
+                          const max = Math.max(...adminDailyChart.map(d => d.count), 1)
+                          const gap = adminChartDays === 30 ? 4 : 10
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 140 }}>
+                              {adminDailyChart.map((d, i) => {
+                                const showLabel = adminChartDays === 7 || i % 5 === 0 || i === adminDailyChart.length - 1
+                                return (
+                                  <div key={d.date} style={{ flex: 1, minWidth: adminChartDays === 30 ? 14 : 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={`${d.date}: ${d.count}`}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: '#5480ba', minHeight: 14 }}>{d.count > 0 ? d.count : ''}</span>
+                                    <div style={{ width: '100%', background: d.count > 0 ? 'linear-gradient(to top,#6366f1,#a78bfa)' : 'rgba(0,0,0,.06)', borderRadius: '4px 4px 0 0', height: `${Math.max((d.count / max) * 110, d.count ? 4 : 2)}px`, transition: 'height .3s' }} />
+                                    <span style={{ fontSize: 9, color: '#94a3b8', whiteSpace: 'nowrap', opacity: showLabel ? 1 : 0 }}>{d.date.slice(5)}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })()
+                      }
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* ── USERS TAB ── */}
-              {adminActiveTab === 'users' && (
-                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Registered Developers</h3>
-                    <span style={{ fontSize: 13, color: '#64748b', background: 'rgba(0,0,0,.04)', padding: '4px 10px', borderRadius: 20 }}>{adminUsers.length} users</span>
+              {adminActiveTab === 'users' && (() => {
+                const filtered = adminSearchQuery
+                  ? adminUsers.filter(u => {
+                      const q = adminSearchQuery.toLowerCase()
+                      const name = [u.firstName, u.lastName].filter(Boolean).join(' ').toLowerCase()
+                      return name.includes(q) || (u.email ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q)
+                    })
+                  : adminUsers
+                return (
+                  <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
+                    <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, flexShrink: 0 }}>Utilisateurs</h3>
+                      <input
+                        type="text"
+                        placeholder="Rechercher par nom, email…"
+                        value={adminSearchQuery}
+                        onChange={e => setAdminSearchQuery(e.target.value)}
+                        style={{ flex: 1, border: '1px solid rgba(0,0,0,.1)', borderRadius: 8, padding: '6px 12px', fontSize: 13, color: '#1f2937', outline: 'none', background: 'rgba(0,0,0,.02)' }}
+                      />
+                      <span style={{ fontSize: 13, color: '#64748b', background: 'rgba(0,0,0,.04)', padding: '4px 10px', borderRadius: 20, flexShrink: 0 }}>{filtered.length} / {adminUsers.length}</span>
+                    </div>
+                    {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
+                    {!adminLoading && filtered.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>{adminSearchQuery ? 'Aucun résultat' : 'No users found'}</div>}
+                    {!adminLoading && filtered.map((u, i) => {
+                      const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
+                      const initials = name.charAt(0).toUpperCase()
+                      const joinedDate = u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+                      const lastLoginDate = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+                      const lastProjectDate = u.lastProjectAt ? new Date(u.lastProjectAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+                      const isUserAdmin = u.roles?.includes('admin') ?? false
+                      return (
+                        <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', borderBottom: i < filtered.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none', transition: 'background .15s', cursor: 'pointer' }}
+                          onClick={() => void openUserProjects(u)}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.03)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                          {/* Avatar */}
+                          <div style={{ width: 38, height: 38, borderRadius: '50%', background: isUserAdmin ? '#6366f1' : '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
+                          {/* Name + email */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                              <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: isUserAdmin ? 'rgba(99,102,241,.12)' : 'rgba(84,128,186,.1)', color: isUserAdmin ? '#6366f1' : '#5480ba', flexShrink: 0 }}>
+                                {isUserAdmin ? 'Admin' : 'Developer'}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: 12, color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
+                          </div>
+                          {/* Joined */}
+                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 80 }}>
+                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Inscrit</p>
+                            <p style={{ fontSize: 12, color: '#475569', margin: 0 }}>{joinedDate}</p>
+                          </div>
+                          {/* Projects count */}
+                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 50 }}>
+                            <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: '0 0 1px' }}>Projets</p>
+                            <p style={{ fontSize: 17, fontWeight: 800, color: '#5480ba', margin: 0 }}>{u.projectCount ?? 0}</p>
+                          </div>
+                          {/* Last login */}
+                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
+                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Dernière connexion</p>
+                            <p style={{ fontSize: 12, color: lastLoginDate === '—' ? '#cbd5e1' : '#475569', margin: 0, fontWeight: lastLoginDate === '—' ? 400 : 600 }}>{lastLoginDate}</p>
+                          </div>
+                          {/* Last project */}
+                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
+                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Dernier projet</p>
+                            <p style={{ fontSize: 12, color: lastProjectDate === '—' ? '#cbd5e1' : '#475569', margin: 0, fontWeight: lastProjectDate === '—' ? 400 : 600 }}>{lastProjectDate}</p>
+                          </div>
+                          {/* Email verified badge */}
+                          <div style={{ flexShrink: 0 }}>
+                            {u.emailVerified
+                              ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#10b981' }}>Vérifié</span>
+                              : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#f59e0b' }}>En attente</span>
+                            }
+                          </div>
+                          {/* Promote / Demote */}
+                          <button onClick={e => {
+                            e.stopPropagation()
+                            if (!u.userId) return
+                            const action = isUserAdmin ? 'retirer le rôle Admin de' : 'promouvoir'
+                            if (!window.confirm(`${action} "${u.username}" ?`)) return
+                            void setAdminUserRole(u.userId, 'admin', !isUserAdmin, accessToken).then(() => {
+                              setAdminUsers(prev => prev.map(x => x.userId === u.userId
+                                ? { ...x, roles: isUserAdmin ? (x.roles ?? []).filter(r => r !== 'admin') : [...(x.roles ?? []), 'admin'] }
+                                : x))
+                            })
+                          }} style={{ background: isUserAdmin ? 'rgba(248,113,113,.06)' : 'rgba(99,102,241,.08)', border: isUserAdmin ? '1px solid rgba(248,113,113,.15)' : '1px solid rgba(99,102,241,.15)', color: isUserAdmin ? '#f87171' : '#6366f1', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                            {isUserAdmin ? '↓ Rétrograder' : '↑ Promouvoir'}
+                          </button>
+                          {/* Enable/Disable */}
+                          <button onClick={e => {
+                            e.stopPropagation()
+                            if (!u.userId) return
+                            const next = u.enabled !== false
+                            void setAdminUserEnabled(u.userId, !next, accessToken).then(() => {
+                              setAdminUsers(prev => prev.map(x => x.userId === u.userId ? { ...x, enabled: !next } : x))
+                            })
+                          }} style={{ background: u.enabled === false ? 'rgba(52,211,153,.1)' : 'rgba(248,113,113,.08)', border: u.enabled === false ? '1px solid rgba(52,211,153,.2)' : '1px solid rgba(248,113,113,.15)', color: u.enabled === false ? '#34d399' : '#f87171', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                            {u.enabled === false ? 'Activer' : 'Désactiver'}
+                          </button>
+                          {/* Delete */}
+                          <button onClick={e => {
+                            e.stopPropagation()
+                            if (!u.userId) return
+                            if (!window.confirm(`Supprimer "${u.username}" ? Action irréversible.`)) return
+                            void deleteAdminUser(u.userId, accessToken).then(() => {
+                              setAdminUsers(prev => prev.filter(x => x.userId !== u.userId))
+                            })
+                          }} style={{ background: 'rgba(248,113,113,.06)', border: '1px solid rgba(248,113,113,.12)', color: '#e04580', borderRadius: 8, padding: '4px 8px', fontSize: 13, cursor: 'pointer', flexShrink: 0 }} title="Supprimer">
+                            🗑
+                          </button>
+                          <div style={{ color: 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0 }}>›</div>
+                        </div>
+                      )
+                    })}
                   </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminUsers.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No users found</div>}
-                  {!adminLoading && adminUsers.map((u, i) => {
-                    const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
-                    const initials = name.charAt(0).toUpperCase()
-                    const joinedDate = u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
-                    return (
-                      <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminUsers.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none', transition: 'background .15s', cursor: 'pointer' }}
-                        onClick={() => void openUserProjects(u)}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.03)'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-                        <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                          <p style={{ fontSize: 12, color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
-                          <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Joined</p>
-                          <p style={{ fontSize: 12, color: '#475569', margin: 0 }}>{joinedDate}</p>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 60 }}>
-                          <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: '0 0 1px' }}>Projects</p>
-                          <p style={{ fontSize: 17, fontWeight: 800, color: '#5480ba', margin: 0 }}>{u.projectCount ?? 0}</p>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                          {u.emailVerified
-                            ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#34d399' }}>✓ Verified</span>
-                            : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#fbbf24' }}>⏳ Pending</span>
-                          }
-                        </div>
-                        {/* Enable/disable toggle */}
-                        <button onClick={e => {
-                          e.stopPropagation()
-                          if (!u.userId) return
-                          const next = u.enabled !== false
-                          void setAdminUserEnabled(u.userId, !next, accessToken).then(() => {
-                            setAdminUsers(prev => prev.map(x => x.userId === u.userId ? { ...x, enabled: !next } : x))
-                          })
-                        }} style={{ background: u.enabled === false ? 'rgba(52,211,153,.1)' : 'rgba(248,113,113,.08)', border: u.enabled === false ? '1px solid rgba(52,211,153,.2)' : '1px solid rgba(248,113,113,.15)', color: u.enabled === false ? '#34d399' : '#f87171', borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-                          {u.enabled === false ? 'Enable' : 'Disable'}
-                        </button>
-                        {/* Delete button */}
-                        <button onClick={e => {
-                          e.stopPropagation()
-                          if (!u.userId) return
-                          if (!window.confirm(`Delete user "${u.username}"? This cannot be undone.`)) return
-                          void deleteAdminUser(u.userId, accessToken).then(() => {
-                            setAdminUsers(prev => prev.filter(x => x.userId !== u.userId))
-                          })
-                        }} style={{ background: 'rgba(248,113,113,.06)', border: '1px solid rgba(248,113,113,.12)', color: '#e04580', borderRadius: 8, padding: '4px 8px', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
-                          title="Delete user">
-                          🗑
-                        </button>
-                        <div style={{ color: 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0 }}>›</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+                )
+              })()}
 
               {/* ── ACTIVITY TAB ── */}
-              {adminActiveTab === 'activity' && (
-                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Recent Activity</h3>
-                  </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No activity yet</div>}
-                  {!adminLoading && adminActivity.map((g, i) => (
-                    <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminActivity.length - 1 ? '1px solid rgba(0,0,0,.05)' : 'none' }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0,
-                        background: g.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : g.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
-                        color: g.status === 'COMPLETED' ? '#34d399' : g.status === 'FAILED' ? '#f87171' : '#fbbf24'
-                      }}>
-                        {g.status}
-                      </span>
-                      <p style={{ flex: 1, fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
-                      <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
-                        {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                      </span>
+              {adminActiveTab === 'activity' && (() => {
+                const userMap = new Map(adminUsers.map(u => [u.userId, u]))
+                const filteredActivity = adminActivityFilter === 'all' ? adminActivity : adminActivity.filter(g => g.status === adminActivityFilter)
+                const statusColors: Record<string, { bg: string; text: string }> = {
+                  COMPLETED: { bg: 'rgba(52,211,153,.12)', text: '#34d399' },
+                  FAILED:    { bg: 'rgba(248,113,113,.1)',  text: '#f87171' },
+                  PROCESSING:{ bg: 'rgba(251,191,36,.1)',   text: '#fbbf24' },
+                }
+                return (
+                  <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
+                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, flex: 1 }}>Activité récente</h3>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {(['all', 'COMPLETED', 'PROCESSING', 'FAILED'] as const).map(f => (
+                          <button key={f} onClick={() => setAdminActivityFilter(f)}
+                            style={{ background: adminActivityFilter === f ? '#6366f1' : 'rgba(0,0,0,.05)', border: 'none', color: adminActivityFilter === f ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                            {f === 'all' ? 'Tous' : f}
+                          </button>
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{filteredActivity.length} résultat(s)</span>
                     </div>
-                  ))}
-                </div>
-              )}
+                    {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Chargement…</div>}
+                    {!adminLoading && filteredActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Aucune activité</div>}
+                    {!adminLoading && filteredActivity.map((g, i) => {
+                      const u = g.userId ? userMap.get(g.userId) : undefined
+                      const uName = u ? ([u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '—') : (g.userId?.slice(0, 8) ?? '—')
+                      const sc = statusColors[g.status ?? ''] ?? { bg: 'rgba(0,0,0,.06)', text: '#64748b' }
+                      return (
+                        <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', borderBottom: i < filteredActivity.length - 1 ? '1px solid rgba(0,0,0,.04)' : 'none' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0, background: sc.bg, color: sc.text }}>{g.status}</span>
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#6366f1', flexShrink: 0 }}>
+                            {uName.charAt(0).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 13, color: '#1f2937', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'Sans prompt'}</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{uName}</p>
+                          </div>
+                          <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
+                            {g.createdAt ? new Date(g.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
 
               {/* ── FAILED TAB ── */}
-              {adminActiveTab === 'failed' && (
-                <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Failed Generations</h3>
-                    <span style={{ fontSize: 13, background: 'rgba(248,113,113,.1)', color: '#e04580', padding: '4px 10px', borderRadius: 20 }}>{adminFailed.length} failed</span>
-                  </div>
-                  {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
-                  {!adminLoading && adminFailed.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No failed generations</div>}
-                  {!adminLoading && adminFailed.map((g, i) => (
-                    <div key={g.generationId || i} style={{ padding: '16px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(0,0,0,.05)' : 'none' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 16)}…</span>
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                          {g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: 13, color: '#e04580', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'No prompt'}</p>
+              {adminActiveTab === 'failed' && (() => {
+                const userMap = new Map(adminUsers.map(u => [u.userId, u]))
+                return (
+                  <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
+                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Générations échouées</h3>
+                      <span style={{ fontSize: 13, background: 'rgba(248,113,113,.1)', color: '#e04580', padding: '4px 10px', borderRadius: 20 }}>{adminFailed.length} échec(s)</span>
                     </div>
-                  ))}
-                </div>
-              )}
+                    {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Chargement…</div>}
+                    {!adminLoading && adminFailed.length === 0 && (
+                      <div style={{ padding: '60px 24px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                        <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>Aucune génération échouée</p>
+                      </div>
+                    )}
+                    {!adminLoading && adminFailed.map((g, i) => {
+                      const u = g.userId ? userMap.get(g.userId) : undefined
+                      const uName = u ? ([u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '—') : '—'
+                      const isRetrying = retryingId === g.generationId
+                      return (
+                        <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(0,0,0,.04)' : 'none' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 14)}…</span>
+                              <span style={{ fontSize: 11, color: '#94a3b8' }}>·</span>
+                              <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>{uName}</span>
+                            </div>
+                            <p style={{ fontSize: 13, color: '#e04580', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'Sans prompt'}</p>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                              {g.createdAt ? new Date(g.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </span>
+                          </div>
+                          <button
+                            disabled={isRetrying}
+                            onClick={() => {
+                              if (!g.generationId) return
+                              setRetryingId(g.generationId)
+                              void retryAdminGeneration(g.generationId, accessToken)
+                                .then(() => setAdminFailed(prev => prev.filter(x => x.generationId !== g.generationId)))
+                                .catch(() => {/* échec silencieux */})
+                                .finally(() => setRetryingId(null))
+                            }}
+                            style={{ background: isRetrying ? 'rgba(0,0,0,.04)' : 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', color: isRetrying ? '#94a3b8' : '#6366f1', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: isRetrying ? 'not-allowed' : 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <Activity size={13} />{isRetrying ? 'En cours…' : 'Relancer'}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
 
               {/* ── HEALTH TAB ── */}
               {adminActiveTab === 'health' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-                  {adminHealth
-                    ? Object.entries(adminHealth).map(([svc, status]) => (
-                      <div key={svc} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 16, padding: '24px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-                        <div style={{ width: 12, height: 12, borderRadius: '50%', background: status === 'UP' ? '#34d399' : '#f87171', boxShadow: status === 'UP' ? '0 0 8px #34d399' : '0 0 8px #f87171', flexShrink: 0 }} />
-                        <div>
-                          <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
-                          <p style={{ fontSize: 13, color: status === 'UP' ? '#34d399' : '#f87171', margin: 0, fontWeight: 600 }}>{status}</p>
-                        </div>
-                      </div>
-                    ))
-                    : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading health status…</div>
-                  }
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>Auto-refresh toutes les 30s</p>
+                    <button onClick={() => getAdminServiceHealth(accessToken).then(setAdminHealth).catch(() => {})}
+                      style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: '#64748b', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      ↻ Rafraîchir
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+                    {adminHealth
+                      ? Object.entries(adminHealth).map(([svc, entry]) => {
+                          const isUp = entry.status === 'UP'
+                          const ms = entry.responseMs
+                          const msColor = ms < 100 ? '#10b981' : ms < 500 ? '#f59e0b' : '#ef4444'
+                          return (
+                            <div key={svc} style={{ background: '#ffffff', border: `1px solid ${isUp ? 'rgba(52,211,153,.15)' : 'rgba(239,68,68,.2)'}`, borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                              <div style={{ width: 14, height: 14, borderRadius: '50%', background: isUp ? '#34d399' : '#f87171', boxShadow: isUp ? '0 0 10px #34d399' : '0 0 10px #f87171', flexShrink: 0 }} />
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
+                                <p style={{ fontSize: 12, color: isUp ? '#34d399' : '#f87171', margin: 0, fontWeight: 600 }}>{entry.status}</p>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <p style={{ fontSize: 20, fontWeight: 800, color: msColor, margin: '0 0 1px' }}>{ms}<span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', marginLeft: 2 }}>ms</span></p>
+                                <p style={{ fontSize: 10, color: '#cbd5e1', margin: 0 }}>{ms < 100 ? 'Excellent' : ms < 500 ? 'Normal' : 'Lent'}</p>
+                              </div>
+                            </div>
+                          )
+                        })
+                      : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading health status…</div>
+                    }
+                  </div>
                 </div>
               )}
+
+              {/* ── AUDIT TAB ── */}
+              {adminActiveTab === 'audit' && (() => {
+                const eventTypeLabel: Record<string, string> = {
+                  GENERATION_STARTED: 'Génération démarrée',
+                  GENERATION_COMPLETED: 'Génération terminée',
+                  GENERATION_FAILED: 'Génération échouée',
+                  CODE_EDIT: 'Édition de code',
+                  REPAIR: 'Réparation IA',
+                  DEPLOY: 'Déploiement',
+                  ACCESSIBILITY_AUDIT: 'Audit accessibilité',
+                  DOCS_GENERATED: 'Documentation générée',
+                  ROLLBACK: 'Rollback version',
+                }
+                const eventTypeColor: Record<string, string> = {
+                  GENERATION_STARTED: '#6366f1', GENERATION_COMPLETED: '#10b981', GENERATION_FAILED: '#ef4444',
+                  CODE_EDIT: '#f59e0b', REPAIR: '#ec4899', DEPLOY: '#06b6d4',
+                  ACCESSIBILITY_AUDIT: '#8b5cf6', DOCS_GENERATED: '#84cc16', ROLLBACK: '#f97316',
+                }
+                return (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                      <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>{adminAudit.length} événements récents</p>
+                      <button onClick={() => {
+                        const rows = [['EventId', 'Type', 'GenerationId', 'Timestamp', 'DurationMs'],
+                          ...adminAudit.map(e => [e.eventId ?? '', e.type ?? '', e.generationId ?? '', e.timestamp ?? '', String(e.durationMs ?? 0)])]
+                        const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+                        const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv); a.download = 'audit.csv'; a.click()
+                      }} style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.2)', color: '#5480ba', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                        ↓ Export CSV
+                      </button>
+                    </div>
+                    {adminAudit.length === 0
+                      ? <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Aucun événement d'audit enregistré</div>
+                      : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {adminAudit.map((e, i) => {
+                            const color = eventTypeColor[e.type ?? ''] ?? '#94a3b8'
+                            const label = eventTypeLabel[e.type ?? ''] ?? (e.type ?? 'Événement')
+                            const ts = e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
+                            const genShort = e.generationId ? e.generationId.slice(-8) : '—'
+                            return (
+                              <div key={e.eventId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', borderRadius: 10, background: '#ffffff', border: '1px solid rgba(0,0,0,.04)' }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{label}</span>
+                                  {e.generationId && <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>#{genShort}</span>}
+                                </div>
+                                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{ts}</span>
+                                {(e.durationMs ?? 0) > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', flexShrink: 0, minWidth: 60, textAlign: 'right' }}>{e.durationMs}ms</span>}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    }
+                  </div>
+                )
+              })()}
             </div>
           )}
 
@@ -2701,10 +3249,16 @@ document.addEventListener('click', function(e) {
         <MeetingRecorder
           isOpen={isMeetingRecorderOpen}
           onClose={() => setIsMeetingRecorderOpen(false)}
-          onRequirementsExtracted={(prompt) => {
+          onRequirementsExtracted={(prompt, analysis) => {
             setCustomPrompt(prompt)
+            setPendingMeetingAnalysis(analysis)
             setIsMeetingRecorderOpen(false)
           }}
+        />
+        <JiraImportPage
+          isOpen={isJiraModalOpen}
+          onClose={() => setIsJiraModalOpen(false)}
+          accessToken={accessToken}
         />
       </div>
     )
@@ -2749,7 +3303,7 @@ document.addEventListener('click', function(e) {
             </span>
 
             {/* TED Button */}
-            <button
+            {!isAdmin && <button
               onClick={() => setIsTedOpen(true)}
               style={{
                 padding: '8px 16px',
@@ -2780,8 +3334,8 @@ document.addEventListener('click', function(e) {
               type="button"
               title="Open TED Assistant"
             >
-              🤖 TED
-            </button>
+              <Bot size={14} /> TED
+            </button>}
           </div>
 
           <div className="flex flex-1 overflow-hidden">
@@ -2810,11 +3364,11 @@ document.addEventListener('click', function(e) {
                 style={{ height: 54, borderBottom: '1px solid rgba(226,232,240,.6)', background: 'rgba(255,255,255,.95)', display: 'flex', alignItems: 'center', gap: 2, padding: '0 20px', boxShadow: '0 1px 2px rgba(0,0,0,.02)' }}
               >
                 {([
-                  { id: 'preview', label: 'Preview', icon: '👁' },
-                  { id: 'code', label: 'Code', icon: '⚡' },
-                  { id: 'quality', label: 'Quality', icon: '⭐' },
-                  { id: 'accessibility', label: 'Accessibility', icon: '♿' },
-                ] as const).map((t) => {
+                  { id: 'preview', label: 'Preview', icon: <Eye size={13} /> },
+                  { id: 'code', label: 'Code', icon: <Code2 size={13} /> },
+                  { id: 'quality', label: 'Quality', icon: <Star size={13} /> },
+                  { id: 'accessibility', label: 'Accessibility', icon: <CheckCircle2 size={13} /> },
+                ] as const).filter(t => !isAdmin || t.id === 'preview' || t.id === 'code').map((t) => {
                   const active = centerTab === t.id
                   return (
                     <button
@@ -2833,9 +3387,9 @@ document.addEventListener('click', function(e) {
                       onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
                       onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
                     >
-                      {t.label}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>{t.icon}{t.label}</span>
                       {active && (
-                        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #6366f1, #a855f7)', borderRadius: 3, boxShadow: '0 0 8px rgba(99,102,241,.35)' }} />
+                        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #6366f1, #a855f7)', borderRadius: 3 }} />
                       )}
                     </button>
                   )
@@ -2904,6 +3458,7 @@ document.addEventListener('click', function(e) {
                 </button>
 
                 {/* Inspect Mode Toggle */}
+                {!isAdmin && (
                 <button
                   style={{
                     padding: '0 14px', height: 38, borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -2922,8 +3477,29 @@ document.addEventListener('click', function(e) {
                 >
                   🎯 {inspectMode ? 'Inspecting' : 'Inspect'}
                 </button>
+                )}
 
-                {apiResult?.generationId && (
+                {!isAdmin && apiResult?.generationId && (
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      background: isRepairing ? 'rgba(239,68,68,.15)' : 'linear-gradient(135deg,#fef2f2,#fee2e2)',
+                      border: '1px solid #fca5a5', color: '#dc2626',
+                      cursor: isRepairing ? 'not-allowed' : 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }}
+                    onClick={handleRepair}
+                    disabled={isRepairing}
+                    title="Fix build errors with AI"
+                    type="button"
+                    onMouseEnter={e => { if (!isRepairing) { e.currentTarget.style.background = 'linear-gradient(135deg,#dc2626,#b91c1c)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#dc2626' } }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg,#fef2f2,#fee2e2)'; e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.borderColor = '#fca5a5' }}
+                  >
+                    {isRepairing ? '⟳ Fixing…' : '🔧 Fix'}
+                  </button>
+                )}
+
+                {!isAdmin && apiResult?.generationId && (
                   <button
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
@@ -2943,8 +3519,7 @@ document.addEventListener('click', function(e) {
                   </button>
                 )}
 
-
-                {apiResult?.generationId && (
+                {!isAdmin && apiResult?.generationId && (
                   <button
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
@@ -2964,7 +3539,7 @@ document.addEventListener('click', function(e) {
                   </button>
                 )}
 
-                {apiResult?.generationId && (
+                {!isAdmin && apiResult?.generationId && (
                   <button
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
@@ -2990,7 +3565,104 @@ document.addEventListener('click', function(e) {
                   </button>
                 )}
 
-                {apiResult?.generationId && (
+                {!isAdmin && apiResult?.generationId && (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
+                        fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                        background: shareToken
+                          ? 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)'
+                          : 'linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%)',
+                        border: shareToken ? 'none' : '1px solid #bae6fd',
+                        color: shareToken ? '#fff' : '#0284c7',
+                        cursor: isSharing ? 'not-allowed' : 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                        boxShadow: shareToken ? '0 2px 8px rgba(14,165,233,.35)' : '0 1px 2px rgba(0,0,0,.04)'
+                      }}
+                      onClick={async () => {
+                        if (shareToken) {
+                          setShowSharePopover(v => !v)
+                          return
+                        }
+                        setIsSharing(true)
+                        try {
+                          const { shareToken: tok } = await shareProject(apiResult!.generationId!, accessToken)
+                          setShareToken(tok)
+                          setShowSharePopover(true)
+                        } catch { /* ignore */ } finally { setIsSharing(false) }
+                      }}
+                      disabled={isSharing}
+                      title={shareToken ? 'Shared — click to copy link' : 'Share project publicly'}
+                      type="button"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                      {isSharing ? 'SHARING…' : shareToken ? 'SHARED' : 'SHARE'}
+                    </button>
+                    {showSharePopover && shareToken && (
+                      <div style={{
+                        position: 'absolute', top: 46, right: 0, zIndex: 200,
+                        background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+                        boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 16, width: 320,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Share link</span>
+                          <button onClick={() => setShowSharePopover(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 18, lineHeight: 1, padding: 2 }}>×</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                          <input
+                            readOnly
+                            value={`${window.location.origin}/share/${shareToken}`}
+                            style={{ flex: 1, fontSize: 12, padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', color: '#475569', background: '#f8fafc', outline: 'none' }}
+                          />
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(`${window.location.origin}/share/${shareToken}`)
+                              setShareCopied(true)
+                              setTimeout(() => setShareCopied(false), 2000)
+                            }}
+                            style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, background: shareCopied ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s', minWidth: 64 }}
+                          >
+                            {shareCopied ? '✓ Copied' : 'Copy'}
+                          </button>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!apiResult?.generationId) return
+                            await unshareProject(apiResult.generationId, accessToken)
+                            setShareToken(null)
+                            setShowSharePopover(false)
+                          }}
+                          style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          Revoke link
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!isAdmin && apiResult?.generationId && selectedGeneration?.meetingAnalysis && (
+                  <button
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                      border: 'none', color: '#fff',
+                      cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 8px rgba(124,58,237,.35)'
+                    }}
+                    onClick={() => setRightTab('meeting')}
+                    title="View meeting requirements"
+                    type="button"
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(124,58,237,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(124,58,237,.35)' }}
+                  >
+                    <Mic size={14} />
+                    MEETING
+                  </button>
+                )}
+
+                {!isAdmin && apiResult?.generationId && (
                   <button
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
@@ -3025,6 +3697,8 @@ document.addEventListener('click', function(e) {
                       isBuilding={isBuilding}
                       buildMsg={buildMsg}
                       buildError={buildError}
+                      onRepair={handleRepair}
+                      isRepairing={isRepairing}
                       inspectMode={inspectMode}
                       setInspectMode={setInspectMode}
                       selectedZone={selectedZone}
@@ -3123,13 +3797,13 @@ document.addEventListener('click', function(e) {
               </div>
             </div>
 
-            <div className="flex flex-col shrink-0" style={{ width: 360, background: '#ffffff', borderLeft: '1px solid #e2e8f0', height: '100%', overflow: 'hidden' }}>
+            {!isAdmin && <div className="flex flex-col shrink-0" style={{ width: 360, background: '#ffffff', borderLeft: '1px solid #e2e8f0', height: '100%', overflow: 'hidden' }}>
               <div style={{ height: 50, borderBottom: '1px solid #e2e8f0', background: '#fff', display: 'flex', alignItems: 'center' }}>
                 {([
                   { id: 'chat', label: 'Chat' },
-                  { id: 'console', label: 'Console' },
                   { id: 'versions', label: 'Versions' },
-                ] as const).map((t) => {
+                  ...(selectedGeneration?.meetingAnalysis ? [{ id: 'meeting', label: 'Meeting' }] : []),
+                ] as { id: RightTab; label: string }[]).map((t) => {
                   const active = rightTab === t.id
                   return (
                     <button
@@ -3187,20 +3861,6 @@ document.addEventListener('click', function(e) {
                 />
               ) : (
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  {rightTab === 'console' ? (
-                    <div className="py-1">
-                      {logs.map((l, idx) => (
-                        <div key={idx} className="flex gap-2 items-start px-3 py-1" style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}>
-                          <span className="mono shrink-0 mt-0.5" style={{ fontSize: 10, color: 'rgba(255,255,255,.25)' }}>
-                            {l.t}
-                          </span>
-                          <span className="mono leading-relaxed" style={{ fontSize: 11, color: logColor[l.type] ?? logColor.info }}>
-                            {l.msg}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
 
 
                   {rightTab === 'versions' ? (
@@ -3224,9 +3884,124 @@ document.addEventListener('click', function(e) {
                       )}
                     </div>
                   ) : null}
+
+                  {rightTab === 'meeting' ? (() => {
+                    let ma: any = null
+                    try { ma = JSON.parse(selectedGeneration?.meetingAnalysis || '') } catch { /* */ }
+                    if (!ma) return <div style={{ textAlign: 'center', padding: '40px 16px', color: '#94a3b8', fontSize: 13 }}>No meeting data</div>
+                    const funcReqs: any[] = ma.functional_requirements || ma.requirements || []
+                    const nfReqs: any[] = ma.non_functional_requirements || []
+                    const arch = ma.system_architecture
+                    const summary = ma.summary
+                    const ambiguities: any[] = ma.ambiguities || []
+                    const risks: any[] = ma.risk_areas || []
+                    const questions: any[] = ma.clarification_questions || []
+                    const getText = (item: any) => typeof item === 'string' ? item : (item.description || item.text || item.insight || item.question || item.area || '')
+                    const sectionStyle: React.CSSProperties = { marginBottom: 20 }
+                    const headStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#5480ba', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }
+                    const tagStyle = (color: string): React.CSSProperties => ({ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: color, color: '#fff', marginLeft: 4 })
+                    return (
+                      <div style={{ padding: '16px 14px' }}>
+                        {summary?.overview && (
+                          <div style={sectionStyle}>
+                            <div style={headStyle}>Overview</div>
+                            <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, margin: 0 }}>{summary.overview}</p>
+                          </div>
+                        )}
+                        {funcReqs.length > 0 && (
+                          <div style={sectionStyle}>
+                            <div style={headStyle}>Functional Requirements <span style={tagStyle('#10b981')}>{funcReqs.length}</span></div>
+                            <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                              {funcReqs.map((r: any, i: number) => (
+                                <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.5 }}>
+                                  {getText(r)}
+                                  {r.priority && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>({r.priority})</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {nfReqs.length > 0 && (
+                          <div style={sectionStyle}>
+                            <div style={headStyle}>Non-Functional Requirements <span style={tagStyle('#6366f1')}>{nfReqs.length}</span></div>
+                            <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                              {nfReqs.map((r: any, i: number) => (
+                                <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.5 }}>{getText(r)}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {arch && (
+                          <div style={sectionStyle}>
+                            <div style={headStyle}>Architecture</div>
+                            {arch.architecture_style && <p style={{ fontSize: 12, color: '#475569', margin: '0 0 6px' }}><strong>Style:</strong> {arch.architecture_style}</p>}
+                            {arch.system_layers?.length > 0 && (
+                              <p style={{ fontSize: 12, color: '#475569', margin: '0 0 6px' }}><strong>Layers:</strong> {arch.system_layers.join(', ')}</p>
+                            )}
+                            {arch.technology_stack && Object.keys(arch.technology_stack).length > 0 && (
+                              <div>
+                                <p style={{ fontSize: 12, color: '#475569', margin: '0 0 4px' }}><strong>Tech stack:</strong></p>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                  {Object.entries(arch.technology_stack).map(([k, v]: [string, any]) => (
+                                    <span key={k} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#3b82f6' }}>{k}: {v}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {arch.api_endpoints?.length > 0 && (
+                              <div style={{ marginTop: 6 }}>
+                                <p style={{ fontSize: 12, color: '#475569', margin: '0 0 4px' }}><strong>API Endpoints:</strong></p>
+                                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                  {arch.api_endpoints.map((ep: string, i: number) => (
+                                    <li key={i} style={{ fontSize: 11, fontFamily: 'monospace', color: '#334155', marginBottom: 2 }}>{ep}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {ambiguities.length > 0 && (
+                          <div style={sectionStyle}>
+                            <div style={headStyle}>Ambiguities <span style={tagStyle('#f59e0b')}>{ambiguities.length}</span></div>
+                            <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                              {ambiguities.map((a: any, i: number) => (
+                                <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.5 }}>{getText(a)}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {risks.length > 0 && (
+                          <div style={sectionStyle}>
+                            <div style={headStyle}>Risk Areas <span style={tagStyle('#ef4444')}>{risks.length}</span></div>
+                            <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                              {risks.map((r: any, i: number) => (
+                                <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.5 }}>{getText(r)}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {questions.length > 0 && (
+                          <div style={sectionStyle}>
+                            <div style={headStyle}>Open Questions <span style={tagStyle('#8b5cf6')}>{questions.length}</span></div>
+                            <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                              {questions.map((q: any, i: number) => (
+                                <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.5 }}>{getText(q)}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {ma.completeness_score != null && (
+                          <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: 12, color: '#64748b' }}>Completeness score: </span>
+                            <strong style={{ fontSize: 14, color: '#5480ba' }}>{ma.completeness_score}%</strong>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })() : null}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
 
           {/* TED Chatbot */}
@@ -3251,9 +4026,20 @@ document.addEventListener('click', function(e) {
           <MeetingRecorder
             isOpen={isMeetingRecorderOpen}
             onClose={() => setIsMeetingRecorderOpen(false)}
-            onRequirementsExtracted={(prompt) => {
-              setCustomPrompt(prompt)
+            onRequirementsExtracted={async (prompt, analysis) => {
               setIsMeetingRecorderOpen(false)
+              if (selectedGenerationId) {
+                try {
+                  await attachMeetingAnalysis(selectedGenerationId, analysis, accessToken)
+                  await loadGeneration(selectedGenerationId)
+                  setRightTab('meeting')
+                } catch {
+                  // silently ignore — meeting data not critical
+                }
+              } else {
+                setCustomPrompt(prompt)
+                setPendingMeetingAnalysis(analysis)
+              }
             }}
           />
 

@@ -149,6 +149,7 @@ export async function deleteAvatar(accessToken?: string): Promise<void> {
 export type GenerationListItem = {
   generationId?: string
   sessionId?: string
+  userId?: string
   status?: string
   prompt?: string
   name?: string
@@ -158,6 +159,9 @@ export type GenerationListItem = {
   deployUrl?: string
   deployProvider?: string
   deployedAt?: string
+  meetingAnalysis?: string
+  jiraIssueKey?: string
+  jiraIssueKeys?: string[]
 }
 
 export type JiraIssue = {
@@ -297,6 +301,7 @@ export async function* streamGeneration(
   jiraIssueKey?: string,
   jiraIssueKeys?: string[],
   themePreset?: string | null,
+  meetingAnalysis?: object | null,
 ): AsyncGenerator<SseEvent, void, unknown> {
   const form = new FormData()
   form.append('prompt', prompt)
@@ -304,6 +309,7 @@ export async function* streamGeneration(
   if (domain) form.append('domain', domain)
   if (model) form.append('model', model)
   if (themePreset) form.append('themePreset', themePreset)
+  if (meetingAnalysis) form.append('meetingAnalysis', JSON.stringify(meetingAnalysis))
 
   const cleanKeys = (jiraIssueKeys || []).map((k) => (k || '').trim()).filter(Boolean)
   if (cleanKeys.length) {
@@ -459,6 +465,15 @@ export async function renameGeneration(generationId: string, name: string, acces
     method: 'PATCH',
     headers: { ...authHeaders(accessToken), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function attachMeetingAnalysis(generationId: string, analysis: object, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/meeting-analysis`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(accessToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meetingAnalysis: JSON.stringify(analysis) }),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
 }
@@ -727,13 +742,22 @@ export type AdminUser = {
   enabled?: boolean
   createdTimestamp?: number
   projectCount?: number
+  roles?: string[]
+  lastLoginAt?: number | null
+  lastProjectAt?: number | null
 }
 
 export type AdminStats = {
   totalUsers?: number
   totalProjects?: number
   completedProjects?: number
+  processingProjects?: number
+  failedProjects?: number
   successRate?: number
+  avgGenerationSeconds?: number | null
+  avgQualityScore?: number | null
+  deployedCount?: number
+  gitlabCount?: number
 }
 
 export async function getAdminUsers(accessToken?: string): Promise<AdminUser[]> {
@@ -800,20 +824,95 @@ export async function getAdminFailed(accessToken?: string): Promise<GenerationLi
 
 export type DailyChartItem = { date: string; count: number }
 
-export async function getAdminDailyChart(accessToken?: string): Promise<DailyChartItem[]> {
-  const res = await fetch(`${BFF_BASE_URL}/api/admin/chart/daily`, { headers: authHeaders(accessToken) })
+export async function getAdminDailyChart(accessToken?: string, days = 30): Promise<DailyChartItem[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/chart/daily?days=${days}`, { headers: authHeaders(accessToken) })
   const data: unknown = await readJsonOrNull(res)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return Array.isArray(data) ? (data as DailyChartItem[]) : []
 }
 
-export type ServiceHealth = { fastapi: string; keycloak: string; minio: string; mongodb: string }
+export async function retryAdminGeneration(generationId: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/generations/${encodeURIComponent(generationId)}/retry`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function setAdminUserRole(userId: string, role: string, assign: boolean, accessToken?: string): Promise<void> {
+  const res = await fetch(
+    `${BFF_BASE_URL}/api/admin/users/${encodeURIComponent(userId)}/role?role=${encodeURIComponent(role)}&assign=${assign}`,
+    { method: 'PUT', headers: authHeaders(accessToken) },
+  )
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export type ServiceHealthEntry = { status: string; responseMs: number }
+export type ServiceHealth = { fastapi: ServiceHealthEntry; keycloak: ServiceHealthEntry; minio: ServiceHealthEntry; mongodb: ServiceHealthEntry }
 
 export async function getAdminServiceHealth(accessToken?: string): Promise<ServiceHealth> {
   const res = await fetch(`${BFF_BASE_URL}/api/admin/health`, { headers: authHeaders(accessToken) })
   const data: unknown = await readJsonOrNull(res)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return (typeof data === 'object' && data !== null ? (data as ServiceHealth) : { fastapi: 'DOWN', keycloak: 'DOWN', minio: 'DOWN', mongodb: 'DOWN' })
+  const down: ServiceHealthEntry = { status: 'DOWN', responseMs: 0 }
+  return (typeof data === 'object' && data !== null ? (data as ServiceHealth) : { fastapi: down, keycloak: down, minio: down, mongodb: down })
+}
+
+export type AdminAuditEvent = {
+  eventId?: string
+  generationId?: string
+  sessionId?: string
+  type?: string
+  correlationId?: string
+  timestamp?: string
+  durationMs?: number
+  details?: Record<string, unknown>
+}
+
+export async function getAdminAuditLog(accessToken?: string): Promise<AdminAuditEvent[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/admin/audit`, { headers: authHeaders(accessToken) })
+  const data: unknown = await readJsonOrNull(res)
+  return Array.isArray(data) ? (data as AdminAuditEvent[]) : []
+}
+
+export type PublicShareInfo = {
+  generationId: string
+  name: string
+  prompt: string
+  status: string
+  createdAt: string
+  shareToken: string
+}
+
+export async function shareProject(generationId: string, accessToken?: string): Promise<{ shareToken: string }> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/share`, {
+    method: 'POST',
+    headers: authHeaders(accessToken),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return data as { shareToken: string }
+}
+
+export async function unshareProject(generationId: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/share`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function getPublicShare(token: string): Promise<PublicShareInfo> {
+  const res = await fetch(`${BFF_BASE_URL}/api/public/share/${encodeURIComponent(token)}`)
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) {
+    const message = extractErrorMessage(data)
+    throw new Error(message || `HTTP ${res.status}`)
+  }
+  return data as PublicShareInfo
 }
 
 export type EditFileResponse = {

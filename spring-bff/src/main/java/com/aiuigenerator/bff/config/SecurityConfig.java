@@ -52,6 +52,7 @@ public class SecurityConfig {
                             .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                             .requestMatchers("/preview/**").permitAll()  // Allow preview endpoints without auth
+                            .requestMatchers("/api/public/**").permitAll()
                             .requestMatchers("/api/admin/**").hasRole("admin")
                             .requestMatchers("/api/**").authenticated()
                             .anyRequest().permitAll())

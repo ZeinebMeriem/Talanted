@@ -69,6 +69,9 @@ public class Generation {
     // Accessibility audit history
     private String lastAccessibilityAuditId; // reference to latest AccessibilityAudit document
 
+    // Meeting import — JSON-serialized AnalysisResult stored when project is generated from a meeting recording
+    private String meetingAnalysis;
+
     public String getGenerationId() {
         return generationId;
     }
@@ -262,4 +265,16 @@ public class Generation {
 
     public Instant getDeployedAt() { return deployedAt; }
     public void setDeployedAt(Instant deployedAt) { this.deployedAt = deployedAt; }
+
+    public String getMeetingAnalysis() { return meetingAnalysis; }
+    public void setMeetingAnalysis(String meetingAnalysis) { this.meetingAnalysis = meetingAnalysis; }
+
+    // Public sharing
+    private String shareToken;
+    private boolean shareEnabled;
+
+    public String getShareToken() { return shareToken; }
+    public void setShareToken(String shareToken) { this.shareToken = shareToken; }
+    public boolean isShareEnabled() { return shareEnabled; }
+    public void setShareEnabled(boolean shareEnabled) { this.shareEnabled = shareEnabled; }
 }

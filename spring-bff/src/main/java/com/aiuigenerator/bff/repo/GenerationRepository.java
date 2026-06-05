@@ -23,4 +23,8 @@ public interface GenerationRepository extends MongoRepository<Generation, String
 	long countByUserIdAndStatus(String userId, GenerationStatus status);
 
 	long countByStatus(GenerationStatus status);
+
+	java.util.Optional<Generation> findTopByUserIdOrderByCreatedAtDesc(String userId);
+
+	java.util.Optional<Generation> findByShareToken(String shareToken);
 }

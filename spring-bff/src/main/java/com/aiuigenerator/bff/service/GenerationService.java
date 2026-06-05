@@ -306,6 +306,7 @@ public class GenerationService {
             String domain,
             String model,
             String themePreset,
+            String meetingAnalysis,
             PrintWriter writer) {
 
         final ObjectMapper mapper = new ObjectMapper();
@@ -329,6 +330,9 @@ public class GenerationService {
             g.setCreatedAt(Instant.now());
             g.setUpdatedAt(Instant.now());
             g.setUserId(userId);
+            if (meetingAnalysis != null && !meetingAnalysis.isBlank()) {
+                g.setMeetingAnalysis(meetingAnalysis);
+            }
             generationRepo.save(g);
 
             audit.recordEvent("GENERATION_REQUESTED", gId, sId, 0,
@@ -1685,6 +1689,31 @@ public class GenerationService {
     public void renameGeneration(String generationId, String name) {
         generationRepo.findById(generationId).ifPresent(g -> {
             g.setName(name);
+            g.setUpdatedAt(Instant.now());
+            generationRepo.save(g);
+        });
+    }
+
+    public String enableShare(String generationId) {
+        Generation g = getGeneration(generationId);
+        String token = java.util.UUID.randomUUID().toString().replace("-", "");
+        g.setShareToken(token);
+        g.setShareEnabled(true);
+        g.setUpdatedAt(Instant.now());
+        generationRepo.save(g);
+        return token;
+    }
+
+    public void disableShare(String generationId) {
+        Generation g = getGeneration(generationId);
+        g.setShareEnabled(false);
+        g.setUpdatedAt(Instant.now());
+        generationRepo.save(g);
+    }
+
+    public void saveMeetingAnalysis(String generationId, String meetingAnalysis) {
+        generationRepo.findById(generationId).ifPresent(g -> {
+            g.setMeetingAnalysis(meetingAnalysis);
             g.setUpdatedAt(Instant.now());
             generationRepo.save(g);
         });

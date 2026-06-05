@@ -9,4 +9,6 @@ import com.aiuigenerator.bff.domain.AuditEvent;
 public interface AuditEventRepository extends MongoRepository<AuditEvent, String> {
 
     List<AuditEvent> findTop200ByGenerationIdOrderByTimestampAsc(String generationId);
+
+    List<AuditEvent> findTop100ByOrderByTimestampDesc();
 }

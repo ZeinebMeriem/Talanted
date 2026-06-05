@@ -78,6 +78,7 @@ public class GenerationController {
             @RequestParam(name = "themePreset", required = false) String themePreset,
             @RequestParam(name = "jiraIssueKeys", required = false) List<String> jiraIssueKeys,
             @RequestParam(name = "jiraIssueKey", required = false) String jiraIssueKey,
+            @RequestParam(name = "meetingAnalysis", required = false) String meetingAnalysis,
             JwtAuthenticationToken token,
             HttpServletResponse response) throws IOException {
 
@@ -116,7 +117,7 @@ public class GenerationController {
         if (!keys.isEmpty()) {
             service.createGenerationStreamFromJiraMulti(userId, keys, safePrompt, files, domain, model, writer);
         } else {
-            service.createGenerationStream(userId, safePrompt, files, domain, model, themePreset, writer);
+            service.createGenerationStream(userId, safePrompt, files, domain, model, themePreset, meetingAnalysis, writer);
         }
 
         // Ensure the response is fully committed
@@ -161,11 +162,13 @@ public class GenerationController {
     @GetMapping("/{id}")
     public Generation get(@PathVariable("id") String id, JwtAuthenticationToken token) {
         Generation g = service.getGeneration(id);
-        // In production mode, verify ownership
+        // In production mode, verify ownership (admins bypass this check)
         if (!devMode && token != null && token.getToken() != null) {
             Object sub = token.getToken().getClaims().get("sub");
             if (sub == null) throw new IllegalArgumentException("Invalid token - missing 'sub' claim");
-            if (!g.getUserId().equals(sub.toString())) {
+            boolean isAdmin = token.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_admin"));
+            if (!isAdmin && !g.getUserId().equals(sub.toString())) {
                 throw new IllegalArgumentException("generation not found");
             }
         }
@@ -265,6 +268,16 @@ public class GenerationController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}/meeting-analysis")
+    public ResponseEntity<Void> saveMeetingAnalysis(
+            @PathVariable("id") String id,
+            @RequestBody java.util.Map<String, String> body) {
+        String analysis = body.get("meetingAnalysis");
+        if (analysis == null || analysis.isBlank()) return ResponseEntity.badRequest().build();
+        service.saveMeetingAnalysis(id, analysis);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}/chat")
     public List<ChatMessageDto> chatHistory(@PathVariable("id") String id) {
         return service.getChatHistory(id);
@@ -335,6 +348,34 @@ public class GenerationController {
         }
     }
 
+
+    @PostMapping("/{id}/share")
+    public ResponseEntity<Map<String, String>> enableShare(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!devMode && token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub == null || !g.getUserId().equals(sub.toString()))
+                return ResponseEntity.status(403).build();
+        }
+        String shareToken = service.enableShare(id);
+        return ResponseEntity.ok(Map.of("shareToken", shareToken));
+    }
+
+    @DeleteMapping("/{id}/share")
+    public ResponseEntity<Void> disableShare(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!devMode && token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub == null || !g.getUserId().equals(sub.toString()))
+                return ResponseEntity.status(403).build();
+        }
+        service.disableShare(id);
+        return ResponseEntity.noContent().build();
+    }
 
     /** Agentic Repair — trigger self-healing on an existing project and return updated scores. */
     @PostMapping("/{id}/repair")
