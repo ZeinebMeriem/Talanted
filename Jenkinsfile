@@ -9,10 +9,14 @@ pipeline {
 
     environment {
         SONAR_HOST_URL  = 'http://ai-ui-sonarqube:9000'
-        REGISTRY        = 'docker.io'
-        // Shared Maven repo persisted in the Jenkins home volume — avoids re-downloading
-        // all dependencies (including the OWASP NVD database) on every build.
         MAVEN_OPTS      = '-Dmaven.repo.local=/var/jenkins_home/.m2/repository'
+        // Azure Container Registry
+        ACR_NAME        = 'aiuigeneratoracr'
+        ACR_LOGIN_SERVER = 'aiuigeneratoracr.azurecr.io'
+        // Terraform working directory
+        TF_DIR          = 'terraform'
+        // Ansible working directory
+        ANSIBLE_DIR     = 'ansible'
     }
 
     parameters {
@@ -29,26 +33,43 @@ pipeline {
         booleanParam(
             name: 'RUN_OWASP',
             defaultValue: true,
-            description: 'Run OWASP Dependency Check (slow on first run — downloads NVD database)'
+            description: 'Run OWASP Dependency Check'
         )
         booleanParam(
             name: 'PUSH_DOCKER',
             defaultValue: false,
-            description: 'Push Docker images to registry'
+            description: 'Build and push Docker images to Azure Container Registry'
         )
         booleanParam(
             name: 'DEPLOY',
             defaultValue: false,
-            description: 'Deploy to target environment after build'
+            description: 'Provision infra with Terraform and deploy with Ansible'
         )
         choice(
             name: 'DEPLOY_ENV',
             choices: ['staging', 'production'],
             description: 'Target deployment environment'
         )
+        booleanParam(
+            name: 'SKIP_TERRAFORM',
+            defaultValue: true,
+            description: 'Skip Terraform provisioning — use existing VM at VM_PUBLIC_IP'
+        )
+        string(
+            name: 'VM_PUBLIC_IP',
+            defaultValue: '20.86.174.233',
+            description: 'Azure VM public IP — required when SKIP_TERRAFORM=true'
+        )
+        booleanParam(
+            name: 'TERRAFORM_DESTROY',
+            defaultValue: false,
+            description: 'DANGER: Destroy all Azure infrastructure (use only to clean up)'
+        )
     }
 
     stages {
+
+        // ── 1. Checkout ───────────────────────────────────────────────────────
         stage('Checkout') {
             steps {
                 script {
@@ -59,6 +80,7 @@ pipeline {
             }
         }
 
+        // ── 2. Frontend Build ─────────────────────────────────────────────────
         stage('Frontend Build') {
             when {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FRONTEND_ONLY' }
@@ -78,6 +100,7 @@ pipeline {
             }
         }
 
+        // ── 3. SonarQube — Frontend ───────────────────────────────────────────
         stage('Audit SonarQube - Frontend') {
             when {
                 expression {
@@ -89,16 +112,12 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('frontend') {
                         sh '''
-                            echo "=== Coverage report check ==="
-                            ls -lh coverage/lcov.info 2>/dev/null || echo "WARNING: lcov.info not found — coverage will show 0%"
-
+                            ls -lh coverage/lcov.info 2>/dev/null || echo "WARNING: lcov.info not found"
                             npx sonar-scanner \
                               -Dsonar.projectKey=ai-ui-generator-frontend \
                               -Dsonar.projectName="AI UI Generator - Frontend" \
                               -Dsonar.sources=src \
-                              -Dsonar.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/node_modules/**,**/dist/**,**/*.config.ts,**/*.config.js" \
-                              -Dsonar.coverage.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/index.ts" \
-                              -Dsonar.sourceEncoding=UTF-8 \
+                              -Dsonar.exclusions="**/*.test.ts,**/*.spec.ts,**/*.d.ts,**/node_modules/**,**/dist/**" \
                               -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true
@@ -108,6 +127,7 @@ pipeline {
             }
         }
 
+        // ── 4. Backend Build ──────────────────────────────────────────────────
         stage('Backend Build') {
             when {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
@@ -128,6 +148,7 @@ pipeline {
             }
         }
 
+        // ── 5. SonarQube — Backend ────────────────────────────────────────────
         stage('Audit SonarQube - Backend') {
             when {
                 expression {
@@ -139,11 +160,7 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('spring-bff') {
                         sh '''
-                            echo "=== JaCoCo report check ==="
-                            ls -lh target/site/jacoco/jacoco.xml 2>/dev/null || echo "WARNING: jacoco.xml not found — coverage will show 0%"
-                            echo "=== Surefire reports check ==="
-                            ls target/surefire-reports/*.xml 2>/dev/null | wc -l || echo "0 surefire XML files found"
-
+                            ls -lh target/site/jacoco/jacoco.xml 2>/dev/null || echo "WARNING: jacoco.xml not found"
                             mvn sonar:sonar \
                               -Dmaven.repo.local=/var/jenkins_home/.m2/repository \
                               -Dsonar.projectKey=ai-ui-generator-backend \
@@ -152,9 +169,6 @@ pipeline {
                               -Dsonar.tests=src/test/java \
                               -Dsonar.java.source=17 \
                               -Dsonar.java.binaries=target/classes \
-                              -Dsonar.exclusions="**/dto/**,**/domain/**,**/config/**" \
-                              -Dsonar.coverage.exclusions="**/*Config.java,**/*Application.java" \
-                              -Dsonar.junit.reportPaths=target/surefire-reports \
                               -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true
@@ -164,7 +178,8 @@ pipeline {
             }
         }
 
-        stage('Backend - OWASP Dependency Check') {
+        // ── 6. OWASP ──────────────────────────────────────────────────────────
+        stage('OWASP Dependency Check') {
             when {
                 expression {
                     (params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY') &&
@@ -174,18 +189,18 @@ pipeline {
             steps {
                 dir('spring-bff') {
                     sh '''
-                        echo "=== OWASP NVD database cached at /var/jenkins_home/.m2/repository ==="
                         mvn org.owasp:dependency-check-maven:check \
                           -DfailBuildOnCVSS=11 \
                           -DretireJsAnalyzerEnabled=false \
                           -DnodeAnalyzerEnabled=false \
                           -Dmaven.repo.local=/var/jenkins_home/.m2/repository \
-                          || echo "OWASP check completed (vulnerabilities may have been found)"
+                          || echo "OWASP check completed"
                     '''
                 }
             }
         }
 
+        // ── 7. FastAPI Build ──────────────────────────────────────────────────
         stage('FastAPI Build') {
             when {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'FASTAPI_ONLY' }
@@ -193,7 +208,7 @@ pipeline {
             steps {
                 dir('fastapi-ai') {
                     sh '''
-                        echo "Python version:" && python3 --version
+                        python3 --version
                         pip install -r requirements.txt --quiet --break-system-packages
                         pip install ruff pytest pytest-cov --quiet --break-system-packages
                         python3 -m ruff check app/ || echo "Ruff warnings found"
@@ -204,6 +219,7 @@ pipeline {
             }
         }
 
+        // ── 8. SonarQube — FastAPI ────────────────────────────────────────────
         stage('Audit SonarQube - FastAPI') {
             when {
                 expression {
@@ -215,18 +231,11 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     dir('fastapi-ai') {
                         sh '''
-                            echo "=== Coverage report check ==="
-                            ls -lh coverage.xml 2>/dev/null || echo "WARNING: coverage.xml not found — coverage will show 0%"
-
                             npx sonar-scanner \
                               -Dsonar.projectKey=ai-ui-generator-fastapi \
                               -Dsonar.projectName="AI UI Generator - FastAPI" \
                               -Dsonar.sources=app \
-                              -Dsonar.tests=tests \
                               -Dsonar.language=py \
-                              -Dsonar.python.version=3 \
-                              -Dsonar.exclusions="**/migrations/**,**/__pycache__/**,**/alembic/**" \
-                              -Dsonar.coverage.exclusions="tests/**,**/conftest.py" \
                               -Dsonar.python.coverage.reportPaths=coverage.xml \
                               -Dsonar.host.url=${SONAR_HOST_URL} \
                               -Dsonar.token=${SONAR_TOKEN} || true
@@ -236,118 +245,196 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
-            when {
-                expression { params.BUILD_TYPE == 'FULL' }
-            }
-            steps {
-                sh '''
-                    echo "=== Docker connectivity check ==="
-                    docker info || {
-                        echo "ERROR: Docker daemon not reachable."
-                        echo "  Option A (socket already mounted): verify /var/run/docker.sock exists on the host."
-                        echo "  Option B (Docker Desktop TCP): Settings → General → Expose daemon on tcp://localhost:2375"
-                        echo "            then set DOCKER_HOST=tcp://host.docker.internal:2375 in jenkins/.env"
-                        exit 1
-                    }
-
-                    echo "=== Building images (build #${BUILD_NUMBER}) ==="
-                    docker build -t ai-ui-generator-frontend:${BUILD_NUMBER} -t ai-ui-generator-frontend:latest frontend/
-                    docker build -t ai-ui-generator-backend:${BUILD_NUMBER}  -t ai-ui-generator-backend:latest  spring-bff/
-                    docker build -t ai-ui-generator-fastapi:${BUILD_NUMBER}  -t ai-ui-generator-fastapi:latest  fastapi-ai/
-                    echo "=== Docker images built successfully ==="
-                    docker images | grep ai-ui-generator
-                '''
-            }
-        }
-
-        stage('Docker Push') {
+        // ── 9. Docker Build & Push to ACR ─────────────────────────────────────
+        stage('Docker Build & Push to ACR') {
             when {
                 expression { params.BUILD_TYPE == 'FULL' && params.PUSH_DOCKER == true }
             }
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'docker-registry-credentials',
-                    usernameVariable: 'REGISTRY_USER',
-                    passwordVariable: 'REGISTRY_PASS'
+                    credentialsId: 'azure-acr-credentials',
+                    usernameVariable: 'ACR_USER',
+                    passwordVariable: 'ACR_PASS'
                 )]) {
                     sh '''
-                        echo "${REGISTRY_PASS}" | docker login -u "${REGISTRY_USER}" --password-stdin
-                        docker tag ai-ui-generator-frontend:${BUILD_NUMBER} ${REGISTRY}/ai-ui-generator-frontend:${BUILD_NUMBER}
-                        docker tag ai-ui-generator-backend:${BUILD_NUMBER}  ${REGISTRY}/ai-ui-generator-backend:${BUILD_NUMBER}
-                        docker tag ai-ui-generator-fastapi:${BUILD_NUMBER}  ${REGISTRY}/ai-ui-generator-fastapi:${BUILD_NUMBER}
-                        docker push ${REGISTRY}/ai-ui-generator-frontend:${BUILD_NUMBER}
-                        docker push ${REGISTRY}/ai-ui-generator-backend:${BUILD_NUMBER}
-                        docker push ${REGISTRY}/ai-ui-generator-fastapi:${BUILD_NUMBER}
-                        echo "Images pushed"
+                        echo "=== Login to Azure Container Registry ==="
+                        echo "${ACR_PASS}" | docker login ${ACR_LOGIN_SERVER} -u ${ACR_USER} --password-stdin
+
+                        echo "=== Building images (build #${BUILD_NUMBER}) ==="
+                        docker build -t ${ACR_LOGIN_SERVER}/frontend:${BUILD_NUMBER}             -t ${ACR_LOGIN_SERVER}/frontend:latest             ./frontend
+                        docker build -t ${ACR_LOGIN_SERVER}/spring-bff:${BUILD_NUMBER}           -t ${ACR_LOGIN_SERVER}/spring-bff:latest           ./spring-bff
+                        docker build -t ${ACR_LOGIN_SERVER}/fastapi-ai:${BUILD_NUMBER}           -t ${ACR_LOGIN_SERVER}/fastapi-ai:latest           ./fastapi-ai
+                        docker build -t ${ACR_LOGIN_SERVER}/transcript-streaming:${BUILD_NUMBER} -t ${ACR_LOGIN_SERVER}/transcript-streaming:latest ./transcript-ai -f ./transcript-ai/Dockerfile.streaming
+
+                        echo "=== Pushing images to ACR ==="
+                        docker push ${ACR_LOGIN_SERVER}/frontend:${BUILD_NUMBER}
+                        docker push ${ACR_LOGIN_SERVER}/spring-bff:${BUILD_NUMBER}
+                        docker push ${ACR_LOGIN_SERVER}/fastapi-ai:${BUILD_NUMBER}
+                        docker push ${ACR_LOGIN_SERVER}/transcript-streaming:${BUILD_NUMBER}
+                        docker push ${ACR_LOGIN_SERVER}/frontend:latest
+                        docker push ${ACR_LOGIN_SERVER}/spring-bff:latest
+                        docker push ${ACR_LOGIN_SERVER}/fastapi-ai:latest
+                        docker push ${ACR_LOGIN_SERVER}/transcript-streaming:latest
+
+                        echo "=== Images pushed to ${ACR_LOGIN_SERVER} ==="
                     '''
                 }
             }
         }
 
-        stage('Deploy') {
+        // ── 10. Terraform — Provision Azure Infrastructure ────────────────────
+        stage('Terraform Infra') {
+            when {
+                expression { params.DEPLOY == true && params.BUILD_TYPE == 'FULL' && !params.SKIP_TERRAFORM }
+            }
+            steps {
+                withCredentials([
+                    string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID'),
+                    string(credentialsId: 'azure-client-id',       variable: 'ARM_CLIENT_ID'),
+                    string(credentialsId: 'azure-client-secret',   variable: 'ARM_CLIENT_SECRET'),
+                    string(credentialsId: 'azure-tenant-id',       variable: 'ARM_TENANT_ID')
+                ]) {
+                    dir("${TF_DIR}") {
+                        sh '''
+                            echo "=== Terraform version ==="
+                            terraform version
+
+                            echo "=== Terraform Init ==="
+                            terraform init
+
+                            echo "=== Terraform Plan ==="
+                            terraform plan \
+                              -var="subscription_id=${ARM_SUBSCRIPTION_ID}" \
+                              -var="environment=${DEPLOY_ENV}" \
+                              -out=tfplan
+
+                            echo "=== Terraform Apply ==="
+                            terraform apply -auto-approve tfplan
+
+                            echo "=== Terraform Outputs ==="
+                            terraform output -json > ../terraform_outputs.json
+                            cat ../terraform_outputs.json
+                        '''
+
+                        script {
+                            // Parse VM public IP for Ansible
+                            def outputs = readJSON file: '../terraform_outputs.json'
+                            env.VM_PUBLIC_IP   = outputs.vm_public_ip.value
+                            env.ACR_LOGIN_SERVER_TF = outputs.acr_login_server.value
+                            echo "VM Public IP: ${env.VM_PUBLIC_IP}"
+                            echo "ACR: ${env.ACR_LOGIN_SERVER_TF}"
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 11. Terraform Destroy (manual gate) ───────────────────────────────
+        stage('Terraform Destroy') {
+            when {
+                expression { params.TERRAFORM_DESTROY == true }
+            }
+            steps {
+                input message: "⚠️ This will DESTROY all Azure infrastructure. Confirm?", ok: "Yes, destroy it"
+                withCredentials([
+                    string(credentialsId: 'azure-subscription-id', variable: 'ARM_SUBSCRIPTION_ID'),
+                    string(credentialsId: 'azure-client-id',       variable: 'ARM_CLIENT_ID'),
+                    string(credentialsId: 'azure-client-secret',   variable: 'ARM_CLIENT_SECRET'),
+                    string(credentialsId: 'azure-tenant-id',       variable: 'ARM_TENANT_ID')
+                ]) {
+                    dir("${TF_DIR}") {
+                        sh '''
+                            terraform init
+                            terraform destroy \
+                              -var="subscription_id=${ARM_SUBSCRIPTION_ID}" \
+                              -auto-approve
+                        '''
+                    }
+                }
+            }
+        }
+
+        // ── 12. Ansible — Configure VM and Deploy ─────────────────────────────
+        stage('Ansible Deploy') {
             when {
                 expression { params.DEPLOY == true && params.BUILD_TYPE == 'FULL' }
             }
             steps {
                 script {
-                    def envFile = params.DEPLOY_ENV == 'production' ? '.env.production' : '.env.staging'
-                    echo "Deploying to ${params.DEPLOY_ENV} using ${envFile}"
-                    sh """
-                        # Pull latest images and recreate containers
-                        docker compose --env-file ${envFile} pull
-                        docker compose --env-file ${envFile} up -d --remove-orphans
-
-                        # Wait for health checks
-                        sleep 15
-
-                        # Verify critical services are healthy
-                        docker compose ps | grep -E 'healthy|running' | wc -l
-                        echo "Deployment to ${params.DEPLOY_ENV} complete — build #${BUILD_NUMBER}"
-                    """
+                    // When Terraform was skipped, resolve IP and ACR from parameters/global env
+                    if (!env.VM_PUBLIC_IP?.trim()) {
+                        env.VM_PUBLIC_IP = params.VM_PUBLIC_IP
+                        echo "Using parameter VM_PUBLIC_IP: ${env.VM_PUBLIC_IP}"
+                    }
+                    if (!env.ACR_LOGIN_SERVER_TF?.trim()) {
+                        env.ACR_LOGIN_SERVER_TF = env.ACR_LOGIN_SERVER
+                        echo "Using global ACR_LOGIN_SERVER: ${env.ACR_LOGIN_SERVER_TF}"
+                    }
                 }
-            }
-            post {
-                success {
-                    echo "✅ Deployed build #${BUILD_NUMBER} to ${params.DEPLOY_ENV}"
-                }
-                failure {
-                    echo "❌ Deployment failed — rolling back to previous version"
-                    sh "docker compose up -d --no-recreate || true"
+                withCredentials([
+                    sshUserPrivateKey(credentialsId: 'azure-vm-ssh-key', keyFileVariable: 'SSH_KEY_FILE'),
+                    string(credentialsId: 'groq-api-key',               variable: 'GROQ_API_KEY'),
+                    usernamePassword(
+                        credentialsId:    'azure-acr-credentials',
+                        usernameVariable: 'ACR_USER',
+                        passwordVariable: 'ACR_PASS'
+                    )
+                ]) {
+                    sh '''
+                        echo "=== Generating Ansible inventory ==="
+                        cat > ${ANSIBLE_DIR}/inventory.ini <<EOF
+[azure_vm]
+${VM_PUBLIC_IP} ansible_user=azureuser ansible_ssh_private_key_file=${SSH_KEY_FILE} ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOF
+
+                        echo "=== Running Ansible playbook ==="
+                        export ACR_LOGIN_SERVER=${ACR_LOGIN_SERVER_TF}
+                        export ACR_USERNAME=${ACR_USER}
+                        export ACR_PASSWORD=${ACR_PASS}
+                        export BUILD_NUMBER=${BUILD_NUMBER}
+                        export GROQ_API_KEY=${GROQ_API_KEY}
+                        export VM_PUBLIC_IP=${VM_PUBLIC_IP}
+                        export MINIO_BUCKET=ai-ui-files
+                        export INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-changeme-in-prod}
+                        export GRAFANA_PASSWORD=${GRAFANA_PASSWORD:-admin}
+
+                        ansible-playbook \
+                          -i ${ANSIBLE_DIR}/inventory.ini \
+                          ${ANSIBLE_DIR}/playbook.yml \
+                          --private-key=${SSH_KEY_FILE} \
+                          -v
+                    '''
                 }
             }
         }
 
+        // ── 13. Smoke Tests ───────────────────────────────────────────────────
         stage('Smoke Tests') {
             when {
                 expression { params.DEPLOY == true && params.BUILD_TYPE == 'FULL' }
             }
             steps {
-                sh """
-                    # Wait for services to be ready
-                    sleep 10
-
-                    # Health check on key endpoints
-                    curl -f http://localhost:8000/health || exit 1
-                    curl -f http://localhost:8081/actuator/health || exit 1
+                sh '''
+                    sleep 15
+                    curl -f http://${VM_PUBLIC_IP}:8000/health  || exit 1
+                    curl -f http://${VM_PUBLIC_IP}:8081/actuator/health || exit 1
                     echo "✅ Smoke tests passed"
-                """
+                    echo "   Frontend : http://${VM_PUBLIC_IP}:5173"
+                    echo "   API      : http://${VM_PUBLIC_IP}:8081"
+                    echo "   Keycloak : http://${VM_PUBLIC_IP}:8083"
+                    echo "   Grafana  : http://${VM_PUBLIC_IP}:3000"
+                '''
             }
         }
 
+        // ── 14. Archive Artifacts ─────────────────────────────────────────────
         stage('Archive Artifacts') {
             when {
                 expression { params.BUILD_TYPE == 'FULL' || params.BUILD_TYPE == 'BACKEND_ONLY' }
             }
             steps {
-                // List what we found before archiving (helpful for debugging)
                 sh '''
-                    echo "=== JAR artifacts ==="
-                    find spring-bff/target -maxdepth 1 -name "*.jar" 2>/dev/null || echo "  (none)"
-                    echo "=== Frontend dist ==="
-                    find frontend/dist -maxdepth 1 2>/dev/null | head -5 || echo "  (none)"
-                    echo "=== Surefire reports ==="
-                    ls spring-bff/target/surefire-reports/ 2>/dev/null || echo "  (none — creating empty dir)"
+                    find spring-bff/target -maxdepth 1 -name "*.jar" 2>/dev/null || echo "(no jar)"
                     mkdir -p spring-bff/target/surefire-reports
                 '''
                 archiveArtifacts artifacts: 'spring-bff/target/*.jar,frontend/dist/**',
@@ -363,10 +450,10 @@ pipeline {
             echo "Pipeline finished — build #${BUILD_NUMBER}"
         }
         success {
-            echo "Pipeline PASSED"
+            echo "✅ Pipeline PASSED — build #${BUILD_NUMBER}"
         }
         failure {
-            echo "Pipeline FAILED — check stage logs above"
+            echo "❌ Pipeline FAILED — check stage logs above"
         }
     }
 }

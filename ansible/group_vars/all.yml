@@ -1,0 +1,22 @@
+# Variables injected by Jenkins from Terraform outputs (or pipeline parameters)
+acr_login_server: "{{ lookup('env', 'ACR_LOGIN_SERVER') }}"
+acr_username:     "{{ lookup('env', 'ACR_USERNAME') }}"
+acr_password:     "{{ lookup('env', 'ACR_PASSWORD') }}"
+image_tag:        "{{ lookup('env', 'BUILD_NUMBER') | default('latest') }}"
+
+# Application directory on the VM
+app_dir: /opt/ai-ui-generator
+
+# VM networking
+vm_public_ip: "{{ lookup('env', 'VM_PUBLIC_IP') | default('20.86.174.233') }}"
+
+# Env vars for docker-compose (pulled from Jenkins env / credentials)
+groq_api_key:         "{{ lookup('env', 'GROQ_API_KEY') }}"
+keycloak_admin_pass:  "{{ lookup('env', 'KEYCLOAK_ADMIN_PASSWORD') | default('admin') }}"
+minio_root_user:      "{{ lookup('env', 'MINIO_ROOT_USER') | default('minioadmin') }}"
+minio_root_password:  "{{ lookup('env', 'MINIO_ROOT_PASSWORD') | default('minioadmin') }}"
+minio_bucket:         "{{ lookup('env', 'MINIO_BUCKET') | default('ai-ui-files') }}"
+internal_api_secret:  "{{ lookup('env', 'INTERNAL_API_SECRET') | default('changeme-in-prod') }}"
+grafana_password:     "{{ lookup('env', 'GRAFANA_PASSWORD') | default('admin') }}"
+gemini_api_key:       "{{ lookup('env', 'GEMINI_API_KEY') | default('') }}"
+elevenlabs_api_key:   "{{ lookup('env', 'ELEVENLABS_API_KEY') | default('') }}"
