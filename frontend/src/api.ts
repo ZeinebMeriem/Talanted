@@ -302,6 +302,8 @@ export async function* streamGeneration(
   jiraIssueKeys?: string[],
   themePreset?: string | null,
   meetingAnalysis?: object | null,
+  figmaUrl?: string | null,
+  figmaToken?: string | null,
 ): AsyncGenerator<SseEvent, void, unknown> {
   const form = new FormData()
   form.append('prompt', prompt)
@@ -310,6 +312,8 @@ export async function* streamGeneration(
   if (model) form.append('model', model)
   if (themePreset) form.append('themePreset', themePreset)
   if (meetingAnalysis) form.append('meetingAnalysis', JSON.stringify(meetingAnalysis))
+  if (figmaUrl) form.append('figmaUrl', figmaUrl)
+  if (figmaToken) form.append('figmaToken', figmaToken)
 
   const cleanKeys = (jiraIssueKeys || []).map((k) => (k || '').trim()).filter(Boolean)
   if (cleanKeys.length) {

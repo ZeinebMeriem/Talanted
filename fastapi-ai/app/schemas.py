@@ -26,6 +26,9 @@ class GenerateRequest(BaseModel):
     model: str | None = None
     # Theme preset for the DesignSystemAgent (minimal|corporate|vibrant|dark|natural|auto)
     themePreset: str | None = None
+    # Figma import — URL + personal access token
+    figmaUrl: str | None = None
+    figmaToken: str | None = None
 
 
 class CodeFile(BaseModel):

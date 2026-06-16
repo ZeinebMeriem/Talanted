@@ -13,4 +13,6 @@ public class FastApiGenerateRequest {
                           // real_estate | null (auto-detect)
     public String model; // gemini | claude | gpt | groq | null (use .env default)
     public String themePreset; // minimal | corporate | vibrant | dark | natural | auto | null
+    public String figmaUrl;   // https://www.figma.com/design/{key}/...
+    public String figmaToken; // Figma personal access token
 }

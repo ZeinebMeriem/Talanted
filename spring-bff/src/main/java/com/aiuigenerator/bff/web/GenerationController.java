@@ -79,6 +79,8 @@ public class GenerationController {
             @RequestParam(name = "jiraIssueKeys", required = false) List<String> jiraIssueKeys,
             @RequestParam(name = "jiraIssueKey", required = false) String jiraIssueKey,
             @RequestParam(name = "meetingAnalysis", required = false) String meetingAnalysis,
+            @RequestParam(name = "figmaUrl", required = false) String figmaUrl,
+            @RequestParam(name = "figmaToken", required = false) String figmaToken,
             JwtAuthenticationToken token,
             HttpServletResponse response) throws IOException {
 
@@ -117,7 +119,7 @@ public class GenerationController {
         if (!keys.isEmpty()) {
             service.createGenerationStreamFromJiraMulti(userId, keys, safePrompt, files, domain, model, writer);
         } else {
-            service.createGenerationStream(userId, safePrompt, files, domain, model, themePreset, meetingAnalysis, writer);
+            service.createGenerationStream(userId, safePrompt, files, domain, model, themePreset, meetingAnalysis, figmaUrl, figmaToken, writer);
         }
 
         // Ensure the response is fully committed

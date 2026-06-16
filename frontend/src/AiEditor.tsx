@@ -56,6 +56,7 @@ import {
   type UserStats,
 } from './api'
 import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, MeetingRecorder, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { FigmaImportModal } from './components/FigmaImportModal'
 import { JiraImportPage } from './JiraImportPage'
 
 type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
@@ -166,6 +167,12 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [isRepairing, setIsRepairing] = useState(false)
   const [isGeneratingDocs, setIsGeneratingDocs] = useState(false)
   const [docsGenerated, setDocsGenerated] = useState(false)
+
+  // Figma import state
+  const [isFigmaModalOpen, setIsFigmaModalOpen] = useState(false)
+  const [figmaUrl, setFigmaUrl] = useState<string | null>(null)
+  const [figmaToken, setFigmaToken] = useState<string | null>(null)
+  const [figmaFileName, setFigmaFileName] = useState<string | null>(null)
 
   // TED Chatbot state
   const [isTedOpen, setIsTedOpen] = useState(false)
@@ -1132,7 +1139,7 @@ document.addEventListener('click', function(e) {
       setDocsGenerated(false)
       const capturedMeetingAnalysis = pendingMeetingAnalysis
       setPendingMeetingAnalysis(null)
-      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel, undefined, undefined, selectedTheme, capturedMeetingAnalysis)) {
+      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel, undefined, undefined, selectedTheme, capturedMeetingAnalysis, figmaUrl, figmaToken)) {
         if (event.type === 'progress') {
           setBuildPct(event.progress)
           setBuildMsg(event.message)
@@ -1888,12 +1895,14 @@ document.addEventListener('click', function(e) {
                     onChange={e => {
                       if (e.target.value === 'meeting') setIsMeetingRecorderOpen(true)
                       else if (e.target.value === 'jira') setIsJiraModalOpen(true)
+                      else if (e.target.value === 'figma') setIsFigmaModalOpen(true)
                       e.target.value = ''
                     }}
                     style={{ padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '1.5px solid rgba(255,255,255,.7)', background: 'rgba(255,255,255,.6)', color: '#6b7280', backdropFilter: 'blur(8px)', outline: 'none', transition: 'all .25s', appearance: 'none', WebkitAppearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
                     onFocus={e => { const el = e.currentTarget; el.style.borderColor = 'rgba(99,102,241,.4)'; el.style.background = 'rgba(255,255,255,.8)' }}
                     onBlur={e => { const el = e.currentTarget; el.style.borderColor = 'rgba(255,255,255,.7)'; el.style.background = 'rgba(255,255,255,.6)' }}>
                     <option value="" disabled>⬇ Import...</option>
+                    <option value="figma">🎨 From Figma</option>
                     <option value="meeting">🎙 From Meeting</option>
                     <option value="jira">🔗 From Jira</option>
                   </select>
@@ -1965,10 +1974,22 @@ document.addEventListener('click', function(e) {
                       <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.mmd,.excalidraw" style={{ display: 'none' }}
                         onChange={e => { if (e.target.files) setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
                     </label>
+
+                    {/* Figma import */}
+                    <button
+                      type="button"
+                      title="Importer depuis Figma"
+                      onClick={() => setIsFigmaModalOpen(true)}
+                      style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: figmaUrl ? 'rgba(139,92,246,.12)' : 'rgba(139,92,246,.06)', border: `1px solid ${figmaUrl ? 'rgba(139,92,246,.4)' : 'rgba(139,92,246,.15)'}`, cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'all .2s', color: '#7c3aed' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,.14)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = figmaUrl ? 'rgba(139,92,246,.12)' : 'rgba(139,92,246,.06)' }}
+                    >
+                      🎨
+                    </button>
                   </div>
 
-                  {/* Attached files chips */}
-                  {attachedFiles.length > 0 && (
+                  {/* Attached files chips + Figma chip */}
+                  {(attachedFiles.length > 0 || figmaUrl) && (
                     <div style={{ padding: '6px 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {attachedFiles.map((f, i) => (
                         <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#4f46e5' }}>
@@ -1977,6 +1998,13 @@ document.addEventListener('click', function(e) {
                             style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
                         </span>
                       ))}
+                      {figmaUrl && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(139,92,246,.08)', border: '1px solid rgba(139,92,246,.25)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#7c3aed' }}>
+                          🎨 {figmaFileName || 'Figma file'}
+                          <button onClick={() => { setFigmaUrl(null); setFigmaToken(null); setFigmaFileName(null) }}
+                            style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -3259,6 +3287,16 @@ document.addEventListener('click', function(e) {
           isOpen={isJiraModalOpen}
           onClose={() => setIsJiraModalOpen(false)}
           accessToken={accessToken}
+        />
+
+        <FigmaImportModal
+          isOpen={isFigmaModalOpen}
+          onClose={() => setIsFigmaModalOpen(false)}
+          onImport={(url, token, fileName) => {
+            setFigmaUrl(url)
+            setFigmaToken(token)
+            setFigmaFileName(fileName)
+          }}
         />
       </div>
     )

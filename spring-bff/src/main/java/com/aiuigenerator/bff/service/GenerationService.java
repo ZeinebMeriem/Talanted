@@ -307,6 +307,8 @@ public class GenerationService {
             String model,
             String themePreset,
             String meetingAnalysis,
+            String figmaUrl,
+            String figmaToken,
             PrintWriter writer) {
 
         final ObjectMapper mapper = new ObjectMapper();
@@ -385,6 +387,8 @@ public class GenerationService {
             req.domain = (domain != null && !domain.isBlank()) ? domain : null;
             req.model = (model != null && !model.isBlank()) ? model : null;
             req.themePreset = (themePreset != null && !themePreset.isBlank()) ? themePreset : null;
+            req.figmaUrl = (figmaUrl != null && !figmaUrl.isBlank()) ? figmaUrl : null;
+            req.figmaToken = (figmaToken != null && !figmaToken.isBlank()) ? figmaToken : null;
 
             final long started = System.currentTimeMillis();
             final String[] completedResultHolder = { null };

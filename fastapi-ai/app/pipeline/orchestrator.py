@@ -17,6 +17,7 @@ from .agents import (
     OcrAgent,
     DocExtractAgent,
     DiagramAgent,
+    FigmaAgent,
     RagAgent,
     TextPrepAgent,
     PlannerAgent,
@@ -46,6 +47,7 @@ class Orchestrator:
         self.ocr = OcrAgent(create_vision_provider())
         self.doc = DocExtractAgent()
         self.diagram = DiagramAgent()
+        self.figma = FigmaAgent()
         self.rag = RagAgent()
         self.prep = TextPrepAgent()
         self.planner = PlannerAgent(planner_provider)
@@ -103,6 +105,17 @@ class Orchestrator:
                 )
             )
 
+        # Inject Figma URL as a context item so FigmaAgent can fetch it
+        if req.figmaUrl:
+            pack.items.append(SourceItem(
+                kind="context",
+                content=req.figmaUrl,
+                meta={
+                    "extract": "figma_url",
+                    "figmaToken": req.figmaToken or os.getenv("FIGMA_API_TOKEN", ""),
+                },
+            ))
+
         _emit("entities", 5, "Analyzing requirements…")
 
         # ── Step 1: Universal entity extraction (replaces hardcoded domain rules) ──
@@ -132,6 +145,7 @@ class Orchestrator:
         pack = self.doc.run(pack)      # text / PDF / docx / pptx / .mmd / .excalidraw
         pack = self.ocr.run(pack)      # vision: images + empty (scanned) PDFs
         pack = self.diagram.run(pack)  # interpret Mermaid / Excalidraw → prose for planner
+        pack = self.figma.run(pack)    # fetch Figma file → structured layout description
 
         # ── Step 2: RAG — replace full documents with relevant chunks ──────────
         if req.fileRefs:

@@ -1,6 +1,7 @@
 from .ocr_agent import OcrAgent
 from .doc_extract_agent import DocExtractAgent
 from .diagram_agent import DiagramAgent
+from .figma_agent import FigmaAgent
 from .rag_agent import RagAgent
 from .text_prep_agent import TextPrepAgent
 from .planner_agent import PlannerAgent
@@ -14,6 +15,7 @@ __all__ = [
     "OcrAgent",
     "DocExtractAgent",
     "DiagramAgent",
+    "FigmaAgent",
     "RagAgent",
     "TextPrepAgent",
     "PlannerAgent",
