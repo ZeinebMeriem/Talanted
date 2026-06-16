@@ -45,7 +45,7 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
-      KC_HOSTNAME_URL: http://localhost:8083
+      KC_HOSTNAME_URL: ${KC_HOSTNAME_URL:-http://localhost:8083}
     volumes:
       - ./keycloak/realm-ai-ui.json:/opt/keycloak/data/import/realm-ai-ui.json:ro
       - ./keycloak/themes/ai-ui-theme:/opt/keycloak/themes/ai-ui-theme:ro
@@ -163,7 +163,7 @@ services:
       # OLLAMA_BASE_URL: disabled
       COHERE_API_KEY: ${COHERE_API_KEY:-}
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-changeme-in-prod}
-      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:8081,http://ai-ui-spring-bff:8080
+      CORS_ALLOWED_ORIGINS: ${FASTAPI_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:8081,http://ai-ui-spring-bff:8080}
       # MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       # ── NVIDIA NIM ──
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
@@ -223,7 +223,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
-      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://frontend:5173
+      CORS_ALLOWED_ORIGINS: ${BFF_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://frontend:5173}
       # PRODUCTION MODE: Enable Keycloak OAuth2 authentication
       APP_SECURITY_DEV_MODE: "false"
       # GitLab OAuth credentials
@@ -231,7 +231,7 @@ services:
       GITLAB_OAUTH_CLIENT_SECRET: "gloas-aa32cd15325996201e6c1c5a67e71aa289781499343fcdaca602b3b31510d585"
       GITLAB_OAUTH_REDIRECT_URI: "http://127.0.0.1:8081/api/gitlab/auth/callback"
       # Only needed when dev-mode is false:
-      OAUTH_ISSUER: http://localhost:8083/realms/ai-ui
+      OAUTH_ISSUER: ${OAUTH_ISSUER:-http://localhost:8083/realms/ai-ui}
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
       # Email service (SMTP)
       MAIL_HOST: ${MAIL_HOST:-smtp.mailtrap.io}
@@ -267,9 +267,9 @@ services:
     environment:
       VITE_BFF_BASE_URL:
       VITE_GENERATION_TIMEOUT_MS: 3600000
-      VITE_OIDC_AUTHORITY: http://localhost:8083/realms/ai-ui
-      VITE_OIDC_CLIENT_ID: ai-ui-frontend
-      VITE_OIDC_REDIRECT_URI: http://localhost:5173/auth/callback
+      VITE_OIDC_AUTHORITY: ${VITE_OIDC_AUTHORITY:-http://localhost:8083/realms/ai-ui}
+      VITE_OIDC_CLIENT_ID: ${VITE_OIDC_CLIENT_ID:-ai-ui-frontend}
+      VITE_OIDC_REDIRECT_URI: ${VITE_OIDC_REDIRECT_URI:-http://localhost:5173/auth/callback}
       # Windows + Docker bind mounts often miss FS events. Force polling so UI changes apply reliably.
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "300"
@@ -484,6 +484,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_DATABASE_WAL: "true"
+      GF_DATABASE_CACHE_MODE: shared
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
@@ -492,8 +494,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256m
-          cpus: '0.25'
+          memory: 512m
+          cpus: '0.50'
 
 volumes:
   mongo_data:

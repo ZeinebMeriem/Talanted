@@ -10,7 +10,7 @@
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "verifyEmail": true,
-  "sslRequired": "external",
+  "sslRequired": "none",
   "roles": {
     "realm": [
       {
@@ -39,11 +39,11 @@
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
-      "redirectUris": ["http://localhost:5173/*"],
+      "redirectUris": ["http://localhost:5173/*", "https://20.86.174.233/*"],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:5173/*"
+        "post.logout.redirect.uris": "http://localhost:5173/*##https://20.86.174.233/*"
       },
-      "webOrigins": ["http://localhost:5173"],
+      "webOrigins": ["http://localhost:5173", "https://20.86.174.233"],
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
