@@ -20,7 +20,7 @@ export default function SharePage({ token }: SharePageProps) {
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f0f10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(99,102,241,0.2)', borderTopColor: '#6366f1', animation: 'spin 0.8s linear infinite' }} />
+        <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(1,156,218,0.2)', borderTopColor: '#019cda', animation: 'spin 0.8s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
@@ -33,7 +33,7 @@ export default function SharePage({ token }: SharePageProps) {
         <div style={{ color: '#f87171', fontSize: 15, textAlign: 'center', maxWidth: 400 }}>
           {error || 'Project not found.'}
         </div>
-        <a href="/" style={{ marginTop: 8, color: '#6366f1', fontSize: 13, textDecoration: 'none' }}>
+        <a href="/" style={{ marginTop: 8, color: '#019cda', fontSize: 13, textDecoration: 'none' }}>
           ← Go to Talanted
         </a>
       </div>
@@ -47,7 +47,7 @@ export default function SharePage({ token }: SharePageProps) {
       {/* Header */}
       <div style={{ height: 52, background: '#18181b', borderBottom: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#6366f1,#a855f7)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 28, height: 28, background: 'linear-gradient(135deg,#019cda,#0369a1)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
             </svg>
@@ -60,7 +60,7 @@ export default function SharePage({ token }: SharePageProps) {
         </div>
         <a
           href="/"
-          style={{ fontSize: 12, color: '#6366f1', textDecoration: 'none', fontWeight: 500, padding: '6px 14px', background: 'rgba(99,102,241,0.1)', borderRadius: 8, border: '1px solid rgba(99,102,241,0.25)' }}
+          style={{ fontSize: 12, color: '#019cda', textDecoration: 'none', fontWeight: 500, padding: '6px 14px', background: 'rgba(1,156,218,0.1)', borderRadius: 8, border: '1px solid rgba(1,156,218,0.25)' }}
         >
           Create your own →
         </a>
@@ -99,7 +99,7 @@ export default function SharePage({ token }: SharePageProps) {
       <div style={{ height: 36, background: '#18181b', borderTop: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <span style={{ fontSize: 11, color: '#52525b' }}>
           Made with{' '}
-          <a href="/" style={{ color: '#6366f1', textDecoration: 'none', fontWeight: 600 }}>Talanted</a>
+          <a href="/" style={{ color: '#019cda', textDecoration: 'none', fontWeight: 600 }}>Talanted</a>
           {' '}· AI UI Generator
         </span>
       </div>

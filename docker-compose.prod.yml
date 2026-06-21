@@ -69,7 +69,9 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
-      KC_HOSTNAME_URL: http://${VM_PUBLIC_IP}:8083
+      KC_PROXY_HEADERS: xforwarded
+      # No port — nginx routes port 80 → Keycloak; issuer/token URLs use port 80
+      KC_HOSTNAME_URL: http://${VM_PUBLIC_IP}
     volumes:
       - ./keycloak/realm-ai-ui.json:/opt/keycloak/data/import/realm-ai-ui.json:ro
       - ./keycloak/themes/ai-ui-theme:/opt/keycloak/themes/ai-ui-theme:ro
@@ -150,9 +152,11 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
-      CORS_ALLOWED_ORIGINS: http://${VM_PUBLIC_IP}:5173
+      # Allow both direct port access and nginx port-80 origin
+      CORS_ALLOWED_ORIGINS: http://${VM_PUBLIC_IP},http://${VM_PUBLIC_IP}:5173
       APP_SECURITY_DEV_MODE: "false"
-      OAUTH_ISSUER: http://${VM_PUBLIC_IP}:8083/realms/ai-ui
+      # Issuer must match KC_HOSTNAME_URL (no port — nginx is the entry point)
+      OAUTH_ISSUER: http://${VM_PUBLIC_IP}/realms/ai-ui
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
 
   frontend:
@@ -171,11 +175,32 @@ services:
       retries: 3
       start_period: 15s
     environment:
+      # These are build-time ARGs baked by Jenkinsfile — kept here for documentation only
       VITE_BFF_BASE_URL: ""
       VITE_GENERATION_TIMEOUT_MS: 3600000
-      VITE_OIDC_AUTHORITY: http://${VM_PUBLIC_IP}:8083/realms/ai-ui
+      VITE_OIDC_AUTHORITY: http://${VM_PUBLIC_IP}/realms/ai-ui
       VITE_OIDC_CLIENT_ID: ai-ui-frontend
-      VITE_OIDC_REDIRECT_URI: http://${VM_PUBLIC_IP}:5173/auth/callback
+      VITE_OIDC_REDIRECT_URI: http://${VM_PUBLIC_IP}/auth/callback
+
+  # ── Nginx — reverse proxy (port 80) ─────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ai-ui-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - spring-bff
+      - keycloak
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/realms/ai-ui"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   transcript-streaming:
     image: ${ACR_LOGIN_SERVER}/transcript-streaming:${IMAGE_TAG:-latest}

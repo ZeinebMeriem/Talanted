@@ -277,4 +277,10 @@ public class Generation {
     public void setShareToken(String shareToken) { this.shareToken = shareToken; }
     public boolean isShareEnabled() { return shareEnabled; }
     public void setShareEnabled(boolean shareEnabled) { this.shareEnabled = shareEnabled; }
+
+    // Collaboration — list of Keycloak userIds who can access this project
+    private List<String> collaborators;
+
+    public List<String> getCollaborators() { return collaborators; }
+    public void setCollaborators(List<String> collaborators) { this.collaborators = collaborators; }
 }

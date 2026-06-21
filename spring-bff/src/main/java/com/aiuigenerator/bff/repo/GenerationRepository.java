@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 
 import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.mongodb.repository.Query;
 
 import com.aiuigenerator.bff.domain.Generation;
 import com.aiuigenerator.bff.domain.GenerationStatus;
@@ -13,6 +14,9 @@ public interface GenerationRepository extends MongoRepository<Generation, String
 	List<Generation> findTop50ByOrderByCreatedAtDesc();
 
 	List<Generation> findByUserIdOrderByCreatedAtDesc(String userId);
+
+	@Query(value = "{ '$or': [ { 'userId': ?0 }, { 'collaborators': ?0 } ] }", sort = "{ 'createdAt': -1 }")
+	List<Generation> findAccessibleByUserId(String userId);
 
 	List<Generation> findByStatusOrderByCreatedAtDesc(GenerationStatus status);
 

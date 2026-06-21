@@ -87,10 +87,10 @@ export function JiraImportPage({ isOpen, onClose, accessToken }: JiraImportModal
         onClick={e => e.stopPropagation()}
       >
         {/* ── Header ── */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 text-white" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)' }}>
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 text-white" style={{ background: 'linear-gradient(135deg, #15395e 0%, #019cda 100%)' }}>
           <div>
             <h2 className="text-base font-bold">📋 Import from Jira</h2>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(196,181,253,.85)' }}>Fetch → Select tasks → Generate UI</p>
+            <p className="text-xs mt-0.5" style={{ color: 'rgba(186,230,253,.85)' }}>Fetch → Select tasks → Generate UI</p>
           </div>
           <button onClick={handleClose} className="p-1.5 rounded-lg text-white hover:bg-white/20 transition-colors">✕</button>
         </div>
@@ -109,7 +109,7 @@ export function JiraImportPage({ isOpen, onClose, accessToken }: JiraImportModal
             onClick={() => void doFetch()}
             disabled={fetching || !jiraInput.trim()}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #6366f1)', boxShadow: '0 2px 8px rgba(124,58,237,.3)' }}
+            style={{ background: 'linear-gradient(135deg, #15395e, #019cda)', boxShadow: '0 2px 8px rgba(1,156,218,.3)' }}
           >
             {fetching
               ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Fetching…</>
@@ -140,7 +140,7 @@ export function JiraImportPage({ isOpen, onClose, accessToken }: JiraImportModal
             <div className="text-xs font-bold text-violet-700 mb-1">⚙️ {progress.stage || 'Processing'}</div>
             <div className="text-xs text-slate-500 mb-2">{progress.message || 'Building your UI…'}</div>
             <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, progress.pct ?? 0)}%`, background: 'linear-gradient(135deg,#7c3aed,#6366f1)' }} />
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, progress.pct ?? 0)}%`, background: 'linear-gradient(135deg,#15395e,#019cda)' }} />
             </div>
           </div>
         )}
@@ -286,7 +286,7 @@ export function JiraImportPage({ isOpen, onClose, accessToken }: JiraImportModal
               onClick={() => void doGenerate()}
               disabled={!canGenerate}
               className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white rounded-lg transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
-              style={canGenerate ? { background: 'linear-gradient(135deg,#7c3aed,#6366f1)' } : {}}
+              style={canGenerate ? { background: 'linear-gradient(135deg,#15395e,#019cda)' } : {}}
             >
               {generating
                 ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating…</>

@@ -58,12 +58,12 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 0 10px', borderBottom: '1px solid #f1f5f9', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#019cda" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
           </svg>
           <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', letterSpacing: '0.02em' }}>Version History</span>
           {versionList.length > 0 && (
-            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: 'rgba(99,102,241,.1)', color: '#6366f1' }}>
+            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, background: 'rgba(1,156,218,.1)', color: '#019cda' }}>
               {versionList.length}
             </span>
           )}
@@ -159,8 +159,8 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
               key={`v-${v.version}-${v.createdAt}`}
               style={{
                 borderRadius: 10, padding: '10px 12px',
-                background: isActive ? 'linear-gradient(135deg, rgba(99,102,241,.06), rgba(168,85,247,.04))' : '#f8fafc',
-                border: isActive ? '1px solid rgba(99,102,241,.25)' : '1px solid #e2e8f0',
+                background: isActive ? 'linear-gradient(135deg, rgba(1,156,218,.06), rgba(3,105,161,.04))' : '#f8fafc',
+                border: isActive ? '1px solid rgba(1,156,218,.25)' : '1px solid #e2e8f0',
                 display: 'flex', alignItems: 'flex-start', gap: 10,
                 transition: 'border-color .2s',
               }}
@@ -168,7 +168,7 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
               {/* Version dot */}
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0, marginTop: 1,
-                background: isActive ? 'linear-gradient(135deg,#6366f1,#a855f7)' : '#e2e8f0',
+                background: isActive ? 'linear-gradient(135deg,#019cda,#0369a1)' : '#e2e8f0',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? '#fff' : '#64748b' }}>
@@ -179,11 +179,11 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
               {/* Info */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? '#4f46e5' : '#374151' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? '#019cda' : '#374151' }}>
                     Version {ver ?? '?'}
                   </span>
                   {isActive && (
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 6, background: 'rgba(99,102,241,.12)', color: '#6366f1' }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 6, background: 'rgba(1,156,218,.12)', color: '#019cda' }}>
                       Current
                     </span>
                   )}
@@ -207,14 +207,14 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
                   onClick={() => void handleRollback(ver)}
                   disabled={isRolling}
                   style={{
-                    flexShrink: 0, padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(99,102,241,.3)',
-                    background: isRolling ? '#f1f5f9' : 'rgba(99,102,241,.08)',
-                    color: isRolling ? '#94a3b8' : '#6366f1',
+                    flexShrink: 0, padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(1,156,218,.3)',
+                    background: isRolling ? '#f1f5f9' : 'rgba(1,156,218,.08)',
+                    color: isRolling ? '#94a3b8' : '#019cda',
                     fontSize: 11, fontWeight: 600, cursor: isRolling ? 'not-allowed' : 'pointer',
                     transition: 'all .15s', display: 'flex', alignItems: 'center', gap: 4,
                   }}
-                  onMouseEnter={e => { if (!isRolling) { e.currentTarget.style.background = 'rgba(99,102,241,.16)' } }}
-                  onMouseLeave={e => { if (!isRolling) { e.currentTarget.style.background = 'rgba(99,102,241,.08)' } }}
+                  onMouseEnter={e => { if (!isRolling) { e.currentTarget.style.background = 'rgba(1,156,218,.16)' } }}
+                  onMouseLeave={e => { if (!isRolling) { e.currentTarget.style.background = 'rgba(1,156,218,.08)' } }}
                 >
                   {isRolling ? (
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ animation: 'spin 1s linear infinite' }}>

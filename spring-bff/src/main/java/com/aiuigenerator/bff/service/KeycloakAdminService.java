@@ -49,6 +49,34 @@ public class KeycloakAdminService {
         return (String) tokenResponse.get("access_token");
     }
 
+    public void createUser(String firstName, String lastName, String email,
+                           String username, String password) throws Exception {
+        String token = getAdminToken();
+        String userJson = mapper.writeValueAsString(Map.of(
+            "firstName", firstName,
+            "lastName",  lastName,
+            "email",     email,
+            "username",  username,
+            "enabled",   true,
+            "emailVerified", false,
+            "credentials", List.of(Map.of(
+                "type",      "password",
+                "value",     password,
+                "temporary", false
+            ))
+        ));
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users"))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(userJson))
+                .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() == 409) throw new RuntimeException("EMAIL_EXISTS");
+        if (res.statusCode() >= 300)
+            throw new RuntimeException("Keycloak error " + res.statusCode() + ": " + res.body());
+    }
+
     public void deleteUser(String userId) throws Exception {
         String token = getAdminToken();
         HttpRequest req = HttpRequest.newBuilder()
@@ -86,6 +114,31 @@ public class KeycloakAdminService {
                 .build();
 
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        return mapper.readValue(res.body(), new TypeReference<>() {});
+    }
+
+    public List<Map<String, Object>> searchUsers(String query) throws Exception {
+        String token = getAdminToken();
+        String encoded = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users?search=" + encoded + "&max=20"))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() != 200) return List.of();
+        return mapper.readValue(res.body(), new TypeReference<>() {});
+    }
+
+    public Map<String, Object> getUserById(String userId) throws Exception {
+        String token = getAdminToken();
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users/" + URLEncoder.encode(userId, StandardCharsets.UTF_8)))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() != 200) return null;
         return mapper.readValue(res.body(), new TypeReference<>() {});
     }
 

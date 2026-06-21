@@ -2,6 +2,8 @@ package com.aiuigenerator.bff.web;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +38,7 @@ import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
 import com.aiuigenerator.bff.dto.GitLabPushDto;
 import com.aiuigenerator.bff.service.AuditService;
 import com.aiuigenerator.bff.service.GenerationService;
+import com.aiuigenerator.bff.service.KeycloakAdminService;
 import com.aiuigenerator.bff.service.SimpleGitLabService;
 
 @RestController
@@ -46,14 +49,35 @@ public class GenerationController {
     private final GenerationService service;
     private final AuditService audit;
     private final SimpleGitLabService gitLabService;
+    private final KeycloakAdminService keycloakAdmin;
 
     @Value("${app.security.dev-mode:false}")
     private boolean devMode;
 
-    public GenerationController(GenerationService service, AuditService audit, SimpleGitLabService gitLabService) {
+    public GenerationController(GenerationService service, AuditService audit, SimpleGitLabService gitLabService, KeycloakAdminService keycloakAdmin) {
         this.service = service;
         this.audit = audit;
         this.gitLabService = gitLabService;
+        this.keycloakAdmin = keycloakAdmin;
+    }
+
+    private boolean hasAccess(Generation g, JwtAuthenticationToken token) {
+        if (devMode || token == null || token.getToken() == null) return true;
+        Object sub = token.getToken().getClaims().get("sub");
+        if (sub == null) return false;
+        String userId = sub.toString();
+        if (g.getUserId().equals(userId)) return true;
+        boolean isAdmin = token.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_admin"));
+        if (isAdmin) return true;
+        List<String> collaborators = g.getCollaborators();
+        return collaborators != null && collaborators.contains(userId);
+    }
+
+    private boolean isOwner(Generation g, JwtAuthenticationToken token) {
+        if (devMode || token == null || token.getToken() == null) return true;
+        Object sub = token.getToken().getClaims().get("sub");
+        return sub != null && g.getUserId().equals(sub.toString());
     }
 
     /**
@@ -164,16 +188,7 @@ public class GenerationController {
     @GetMapping("/{id}")
     public Generation get(@PathVariable("id") String id, JwtAuthenticationToken token) {
         Generation g = service.getGeneration(id);
-        // In production mode, verify ownership (admins bypass this check)
-        if (!devMode && token != null && token.getToken() != null) {
-            Object sub = token.getToken().getClaims().get("sub");
-            if (sub == null) throw new IllegalArgumentException("Invalid token - missing 'sub' claim");
-            boolean isAdmin = token.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_admin"));
-            if (!isAdmin && !g.getUserId().equals(sub.toString())) {
-                throw new IllegalArgumentException("generation not found");
-            }
-        }
+        if (!hasAccess(g, token)) throw new IllegalArgumentException("generation not found");
         return g;
     }
 
@@ -376,6 +391,55 @@ public class GenerationController {
                 return ResponseEntity.status(403).build();
         }
         service.disableShare(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ── Collaborators ────────────────────────────────────────────────────────
+
+    @GetMapping("/{id}/collaborators")
+    public ResponseEntity<List<Map<String, Object>>> getCollaborators(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!hasAccess(g, token)) return ResponseEntity.status(403).build();
+        List<String> ids = service.getCollaborators(id);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String uid : ids) {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("userId", uid);
+            try {
+                Map<String, Object> user = keycloakAdmin.getUserById(uid);
+                entry.put("username", user != null ? user.getOrDefault("username", uid) : uid);
+            } catch (Exception e) {
+                entry.put("username", uid);
+            }
+            result.add(entry);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/collaborators")
+    public ResponseEntity<Void> addCollaborator(
+            @PathVariable("id") String id,
+            @RequestBody Map<String, String> body,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!isOwner(g, token)) return ResponseEntity.status(403).build();
+        String collaboratorId = body.get("userId");
+        if (collaboratorId == null || collaboratorId.isBlank()) return ResponseEntity.badRequest().build();
+        if (collaboratorId.equals(g.getUserId())) return ResponseEntity.badRequest().build();
+        service.addCollaborator(id, collaboratorId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{id}/collaborators/{collaboratorId}")
+    public ResponseEntity<Void> removeCollaborator(
+            @PathVariable("id") String id,
+            @PathVariable("collaboratorId") String collaboratorId,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!isOwner(g, token)) return ResponseEntity.status(403).build();
+        service.removeCollaborator(id, collaboratorId);
         return ResponseEntity.noContent().build();
     }
 

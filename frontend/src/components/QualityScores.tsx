@@ -105,8 +105,8 @@ const GaugeRing: React.FC<{ score: number }> = ({ score }) => {
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
         <defs>
           <linearGradient id="qGaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#6366f1" />
-            <stop offset="100%" stopColor="#a855f7" />
+            <stop offset="0%" stopColor="#019cda" />
+            <stop offset="100%" stopColor="#0369a1" />
           </linearGradient>
         </defs>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={sw} />
@@ -138,7 +138,7 @@ const EmptyState: React.FC<{ message: string; sub: string; onAction?: () => void
           disabled={isLoading}
           style={{
             padding: '10px 20px', borderRadius: 8, border: 'none', cursor: isLoading ? 'default' : 'pointer',
-            background: isLoading ? '#a5b4fc' : 'linear-gradient(135deg, #6366f1, #a855f7)',
+            background: isLoading ? '#7dd3fc' : 'linear-gradient(135deg, #019cda, #0369a1)',
             color: '#fff', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 7,
             opacity: isLoading ? 0.8 : 1, transition: 'opacity .2s',
           }}
@@ -194,7 +194,7 @@ export const QualityScores: React.FC<QualityScoresProps> = ({ scores, reasoning,
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
           <GaugeRing score={globalScore} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#6366f1', textTransform: 'uppercase', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: '#019cda', textTransform: 'uppercase', marginBottom: 4 }}>
               Quality Score
             </div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', letterSpacing: '-0.03em', lineHeight: 1.1, marginBottom: 10 }}>
@@ -203,7 +203,7 @@ export const QualityScores: React.FC<QualityScoresProps> = ({ scores, reasoning,
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{
                 padding: '3px 9px', borderRadius: 5, fontSize: 11, fontWeight: 700,
-                background: allGood ? 'linear-gradient(135deg, #6366f1, #a855f7)' : '#f1f5f9',
+                background: allGood ? 'linear-gradient(135deg, #019cda, #0369a1)' : '#f1f5f9',
                 color: allGood ? '#fff' : '#475569',
               }}>
                 Grade {grade}
@@ -221,7 +221,7 @@ export const QualityScores: React.FC<QualityScoresProps> = ({ scores, reasoning,
         <div style={{ margin: '12px 14px 0', borderRadius: 9, border: '1px solid #e0e7ff', background: 'linear-gradient(135deg, #eef2ff, #f5f3ff)', padding: '13px 15px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
             width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+            background: 'linear-gradient(135deg, #019cda, #0369a1)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
           }}>
             <IconZap />
@@ -230,7 +230,7 @@ export const QualityScores: React.FC<QualityScoresProps> = ({ scores, reasoning,
             <div style={{ fontSize: 12, fontWeight: 700, color: '#312e81', marginBottom: 1 }}>
               Improvements available
             </div>
-            <div style={{ fontSize: 11, color: '#6366f1' }}>
+            <div style={{ fontSize: 11, color: '#019cda' }}>
               AI will re-analyze and repair low-scoring dimensions
             </div>
           </div>
@@ -240,7 +240,7 @@ export const QualityScores: React.FC<QualityScoresProps> = ({ scores, reasoning,
             style={{
               padding: '7px 13px', borderRadius: 7, border: 'none', flexShrink: 0,
               cursor: isRepairing ? 'default' : 'pointer',
-              background: isRepairing ? '#a5b4fc' : 'linear-gradient(135deg, #6366f1, #a855f7)',
+              background: isRepairing ? '#7dd3fc' : 'linear-gradient(135deg, #019cda, #0369a1)',
               color: '#fff', fontSize: 11, fontWeight: 700,
               display: 'flex', alignItems: 'center', gap: 6,
               transition: 'opacity .2s', opacity: isRepairing ? 0.75 : 1,
@@ -305,7 +305,7 @@ export const QualityScores: React.FC<QualityScoresProps> = ({ scores, reasoning,
                 {isOpen && (
                   <div style={{ padding: '0 13px 12px 30px', borderTop: '1px solid #f8fafc' }}>
                     {llmReason ? (
-                      <div style={{ margin: '10px 0 8px', padding: '8px 11px', borderRadius: 6, background: 'rgba(99,102,241,.05)', border: '1px solid rgba(99,102,241,.15)', fontSize: 12, color: '#374151', lineHeight: 1.65, fontStyle: 'italic' }}>
+                      <div style={{ margin: '10px 0 8px', padding: '8px 11px', borderRadius: 6, background: 'rgba(1,156,218,.05)', border: '1px solid rgba(1,156,218,.15)', fontSize: 12, color: '#374151', lineHeight: 1.65, fontStyle: 'italic' }}>
                         {llmReason}
                       </div>
                     ) : (
@@ -336,12 +336,12 @@ export const QualityScores: React.FC<QualityScoresProps> = ({ scores, reasoning,
         }}>
           {allGood ? (
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#019cda" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
               </svg>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#312e81', marginBottom: 2 }}>Production ready</div>
-                <div style={{ fontSize: 11, color: '#6366f1', lineHeight: 1.55 }}>
+                <div style={{ fontSize: 11, color: '#019cda', lineHeight: 1.55 }}>
                   All dimensions pass the production threshold (≥ 80 / 100).
                 </div>
               </div>

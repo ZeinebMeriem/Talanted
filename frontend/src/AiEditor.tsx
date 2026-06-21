@@ -55,9 +55,11 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
-import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, MeetingRecorder, type ChatMsg, type FileNode, type ElementInfo, type StyleChange } from './components'
+import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, MeetingRecorder, MyProjectsGridHub, type ChatMsg, type FileNode, type ElementInfo, type StyleChange, type ProjectItem } from './components'
 import { FigmaImportModal } from './components/FigmaImportModal'
 import { JiraImportPage } from './JiraImportPage'
+import { CollaborationPanel } from './components/CollaborationPanel'
+import { useCollaboration } from './hooks/useCollaboration'
 
 type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
 
@@ -221,7 +223,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
   // Navigation — admin lands directly on admin dashboard
   const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>(initialHomeTab || (isAdmin ? 'admin' : 'create'))
-  const [showCreateForm, setShowCreateForm] = useState(true)
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const [createMode, setCreateMode] = useState<'scratch' | 'jira'>('scratch')
 
   // User profile
@@ -302,6 +304,13 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [selectedGeneration, setSelectedGeneration] = useState<any>(null)
   const activeProjectId = apiResult?.generationId || selectedGenerationId || ''
   const accessibilityReport = accessibilityReports[activeProjectId]
+
+  const { connected: collabConnected, activeUsers: collabUsers, lastEvent: collabLastEvent,
+          send: collabSend, projectLock, lockProject, unlockProject } = useCollaboration({
+    projectId: activeProjectId,
+    userName: username,
+    enabled: !!activeProjectId,
+  })
   const [auditEvents, setAuditEvents] = useState<AuditEventListItem[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditError, setAuditError] = useState<string | null>(null)
@@ -683,7 +692,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     map.set('src/index.css', {
       path: 'src/index.css',
       content:
-        ":root {\n  --primary: #a5b4fc;\n  --bg: #0f172a;\n  --surface: #1e293b;\n}\n\nbody {\n  background: var(--bg);\n  color: #f1f5f9;\n  font-family: sans-serif;\n}\n\n.navbar {\n  display: flex;\n  justify-content: space-between;\n  padding: 1rem 2rem;\n  background: var(--surface);\n}\n\n.hero {\n  text-align: center;\n  padding: 5rem 2rem;\n}\n\n.btn-primary {\n  background: var(--primary);\n  color: #000;\n  padding: .6rem 1.4rem;\n  border: none;\n  border-radius: 6px;\n  cursor: pointer;\n}",
+        ":root {\n  --primary: #7dd3fc;\n  --bg: #0f172a;\n  --surface: #1e293b;\n}\n\nbody {\n  background: var(--bg);\n  color: #f1f5f9;\n  font-family: sans-serif;\n}\n\n.navbar {\n  display: flex;\n  justify-content: space-between;\n  padding: 1rem 2rem;\n  background: var(--surface);\n}\n\n.hero {\n  text-align: center;\n  padding: 5rem 2rem;\n}\n\n.btn-primary {\n  background: var(--primary);\n  color: #000;\n  padding: .6rem 1.4rem;\n  border: none;\n  border-radius: 6px;\n  cursor: pointer;\n}",
     })
     map.set('src/components/Hero.jsx', {
       path: 'src/components/Hero.jsx',
@@ -698,7 +707,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     map.set('public/logo.svg', {
       path: 'public/logo.svg',
       content:
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n  <circle cx="50" cy="50" r="40" fill="#a5b4fc"/>\n  <text x="50" y="58" text-anchor="middle"\n    font-size="28" fill="#000">M</text>\n</svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n  <circle cx="50" cy="50" r="40" fill="#7dd3fc"/>\n  <text x="50" y="58" text-anchor="middle"\n    font-size="28" fill="#000">M</text>\n</svg>',
     })
     map.set('package.json', {
       path: 'package.json',
@@ -979,7 +988,7 @@ document.addEventListener('click', function(e) {
       case 'js': return { symbol: 'J', color: '#facc15' }
       case 'ts': case 'tsx': return { symbol: 'T', color: '#60a5fa' }
       case 'jsx': return { symbol: 'R', color: '#5480ba' }
-      case 'json': return { symbol: '{', color: '#a78bfa' }
+      case 'json': return { symbol: '{', color: '#7dd3fc' }
       case 'svg': return { symbol: 'S', color: '#fb7185' }
       default: return { symbol: '·', color: 'rgba(0,0,0,.35)' }
     }
@@ -1277,6 +1286,17 @@ document.addEventListener('click', function(e) {
       return
     }
 
+    // Check if another user holds the lock
+    if (projectLock && projectLock.lockedBy !== username) {
+      setChatMessages((prev) => [...prev, {
+        role: 'ai' as const,
+        text: `Locked by ${projectLock.lockedBy} — please wait until they finish editing.`,
+      }])
+      return
+    }
+
+    lockProject()
+
     const userText = val
     setChatMessages((prev) => [...prev, { role: 'user', text: userText }])
     setChatInput('')
@@ -1313,13 +1333,14 @@ document.addEventListener('click', function(e) {
       setChatMessages((prev) => [...prev, { role: 'ai', text: `Error: ${err?.message ?? 'Unknown error'}` }])
     } finally {
       setIsChatLoading(false)
+      unlockProject()
     }
   }
 
   const logColor: Record<string, string> = {
     error: '#f87171',
     warn: '#fbbf24',
-    success: '#818cf8',
+    success: '#38bdf8',
     info: 'rgba(0,0,0,.45)',
   }
 
@@ -1345,12 +1366,12 @@ document.addEventListener('click', function(e) {
           <rect width="320" height="180" fill="#f8fafc" />
           <rect x="0" y="0" width="56" height="180" fill="#ffffff" />
           <rect x="8" y="16" width="40" height="6" rx="3" fill="#e2e8f0" />
-          <rect x="8" y="30" width="40" height="6" rx="3" fill="#6366f1" opacity="0.8" />
+          <rect x="8" y="30" width="40" height="6" rx="3" fill="#019cda" opacity="0.8" />
           <rect x="8" y="44" width="40" height="6" rx="3" fill="#e2e8f0" />
           <rect x="8" y="58" width="40" height="6" rx="3" fill="#e2e8f0" />
           <rect x="8" y="72" width="40" height="6" rx="3" fill="#e2e8f0" />
           <rect x="64" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="70" y="16" width="24" height="4" rx="2" fill="#6366f1" opacity="0.7" />
+          <rect x="70" y="16" width="24" height="4" rx="2" fill="#019cda" opacity="0.7" />
           <rect x="70" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
           <rect x="132" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
           <rect x="138" y="16" width="24" height="4" rx="2" fill="#10b981" opacity="0.7" />
@@ -1359,22 +1380,22 @@ document.addEventListener('click', function(e) {
           <rect x="206" y="16" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.7" />
           <rect x="206" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
           <rect x="268" y="10" width="44" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="274" y="16" width="20" height="4" rx="2" fill="#8b5cf6" opacity="0.7" />
+          <rect x="274" y="16" width="20" height="4" rx="2" fill="#0284c7" opacity="0.7" />
           <rect x="274" y="24" width="12" height="8" rx="2" fill="#1f2937" opacity="0.8" />
           <rect x="64" y="52" width="168" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
           <rect x="72" y="60" width="50" height="4" rx="2" fill="#e2e8f0" />
-          <rect x="72" y="115" width="10" height="14" rx="2" fill="#6366f1" opacity="0.5" />
-          <rect x="86" y="105" width="10" height="24" rx="2" fill="#6366f1" opacity="0.6" />
-          <rect x="100" y="95" width="10" height="34" rx="2" fill="#6366f1" opacity="0.7" />
-          <rect x="114" y="100" width="10" height="29" rx="2" fill="#6366f1" opacity="0.65" />
-          <rect x="128" y="85" width="10" height="44" rx="2" fill="#6366f1" opacity="0.9" />
-          <rect x="142" y="92" width="10" height="37" rx="2" fill="#6366f1" opacity="0.75" />
-          <rect x="156" y="78" width="10" height="51" rx="2" fill="#6366f1" />
-          <rect x="170" y="88" width="10" height="41" rx="2" fill="#6366f1" opacity="0.8" />
-          <rect x="184" y="97" width="10" height="32" rx="2" fill="#6366f1" opacity="0.7" />
-          <rect x="198" y="82" width="10" height="47" rx="2" fill="#6366f1" opacity="0.85" />
+          <rect x="72" y="115" width="10" height="14" rx="2" fill="#019cda" opacity="0.5" />
+          <rect x="86" y="105" width="10" height="24" rx="2" fill="#019cda" opacity="0.6" />
+          <rect x="100" y="95" width="10" height="34" rx="2" fill="#019cda" opacity="0.7" />
+          <rect x="114" y="100" width="10" height="29" rx="2" fill="#019cda" opacity="0.65" />
+          <rect x="128" y="85" width="10" height="44" rx="2" fill="#019cda" opacity="0.9" />
+          <rect x="142" y="92" width="10" height="37" rx="2" fill="#019cda" opacity="0.75" />
+          <rect x="156" y="78" width="10" height="51" rx="2" fill="#019cda" />
+          <rect x="170" y="88" width="10" height="41" rx="2" fill="#019cda" opacity="0.8" />
+          <rect x="184" y="97" width="10" height="32" rx="2" fill="#019cda" opacity="0.7" />
+          <rect x="198" y="82" width="10" height="47" rx="2" fill="#019cda" opacity="0.85" />
           <rect x="240" y="52" width="72" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <circle cx="276" cy="90" r="22" fill="none" stroke="#6366f1" strokeWidth="8" strokeDasharray="69 30" opacity="0.7" />
+          <circle cx="276" cy="90" r="22" fill="none" stroke="#019cda" strokeWidth="8" strokeDasharray="69 30" opacity="0.7" />
           <circle cx="276" cy="90" r="22" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray="20 79" strokeDashoffset="-69" opacity="0.7" />
           <rect x="64" y="142" width="248" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
           <rect x="72" y="149" width="40" height="4" rx="2" fill="#e2e8f0" />
@@ -1388,18 +1409,18 @@ document.addEventListener('click', function(e) {
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
           <rect width="320" height="180" fill="#f8fafc" />
           <rect x="0" y="0" width="320" height="28" fill="#ffffff" />
-          <rect x="16" y="10" width="40" height="8" rx="4" fill="#6366f1" opacity="0.8" />
+          <rect x="16" y="10" width="40" height="8" rx="4" fill="#019cda" opacity="0.8" />
           <rect x="120" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
           <rect x="152" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
           <rect x="184" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
-          <rect x="264" y="9" width="40" height="10" rx="5" fill="#6366f1" opacity="0.8" />
+          <rect x="264" y="9" width="40" height="10" rx="5" fill="#019cda" opacity="0.8" />
           <rect x="80" y="42" width="160" height="10" rx="5" fill="#1f2937" opacity="0.9" />
           <rect x="96" y="58" width="128" height="6" rx="3" fill="#64748b" opacity="0.5" />
           <rect x="108" y="68" width="104" height="5" rx="2" fill="#94a3b8" opacity="0.3" />
-          <rect x="120" y="82" width="36" height="12" rx="6" fill="#6366f1" opacity="0.9" />
+          <rect x="120" y="82" width="36" height="12" rx="6" fill="#019cda" opacity="0.9" />
           <rect x="164" y="82" width="36" height="12" rx="6" fill="#e2e8f0" />
           <rect x="32" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="40" y="116" width="24" height="4" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="40" y="116" width="24" height="4" rx="2" fill="#019cda" opacity="0.6" />
           <rect x="40" y="124" width="48" height="3" rx="1" fill="#cbd5e1" />
           <rect x="40" y="130" width="40" height="3" rx="1" fill="#cbd5e1" />
           <rect x="124" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
@@ -1416,7 +1437,7 @@ document.addEventListener('click', function(e) {
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
           <rect width="320" height="180" fill="#f8fafc" />
           <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
-          <rect x="12" y="8" width="32" height="8" rx="4" fill="#6366f1" opacity="0.8" />
+          <rect x="12" y="8" width="32" height="8" rx="4" fill="#019cda" opacity="0.8" />
           <rect x="260" y="8" width="20" height="8" rx="4" fill="#e2e8f0" />
           <rect x="286" y="8" width="20" height="8" rx="4" fill="#e2e8f0" />
           <rect x="0" y="24" width="70" height="156" fill="#ffffff" />
@@ -1425,14 +1446,14 @@ document.addEventListener('click', function(e) {
           <rect x="8" y="52" width="44" height="4" rx="2" fill="#cbd5e1" />
           <rect x="8" y="60" width="36" height="4" rx="2" fill="#cbd5e1" />
           <rect x="8" y="76" width="54" height="5" rx="2" fill="#e2e8f0" />
-          <rect x="8" y="88" width="40" height="4" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="8" y="88" width="40" height="4" rx="2" fill="#019cda" opacity="0.6" />
           <rect x="8" y="96" width="44" height="4" rx="2" fill="#cbd5e1" />
           {[0, 1, 2].map(col => [0, 1].map(row => (
             <g key={`${col}-${row}`}>
               <rect x={78 + col * 84} y={30 + row * 74} width="76" height="64" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
               <rect x={82 + col * 84} y={34 + row * 74} width="68" height="38" rx="4" fill="#f1f5f9" />
               <rect x={86 + col * 84} y={76 + row * 74} width="40" height="4" rx="2" fill="#cbd5e1" />
-              <rect x={86 + col * 84} y={83 + row * 74} width="28" height="4" rx="2" fill="#6366f1" opacity="0.7" />
+              <rect x={86 + col * 84} y={83 + row * 74} width="28" height="4" rx="2" fill="#019cda" opacity="0.7" />
             </g>
           )))}
         </svg>
@@ -1445,9 +1466,9 @@ document.addEventListener('click', function(e) {
           <rect x="220" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
           <rect x="248" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
           <rect x="276" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
-          <circle cx="160" cy="64" r="22" fill="#f1f5f9" stroke="#6366f1" strokeWidth="2" opacity="0.8" />
+          <circle cx="160" cy="64" r="22" fill="#f1f5f9" stroke="#019cda" strokeWidth="2" opacity="0.8" />
           <rect x="124" y="92" width="72" height="8" rx="4" fill="#1f2937" opacity="0.8" />
-          <rect x="136" y="105" width="48" height="5" rx="2" fill="#6366f1" opacity="0.6" />
+          <rect x="136" y="105" width="48" height="5" rx="2" fill="#019cda" opacity="0.6" />
           <rect x="86" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
           <rect x="92" y="131" width="32" height="18" rx="4" fill="#f1f5f9" />
           <rect x="92" y="152" width="24" height="4" rx="2" fill="#cbd5e1" />
@@ -1463,21 +1484,21 @@ document.addEventListener('click', function(e) {
         <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
           <rect width="320" height="180" fill="#f8fafc" />
           <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
-          <rect x="16" y="8" width="48" height="8" rx="4" fill="#6366f1" opacity="0.8" />
-          <rect x="246" y="9" width="58" height="7" rx="3" fill="#6366f1" opacity="0.5" />
+          <rect x="16" y="8" width="48" height="8" rx="4" fill="#019cda" opacity="0.8" />
+          <rect x="246" y="9" width="58" height="7" rx="3" fill="#019cda" opacity="0.5" />
           <rect x="20" y="36" width="130" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
           <rect x="30" y="46" width="60" height="6" rx="3" fill="#1f2937" opacity="0.8" />
           <rect x="30" y="58" width="100" height="4" rx="2" fill="#cbd5e1" />
           <rect x="30" y="66" width="80" height="4" rx="2" fill="#cbd5e1" />
           <rect x="30" y="74" width="90" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="30" y="85" width="36" height="10" rx="5" fill="#6366f1" opacity="0.8" />
+          <rect x="30" y="85" width="36" height="10" rx="5" fill="#019cda" opacity="0.8" />
           <rect x="164" y="36" width="136" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="174" y="52" width="10" height="28" rx="2" fill="#6366f1" opacity="0.5" />
-          <rect x="190" y="44" width="10" height="36" rx="2" fill="#6366f1" opacity="0.6" />
-          <rect x="206" y="50" width="10" height="30" rx="2" fill="#6366f1" opacity="0.7" />
-          <rect x="222" y="40" width="10" height="40" rx="2" fill="#6366f1" opacity="0.8" />
-          <rect x="238" y="46" width="10" height="34" rx="2" fill="#6366f1" opacity="0.65" />
-          <rect x="254" y="36" width="10" height="44" rx="2" fill="#6366f1" />
+          <rect x="174" y="52" width="10" height="28" rx="2" fill="#019cda" opacity="0.5" />
+          <rect x="190" y="44" width="10" height="36" rx="2" fill="#019cda" opacity="0.6" />
+          <rect x="206" y="50" width="10" height="30" rx="2" fill="#019cda" opacity="0.7" />
+          <rect x="222" y="40" width="10" height="40" rx="2" fill="#019cda" opacity="0.8" />
+          <rect x="238" y="46" width="10" height="34" rx="2" fill="#019cda" opacity="0.65" />
+          <rect x="254" y="36" width="10" height="44" rx="2" fill="#019cda" />
           <rect x="20" y="108" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
           <rect x="30" y="118" width="50" height="4" rx="2" fill="#cbd5e1" />
           <rect x="30" y="127" width="60" height="4" rx="2" fill="#cbd5e1" />
@@ -1485,7 +1506,7 @@ document.addEventListener('click', function(e) {
           <rect x="120" y="118" width="50" height="4" rx="2" fill="#cbd5e1" />
           <rect x="120" y="127" width="40" height="4" rx="2" fill="#cbd5e1" />
           <rect x="120" y="136" width="55" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="260" y="122" width="28" height="10" rx="5" fill="#6366f1" opacity="0.6" />
+          <rect x="260" y="122" width="28" height="10" rx="5" fill="#019cda" opacity="0.6" />
         </svg>
       )
     }
@@ -1580,7 +1601,7 @@ document.addEventListener('click', function(e) {
                   if (e.key === 'Escape') { setEditing(false); setNameValue(g.name || projectName2(g.prompt)) }
                 }}
                 onBlur={() => void saveName()}
-                style={{ width: '100%', fontSize: 14, fontWeight: 700, color: '#111827', border: 'none', borderBottom: '2px solid #6366f1', outline: 'none', background: 'transparent', padding: '1px 0' }}
+                style={{ width: '100%', fontSize: 14, fontWeight: 700, color: '#111827', border: 'none', borderBottom: '2px solid #019cda', outline: 'none', background: 'transparent', padding: '1px 0' }}
               />
             ) : (
               <p
@@ -1599,7 +1620,7 @@ document.addEventListener('click', function(e) {
               const hasMeeting = !!(g as any).meetingAnalysis
               const hasJira = !!(g as any).jiraIssueKey || !!((g as any).jiraIssueKeys?.length)
               if (hasMeeting) return (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#f3e8ff', color: '#7c3aed', border: '1px solid #e9d5ff' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#f3e8ff', color: '#15395e', border: '1px solid #e9d5ff' }}>
                   🎙 Meeting
                 </span>
               )
@@ -1661,38 +1682,50 @@ document.addEventListener('click', function(e) {
 
     const validProjects = history.filter(g => g.generationId)
 
+    const _GRID_COLORS = ['from-[#15395e] to-[#019cda]','from-[#0b64a0] to-teal-500','from-violet-600 to-indigo-600','from-amber-500 to-orange-600','from-[#15395e] to-sky-400','from-[#1c456f] to-stone-500','from-emerald-600 to-teal-500','from-pink-500 to-rose-600','from-violet-600 to-[#019cda]','from-stone-700 to-stone-900','from-[#1a446f] to-[#019cda]']
+    const _relTime = (d?: string) => { if (!d) return 'Unknown'; const h = Math.floor((Date.now() - new Date(d).getTime()) / 3600000); const day = Math.floor(h/24); const w = Math.floor(day/7); if (h < 1) return 'Edited just now'; if (h < 24) return `Edited ${h}h ago`; if (day < 7) return `Edited ${day}d ago`; return `Edited ${w}w ago` }
+    const mappedProjects: ProjectItem[] = validProjects.map((g, i) => {
+      const hasMeeting = !!g.meetingAnalysis
+      const hasJira = !!(g.jiraIssueKey || g.jiraIssueKeys?.length)
+      const tag: 'Prompt' | 'Meeting' | 'Jira' = hasMeeting ? 'Meeting' : hasJira ? 'Jira' : 'Prompt'
+      const statusMap: Record<string, string> = { COMPLETED: 'Ready for Push', PROCESSING: 'Active Pipeline', FAILED: 'Validated Draft' }
+      const agentMap: Record<string, string[]> = { Meeting: ['Meeting Scribe Agent', 'Code Generator Synth'], Jira: ['Jira Backlog Agent', 'Code Generator Synth', 'WCAG Reviewer'], Prompt: ['Prompt Agent', 'Code Generator Synth'] }
+      return { id: g.generationId!, title: g.name || projectName2(g.prompt), tag, status: statusMap[g.status ?? ''] ?? 'Draft', version: g.activeVersion ? `v${g.activeVersion}.0` : 'v1.0.0', elements: tag === 'Meeting' ? '10 UI Widgets' : tag === 'Jira' ? '8 Table Views' : '12 Components', wcagScore: '—', editedTime: _relTime(g.updatedAt || g.createdAt), description: g.prompt || 'No description available.', color: _GRID_COLORS[i % _GRID_COLORS.length], agents: agentMap[tag] }
+    })
+
     const isDark = false
     const sidebarText = 'rgba(0,0,0,.55)'
     const sidebarBorder = '#e5e7eb'
     const sidebarLabel = 'rgba(0,0,0,.35)'
+    const homeIsActive = homeTab === 'create' && !showCreateForm
 
     return (
-      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: homeTab === 'create' ? '#f5f3ff' : '#ffffff' }}>
+      <div id="onboarding" style={{ display: 'flex', minHeight: '100vh', background: '#ffffff' }}>
 
         {/* Brand color bar */}
-        <div className="talan-color-bar">
-          <span style={{ background: '#6366f1' }} />
-          <span style={{ background: '#818cf8' }} />
-          <span style={{ background: '#a855f7' }} />
-          <span style={{ background: '#c084fc' }} />
-          <span style={{ background: '#ec4899' }} />
+        <div className="talan-color-bar" style={{ display: homeIsActive ? 'none' : undefined }}>
+          <span style={{ background: '#15395e' }} />
+          <span style={{ background: '#1a5280' }} />
+          <span style={{ background: '#019cda' }} />
+          <span style={{ background: '#38bdf8' }} />
+          <span style={{ background: '#7dd3fc' }} />
         </div>
 
         {/* ── SIDEBAR ── */}
         <aside style={{
-          width: 280, background: '#ffffff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto',
+          width: 280, background: '#ffffff', borderRight: '1px solid #e5e7eb', display: homeIsActive ? 'none' : 'flex', flexDirection: 'column', position: 'fixed', top: 4, left: 0, height: 'calc(100vh - 4px)', zIndex: 40, overflowY: 'auto',
           transform: sidebarOpen ? 'translateX(0)' : 'translateX(-280px)',
           transition: 'transform .3s cubic-bezier(.4,0,.2,1)',
         }}>
 
           {/* Logo */}
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb', background: 'linear-gradient(135deg, #faf5ff 0%, #f0f4ff 100%)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e7e5e4', background: '#ffffff', display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* Logo left-aligned */}
             <svg width="30" height="30" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
               <defs>
                 <linearGradient id="slg" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#6366f1" />
-                  <stop offset="100%" stopColor="#a855f7" />
+                  <stop offset="0%" stopColor="#15395e" />
+                  <stop offset="100%" stopColor="#019cda" />
                 </linearGradient>
               </defs>
               <rect width="44" height="44" rx="12" fill="url(#slg)" />
@@ -1703,14 +1736,14 @@ document.addEventListener('click', function(e) {
             </svg>
             <span style={{
               fontWeight: 800, fontSize: 16, letterSpacing: '-0.3px',
-              background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+              background: 'linear-gradient(135deg, #15395e, #019cda)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
             }}>Talanted</span>
             {/* Close button pushed to the right */}
             <button onClick={() => setSidebarOpen(false)} title="Close sidebar"
-              style={{ marginLeft: 'auto', width: 28, height: 28, borderRadius: 7, border: 'none', background: 'rgba(99,102,241,.08)', color: '#6366f1', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .15s' }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.18)'}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}>
+              style={{ marginLeft: 'auto', width: 28, height: 28, borderRadius: 7, border: 'none', background: 'rgba(1,156,218,.08)', color: '#019cda', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .15s' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(1,156,218,.18)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(1,156,218,.08)'}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
             </button>
           </div>
@@ -1718,7 +1751,7 @@ document.addEventListener('click', function(e) {
           {/* Workspace */}
           <div style={{ padding: '12px 12px', borderBottom: '1px solid #e5e7eb' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, background: 'rgba(0,0,0,.03)' }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#15395e,#019cda)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                 {displayName.charAt(0)}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -1738,7 +1771,7 @@ document.addEventListener('click', function(e) {
             ] as { icon: string; label: string; action: () => void; active: boolean }[]).map(item => (
               <button key={item.label} onClick={item.action}
                 className={`sidebar-nav-item${item.active ? ' active' : ''}`}
-                style={{ width: '100%', border: 'none', textAlign: 'left', marginBottom: 2, color: item.active ? (isDark ? '#a5b4fc' : undefined) : sidebarText, background: item.active && isDark ? 'rgba(99,102,241,.15)' : undefined }}
+                style={{ width: '100%', border: 'none', textAlign: 'left', marginBottom: 2, color: item.active ? (isDark ? '#7dd3fc' : undefined) : sidebarText, background: item.active && isDark ? 'rgba(1,156,218,.15)' : undefined }}
                 onMouseEnter={e => { if (!item.active) { (e.currentTarget as HTMLElement).style.background = isDark ? 'rgba(255,255,255,.05)' : ''; (e.currentTarget as HTMLElement).style.color = isDark ? '#e2e8f0' : '' } }}
                 onMouseLeave={e => { if (!item.active) { (e.currentTarget as HTMLElement).style.background = ''; (e.currentTarget as HTMLElement).style.color = '' } }}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
@@ -1747,8 +1780,8 @@ document.addEventListener('click', function(e) {
             ))}
             {apiResult && (
               <button onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: 'transparent', color: '#6366f1', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.08)'}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 13px', borderRadius: 9, marginBottom: 2, background: 'transparent', color: '#019cda', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', transition: 'all .15s' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(1,156,218,.08)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
                 <span style={{ fontSize: 17, width: 22, textAlign: 'center', flexShrink: 0 }}>✦</span>
                 Open Editor
@@ -1768,12 +1801,12 @@ document.addEventListener('click', function(e) {
                   <button key={g.generationId}
                     onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '7px 13px', borderRadius: 9, marginBottom: 1, background: 'transparent', color: sidebarText, border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', transition: 'all .15s' }}
-                    onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = isDark ? 'rgba(99,102,241,.12)' : 'rgba(99,102,241,.07)'; el.style.color = isDark ? '#c7d2fe' : '#1f2937' }}
+                    onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = isDark ? 'rgba(1,156,218,.12)' : 'rgba(1,156,218,.07)'; el.style.color = isDark ? '#bae6fd' : '#1f2937' }}
                     onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = sidebarText }}>
                     <span style={{ fontSize: 11, flexShrink: 0, width: 18, textAlign: 'center' }}>{srcEmoji}</span>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontWeight: 500 }}>{g.name || projectName2(g.prompt)}</span>
                     {loadingProjectId === g.generationId && (
-                      <div style={{ width: 10, height: 10, border: '1.5px solid rgba(99,102,241,.2)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+                      <div style={{ width: 10, height: 10, border: '1.5px solid rgba(1,156,218,.2)', borderTopColor: '#019cda', borderRadius: '50%', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
                     )}
                   </button>
                 )
@@ -1787,7 +1820,7 @@ document.addEventListener('click', function(e) {
           <div style={{ padding: '12px 14px', borderTop: `1px solid ${sidebarBorder}`, display: 'flex', alignItems: 'center', gap: 10 }}>
             {!isAdmin && (
               <>
-                <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
+                <div onClick={() => setHomeTab('profile')} style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#019cda,#0369a1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
                   {displayName.charAt(0)}
                 </div>
                 <div onClick={() => setHomeTab('profile')} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
@@ -1814,13 +1847,13 @@ document.addEventListener('click', function(e) {
         </aside>
 
         {/* ── MAIN CONTENT ── */}
-        <main style={{ marginLeft: sidebarOpen ? 280 : 0, flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: 4, background: 'transparent', transition: 'margin-left .3s cubic-bezier(.4,0,.2,1)', position: 'relative' }}>
+        <main style={{ marginLeft: homeIsActive ? 0 : (sidebarOpen ? 280 : 0), flex: 1, minHeight: '100vh', overflowY: 'auto', paddingTop: homeIsActive ? 0 : 4, background: 'transparent', transition: 'margin-left .3s cubic-bezier(.4,0,.2,1)', position: 'relative' }}>
           {/* Floating open-sidebar button when closed */}
           {!sidebarOpen && (
             <button onClick={() => setSidebarOpen(true)} title="Open sidebar"
-              style={{ position: 'fixed', top: 12, left: 12, zIndex: 50, width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(99,102,241,.2)', background: '#fff', color: '#6366f1', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 12px rgba(99,102,241,.15)', transition: 'all .2s', animation: 'fadeUp .2s ease' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#6366f1'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.color = '#6366f1' }}>
+              style={{ position: 'fixed', top: 12, left: 12, zIndex: 50, width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(1,156,218,.2)', background: '#fff', color: '#019cda', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 12px rgba(1,156,218,.15)', transition: 'all .2s', animation: 'fadeUp .2s ease' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#019cda'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.color = '#019cda' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </button>
           )}
@@ -1832,13 +1865,17 @@ document.addEventListener('click', function(e) {
               username={username}
               email={email}
               firstName={firstName}
-              recentProjects={history.slice(0, 6).map(item => ({
+              lastName={lastName}
+              projectCount={validProjects.length}
+              recentProjects={history.slice(0, 8).map(item => ({
                 id: item.generationId || item.sessionId || '',
-                name: `Session ${item.sessionId?.slice(0, 8) || 'Unknown'}`,
+                name: projectName2(item.prompt),
                 createdAt: item.createdAt || new Date().toISOString()
               }))}
               onCreateProject={() => setShowCreateForm(true)}
               onViewProjects={() => setHomeTab('projects')}
+              onViewProfile={() => setHomeTab('profile')}
+              onProjectClick={id => { setLoadingProjectId(id); void loadGeneration(id); setShowCreateForm(true) }}
               onLogout={onLogout}
             />
           )}
@@ -1847,8 +1884,8 @@ document.addEventListener('click', function(e) {
           {homeTab === 'create' && (showCreateForm || createMode !== 'scratch') && createMode === 'scratch' && (
             <div className="home-container">
               {/* Extra aurora blobs */}
-              <div aria-hidden="true" style={{ position: 'absolute', top: '25%', left: '-5%', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,.22) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0, animation: 'auroraBlob2 24s ease-in-out infinite' }} />
-              <div aria-hidden="true" style={{ position: 'absolute', bottom: '5%', right: '15%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(196,181,253,.35) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0, animation: 'auroraBlob4 18s ease-in-out infinite' }} />
+              <div aria-hidden="true" style={{ position: 'absolute', top: '25%', left: '-5%', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(1,156,218,.22) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0, animation: 'auroraBlob2 24s ease-in-out infinite' }} />
+              <div aria-hidden="true" style={{ position: 'absolute', bottom: '5%', right: '15%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(56,189,248,.2) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0, animation: 'auroraBlob4 18s ease-in-out infinite' }} />
               {/* ✦ Sparkles */}
               {[
                 { top:'8%',  left:'12%', size:7,  delay:0,    dur:2.8 },
@@ -1871,15 +1908,15 @@ document.addEventListener('click', function(e) {
                   style={{ top: s.top, left: s.left, width: s.size, height: s.size, animation: `sparkleDrift ${s.dur}s ${s.delay}s ease-in-out infinite` }}
                   viewBox="0 0 24 24">
                   <path d="M12 2 L13.5 10.5 L22 12 L13.5 13.5 L12 22 L10.5 13.5 L2 12 L10.5 10.5 Z"
-                    fill="rgba(139,92,246,.7)" />
+                    fill="rgba(1,156,218,.7)" />
                 </svg>
               ))}
               {/* ── HERO: centered prompt area ── */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 48px 40px 80px', position: 'relative', zIndex: 1, boxSizing: 'border-box', width: '100%', minHeight: 'calc(100vh - 160px)' }}>
 
                 {/* Hero heading */}
-                <h1 style={{ textAlign: 'center', fontSize: 'clamp(26px,3.2vw,42px)', fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.03em', color: '#1e1b4b', margin: '0 0 8px', animation: 'fadeUp .5s .05s both' }}>
-                  What should we build, <span style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed 50%,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{firstName || username}?</span>
+                <h1 style={{ textAlign: 'center', fontSize: 'clamp(26px,3.2vw,42px)', fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.03em', color: '#0f172a', margin: '0 0 8px', animation: 'fadeUp .5s .05s both' }}>
+                  What should we build, <span style={{ background: 'linear-gradient(135deg,#019cda,#15395e 50%,#0369a1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{firstName || username}?</span>
                 </h1>
                 <p style={{ textAlign: 'center', fontSize: 14, color: '#6b7280', marginBottom: 24, animation: 'fadeUp .5s .1s both', maxWidth: 520 }}>
                   Describe your idea — our AI agents will generate production-ready UI in seconds.
@@ -1887,7 +1924,7 @@ document.addEventListener('click', function(e) {
 
                 {/* Mode pills */}
                 <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 20, animation: 'fadeUp .5s .15s both', alignItems: 'center' }}>
-                  <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all .25s', border: '1.5px solid rgba(99,102,241,.5)', background: 'rgba(99,102,241,.12)', color: '#4f46e5', backdropFilter: 'blur(8px)', boxShadow: '0 2px 8px rgba(99,102,241,.12)' }}>
+                  <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all .25s', border: '1.5px solid rgba(1,156,218,.5)', background: 'rgba(1,156,218,.12)', color: '#019cda', backdropFilter: 'blur(8px)', boxShadow: '0 2px 8px rgba(1,156,218,.12)' }}>
                     <Sparkles size={13} /> From Scratch
                   </button>
                   <select
@@ -1899,7 +1936,7 @@ document.addEventListener('click', function(e) {
                       e.target.value = ''
                     }}
                     style={{ padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '1.5px solid rgba(255,255,255,.7)', background: 'rgba(255,255,255,.6)', color: '#6b7280', backdropFilter: 'blur(8px)', outline: 'none', transition: 'all .25s', appearance: 'none', WebkitAppearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
-                    onFocus={e => { const el = e.currentTarget; el.style.borderColor = 'rgba(99,102,241,.4)'; el.style.background = 'rgba(255,255,255,.8)' }}
+                    onFocus={e => { const el = e.currentTarget; el.style.borderColor = 'rgba(1,156,218,.4)'; el.style.background = 'rgba(255,255,255,.8)' }}
                     onBlur={e => { const el = e.currentTarget; el.style.borderColor = 'rgba(255,255,255,.7)'; el.style.background = 'rgba(255,255,255,.6)' }}>
                     <option value="" disabled>⬇ Import...</option>
                     <option value="figma">🎨 From Figma</option>
@@ -1916,12 +1953,12 @@ document.addEventListener('click', function(e) {
                   <div style={{ display: 'flex', alignItems: 'flex-start', padding: '16px 20px 14px', gap: 12, borderBottom: '1px solid rgba(0,0,0,.05)' }}>
                     {/* Project name pill */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingTop: 2 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Project</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#7dd3fc', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Project</span>
                       <input
                         placeholder="my-app"
                         value={projectName}
                         onChange={e => setProjectName(e.target.value)}
-                        style={{ width: 110, padding: '2px 8px', fontSize: 13, fontWeight: 600, border: '1px solid rgba(99,102,241,.2)', borderRadius: 6, outline: 'none', background: 'rgba(99,102,241,.04)', color: '#1e293b', fontFamily: 'inherit' }}
+                        style={{ width: 110, padding: '2px 8px', fontSize: 13, fontWeight: 600, border: '1px solid rgba(1,156,218,.2)', borderRadius: 6, outline: 'none', background: 'rgba(1,156,218,.04)', color: '#1e293b', fontFamily: 'inherit' }}
                       />
                     </div>
                     {/* Textarea — grows horizontally */}
@@ -1939,7 +1976,7 @@ document.addEventListener('click', function(e) {
                     />
                     {/* Generate button — inline right */}
                     <button onClick={startBuild} disabled={isBuilding || !projectName || !customPrompt}
-                      style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0, marginTop: 2, cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? '#e2e8f0' : 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 4px 14px rgba(99,102,241,.4)' }}
+                      style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0, marginTop: 2, cursor: isBuilding || !projectName || !customPrompt ? 'not-allowed' : 'pointer', background: isBuilding || !projectName || !customPrompt ? '#e2e8f0' : 'linear-gradient(135deg,#019cda,#15395e)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s', boxShadow: isBuilding || !projectName || !customPrompt ? 'none' : '0 4px 14px rgba(1,156,218,.4)' }}
                       onMouseEnter={e => { if (!isBuilding && projectName && customPrompt) (e.currentTarget as HTMLElement).style.transform = 'scale(1.08)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = '' }}
                       title="Generate (Ctrl+Enter)">
@@ -1967,9 +2004,9 @@ document.addEventListener('click', function(e) {
                     </div>
 
                     {/* Attach */}
-                    <label title="Attach files" style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,.06)', border: '1px solid rgba(99,102,241,.15)', cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'all .2s', color: '#6366f1' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.12)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,.06)' }}>
+                    <label title="Attach files" style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(1,156,218,.06)', border: '1px solid rgba(1,156,218,.15)', cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'all .2s', color: '#019cda' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(1,156,218,.12)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(1,156,218,.06)' }}>
                       📎
                       <input id="doc-file-input" type="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.mmd,.excalidraw" style={{ display: 'none' }}
                         onChange={e => { if (e.target.files) setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
@@ -1980,9 +2017,9 @@ document.addEventListener('click', function(e) {
                       type="button"
                       title="Importer depuis Figma"
                       onClick={() => setIsFigmaModalOpen(true)}
-                      style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: figmaUrl ? 'rgba(139,92,246,.12)' : 'rgba(139,92,246,.06)', border: `1px solid ${figmaUrl ? 'rgba(139,92,246,.4)' : 'rgba(139,92,246,.15)'}`, cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'all .2s', color: '#7c3aed' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,.14)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = figmaUrl ? 'rgba(139,92,246,.12)' : 'rgba(139,92,246,.06)' }}
+                      style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: figmaUrl ? 'rgba(1,156,218,.12)' : 'rgba(1,156,218,.06)', border: `1px solid ${figmaUrl ? 'rgba(1,156,218,.4)' : 'rgba(1,156,218,.15)'}`, cursor: 'pointer', fontSize: 14, flexShrink: 0, transition: 'all .2s', color: '#15395e' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(1,156,218,.14)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = figmaUrl ? 'rgba(1,156,218,.12)' : 'rgba(1,156,218,.06)' }}
                     >
                       🎨
                     </button>
@@ -1992,14 +2029,14 @@ document.addEventListener('click', function(e) {
                   {(attachedFiles.length > 0 || figmaUrl) && (
                     <div style={{ padding: '6px 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {attachedFiles.map((f, i) => (
-                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#4f46e5' }}>
+                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(1,156,218,.08)', border: '1px solid rgba(1,156,218,.2)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#019cda' }}>
                           {f.name}
                           <button onClick={() => setAttachedFiles(prev => prev.filter((_, j) => j !== i))}
                             style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
                         </span>
                       ))}
                       {figmaUrl && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(139,92,246,.08)', border: '1px solid rgba(139,92,246,.25)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#7c3aed' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(1,156,218,.08)', border: '1px solid rgba(1,156,218,.25)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#15395e' }}>
                           🎨 {figmaFileName || 'Figma file'}
                           <button onClick={() => { setFigmaUrl(null); setFigmaToken(null); setFigmaFileName(null) }}
                             style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
@@ -2012,11 +2049,11 @@ document.addEventListener('click', function(e) {
                   {isBuilding && (
                     <div style={{ padding: '0 16px 14px' }}>
                       <div style={{ height: 3, borderRadius: 3, background: '#e2e8f0', overflow: 'hidden', marginBottom: 6 }}>
-                        <div className="progress-bar" style={{ height: '100%', borderRadius: 3, width: `${buildPct}%`, background: 'linear-gradient(90deg,#6366f1,#a855f7)' }} />
+                        <div className="progress-bar" style={{ height: '100%', borderRadius: 3, width: `${buildPct}%`, background: 'linear-gradient(90deg,#019cda,#0369a1)' }} />
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b' }}>
                         <span>{buildMsg}</span>
-                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{Math.floor(buildPct)}%</span>
+                        <span style={{ fontWeight: 700, color: '#019cda' }}>{Math.floor(buildPct)}%</span>
                       </div>
                     </div>
                   )}
@@ -2030,12 +2067,12 @@ document.addEventListener('click', function(e) {
 
                 {/* ── Agent Pipeline panel (appears to the right when building) ── */}
                 {(isBuilding || buildPct > 0) && (
-                  <div style={{ width: 240, flexShrink: 0, background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(20px)', borderRadius: 18, padding: '20px 18px', border: '1px solid rgba(255,255,255,.9)', boxShadow: '0 4px 24px rgba(99,102,241,.1)', animation: 'fadeUp .3s ease' }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(99,102,241,.7)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14, margin: '0 0 14px' }}>Agent Pipeline</p>
+                  <div style={{ width: 240, flexShrink: 0, background: 'rgba(255,255,255,.9)', backdropFilter: 'blur(20px)', borderRadius: 18, padding: '20px 18px', border: '1px solid rgba(255,255,255,.9)', boxShadow: '0 4px 24px rgba(1,156,218,.1)', animation: 'fadeUp .3s ease' }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(1,156,218,.7)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14, margin: '0 0 14px' }}>Agent Pipeline</p>
                     {[
-                      { icon: '◎', label: 'Planner',  desc: 'Architecture',  pct: 10, color: '#6366f1' },
-                      { icon: '◈', label: 'Designer', desc: 'Design system', pct: 35, color: '#7c3aed' },
-                      { icon: '</>', label: 'Coder',   desc: 'Code gen',      pct: 60, color: '#a855f7' },
+                      { icon: '◎', label: 'Planner',  desc: 'Architecture',  pct: 10, color: '#019cda' },
+                      { icon: '◈', label: 'Designer', desc: 'Design system', pct: 35, color: '#15395e' },
+                      { icon: '</>', label: 'Coder',   desc: 'Code gen',      pct: 60, color: '#0369a1' },
                       { icon: '✓',  label: 'Validator',desc: 'QA check',     pct: 88, color: '#059669' },
                     ].map((a, idx) => {
                       const active = buildPct >= a.pct
@@ -2056,13 +2093,13 @@ document.addEventListener('click', function(e) {
                         </div>
                       )
                     })}
-                    <div style={{ marginTop: 14, padding: 12, background: 'rgba(99,102,241,.05)', borderRadius: 10, border: '1px solid rgba(99,102,241,.1)' }}>
+                    <div style={{ marginTop: 14, padding: 12, background: 'rgba(1,156,218,.05)', borderRadius: 10, border: '1px solid rgba(1,156,218,.1)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280', marginBottom: 6 }}>
                         <span style={{ fontWeight: 600 }}>{buildMsg}</span>
-                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{Math.floor(buildPct)}%</span>
+                        <span style={{ fontWeight: 700, color: '#019cda' }}>{Math.floor(buildPct)}%</span>
                       </div>
                       <div style={{ height: 4, background: '#e5e7eb', borderRadius: 2, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', background: 'linear-gradient(90deg,#6366f1,#a855f7)', width: buildPct + '%', transition: 'width .3s ease', borderRadius: 2 }} />
+                        <div style={{ height: '100%', background: 'linear-gradient(90deg,#019cda,#0369a1)', width: buildPct + '%', transition: 'width .3s ease', borderRadius: 2 }} />
                       </div>
                     </div>
                   </div>
@@ -2078,9 +2115,9 @@ document.addEventListener('click', function(e) {
                     <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(79,70,229,.6)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 10 }}>Agent Pipeline</p>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {[
-                        { icon: '◎', agent: 'Planner', desc: 'Architecture', pct: 10, color: '#6366f1', bg: 'rgba(99,102,241,.07)' },
-                        { icon: '◈', agent: 'Designer', desc: 'Design system', pct: 25, color: '#7c3aed', bg: 'rgba(124,58,237,.07)' },
-                        { icon: '</>', agent: 'Coder', desc: 'Code gen', pct: 50, color: '#a855f7', bg: 'rgba(168,85,247,.07)' },
+                        { icon: '◎', agent: 'Planner', desc: 'Architecture', pct: 10, color: '#019cda', bg: 'rgba(1,156,218,.07)' },
+                        { icon: '◈', agent: 'Designer', desc: 'Design system', pct: 25, color: '#15395e', bg: 'rgba(1,156,218,.07)' },
+                        { icon: '</>', agent: 'Coder', desc: 'Code gen', pct: 50, color: '#0369a1', bg: 'rgba(3,105,161,.07)' },
                         { icon: '✓', agent: 'Validator', desc: 'QA check', pct: 90, color: '#059669', bg: 'rgba(5,150,105,.07)' },
                       ].map((a, idx) => {
                         const active = buildPct >= a.pct
@@ -2108,7 +2145,7 @@ document.addEventListener('click', function(e) {
                     {validProjects.length > 0 && (<>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                       <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(79,70,229,.6)', textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Recent Projects</p>
-                      <button onClick={() => setHomeTab('projects')} style={{ background: 'none', border: 'none', color: '#6366f1', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      <button onClick={() => setHomeTab('projects')} style={{ background: 'none', border: 'none', color: '#019cda', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                         Browse all ({validProjects.length}) →
                       </button>
                     </div>
@@ -2122,7 +2159,7 @@ document.addEventListener('click', function(e) {
                           <div key={g.generationId}
                             className="group"
                             style={{ borderRadius: 12, overflow: 'hidden', background: '#fff', border: '1px solid #e5e7eb', cursor: 'pointer', transition: 'all .2s', boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}
-                            onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#a5b4fc'; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 28px rgba(99,102,241,.18)' }}
+                            onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#7dd3fc'; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 8px 28px rgba(1,156,218,.18)' }}
                             onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#e5e7eb'; el.style.transform = ''; el.style.boxShadow = '0 2px 6px rgba(0,0,0,.05)' }}
                             onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
                             {/* Live preview thumbnail */}
@@ -2136,7 +2173,7 @@ document.addEventListener('click', function(e) {
                                 </div>
                               )}
                               <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(15,15,35,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'opacity .18s', zIndex: 5 }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, padding: '7px 18px', borderRadius: 8, background: '#6366f1', color: '#fff', boxShadow: '0 4px 16px rgba(99,102,241,.4)' }}>Open →</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, padding: '7px 18px', borderRadius: 8, background: '#019cda', color: '#fff', boxShadow: '0 4px 16px rgba(1,156,218,.4)' }}>Open →</span>
                               </div>
                             </div>
                             {/* Footer */}
@@ -2145,7 +2182,7 @@ document.addEventListener('click', function(e) {
                                 {g.name || projectName2(g.prompt)}
                               </p>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#6b7280' }}>
-                                <span style={{ fontWeight: 600, color: hasMeeting ? '#7c3aed' : hasJira ? '#ea580c' : '#4f46e5' }}>{srcEmoji} {srcLabel}</span>
+                                <span style={{ fontWeight: 600, color: hasMeeting ? '#15395e' : hasJira ? '#ea580c' : '#019cda' }}>{srcEmoji} {srcLabel}</span>
                                 <span style={{ color: '#d1d5db' }}>·</span>
                                 <span>{timeAgo(g.updatedAt || g.createdAt)}</span>
                               </div>
@@ -2168,7 +2205,7 @@ document.addEventListener('click', function(e) {
                 const panelProjects = homePanelTab === 'recent' ? recentProjects : validProjects
                 const displayProjects = panelProjects.slice(0, 6)
                 return (
-                <div style={{ background: 'rgba(255,255,255,.82)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderRadius: '24px 24px 0 0', padding: '32px 48px 48px', margin: '0 20px', position: 'relative', zIndex: 1, borderTop: '1px solid rgba(255,255,255,.9)', boxShadow: '0 -4px 32px rgba(99,102,241,.08)' }}>
+                <div style={{ background: 'rgba(255,255,255,.82)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderRadius: '24px 24px 0 0', padding: '32px 48px 48px', margin: '0 20px', position: 'relative', zIndex: 1, borderTop: '1px solid rgba(255,255,255,.9)', boxShadow: '0 -4px 32px rgba(1,156,218,.08)' }}>
                   {/* Tabs + Browse all */}
                   <div style={{ display: 'flex', alignItems: 'center', marginBottom: 28 }}>
                     <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,.04)', borderRadius: 10, padding: 3 }}>
@@ -2184,7 +2221,7 @@ document.addEventListener('click', function(e) {
                         </button>
                       ))}
                     </div>
-                    <button onClick={() => setHomeTab('projects')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6366f1', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'opacity .15s' }}
+                    <button onClick={() => setHomeTab('projects')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#019cda', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'opacity .15s' }}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '.7'}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}>
                       Browse all ({validProjects.length}) →
@@ -2208,7 +2245,7 @@ document.addEventListener('click', function(e) {
                         <div key={g.generationId}
                           className="group"
                           style={{ borderRadius: 16, overflow: 'hidden', background: '#fff', border: '1px solid #e5e7eb', cursor: 'pointer', transition: 'all .25s cubic-bezier(.4,0,.2,1)', boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}
-                          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#a5b4fc'; el.style.transform = 'translateY(-5px) scale(1.01)'; el.style.boxShadow = '0 20px 48px rgba(99,102,241,.18)' }}
+                          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#7dd3fc'; el.style.transform = 'translateY(-5px) scale(1.01)'; el.style.boxShadow = '0 20px 48px rgba(1,156,218,.18)' }}
                           onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = '#e5e7eb'; el.style.transform = ''; el.style.boxShadow = '0 2px 12px rgba(0,0,0,.06)' }}
                           onClick={() => {
                             setLoadingProjectId(g.generationId ?? null)
@@ -2225,11 +2262,11 @@ document.addEventListener('click', function(e) {
                               : <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}><CardThumbnail prompt={g.prompt} /></div>}
                             {loadingProjectId === g.generationId && (
                               <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                                <div style={{ width: 22, height: 22, border: '2px solid rgba(99,102,241,.25)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                <div style={{ width: 22, height: 22, border: '2px solid rgba(1,156,218,.25)', borderTopColor: '#019cda', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                               </div>
                             )}
                             <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(15,15,40,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'opacity .2s', zIndex: 5, backdropFilter: 'blur(2px)' }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, padding: '9px 24px', borderRadius: 10, background: '#fff', color: '#4f46e5', boxShadow: '0 4px 20px rgba(0,0,0,.15)' }}>Open →</span>
+                              <span style={{ fontSize: 13, fontWeight: 700, padding: '9px 24px', borderRadius: 10, background: '#fff', color: '#019cda', boxShadow: '0 4px 20px rgba(0,0,0,.15)' }}>Open →</span>
                             </div>
                           </div>
                           <div style={{ padding: '14px 18px 16px', background: '#fff', borderTop: '1px solid #f3f4f6' }}>
@@ -2237,7 +2274,7 @@ document.addEventListener('click', function(e) {
                               {g.name || projectName2(g.prompt)}
                             </p>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#9ca3af' }}>
-                              <span style={{ fontWeight: 600, color: hasMeeting ? '#7c3aed' : hasJira ? '#ea580c' : '#6366f1' }}>{srcEmoji} {srcLabel}</span>
+                              <span style={{ fontWeight: 600, color: hasMeeting ? '#15395e' : hasJira ? '#ea580c' : '#019cda' }}>{srcEmoji} {srcLabel}</span>
                               <span>·</span>
                               <span>{timeAgo(g.updatedAt || g.createdAt)}</span>
                             </div>
@@ -2259,7 +2296,7 @@ document.addEventListener('click', function(e) {
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                 <div>
-                  <h1 style={{ fontSize: 30, fontWeight: 800, margin: '0 0 4px', fontFamily: "'Inter',sans-serif", background: 'linear-gradient(135deg,#7c3aed,#a855f7,#6366f1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                  <h1 style={{ fontSize: 30, fontWeight: 800, margin: '0 0 4px', fontFamily: "'Inter',sans-serif", background: 'linear-gradient(135deg,#15395e,#0369a1,#019cda)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
                     {isAdmin ? 'All Projects' : 'My Projects'}
                   </h1>
                   <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>{isAdmin ? adminActivity.length : validProjects.length} project{(isAdmin ? adminActivity.length : validProjects.length) !== 1 ? 's' : ''} generated</p>
@@ -2267,45 +2304,6 @@ document.addEventListener('click', function(e) {
                 <button onClick={() => void loadHistory()} style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.45)', borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>↻ Refresh</button>
               </div>
 
-              {/* Search + filter + sort toolbar (non-admin only) */}
-              {!isAdmin && (
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 28, flexWrap: 'wrap' }}>
-                  {/* Search */}
-                  <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 360 }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input
-                      placeholder="Search projects…"
-                      value={projectSearch}
-                      onChange={e => setProjectSearch(e.target.value)}
-                      style={{ width: '100%', padding: '9px 12px 9px 36px', borderRadius: 10, border: '1px solid rgba(0,0,0,.1)', fontSize: 13, color: '#111827', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
-                      onFocus={e => (e.currentTarget.style.borderColor = '#a5b4fc')}
-                      onBlur={e => (e.currentTarget.style.borderColor = 'rgba(0,0,0,.1)')}
-                    />
-                  </div>
-                  {/* Filter pills */}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {(['all', 'prompt', 'meeting', 'jira'] as const).map(f => (
-                      <button key={f} onClick={() => setProjectFilter(f)}
-                        style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: '1px solid', cursor: 'pointer', transition: 'all .15s',
-                          background: projectFilter === f ? 'linear-gradient(135deg,#7c3aed,#6366f1)' : '#fff',
-                          color: projectFilter === f ? '#fff' : '#6b7280',
-                          borderColor: projectFilter === f ? 'transparent' : 'rgba(0,0,0,.1)',
-                          boxShadow: projectFilter === f ? '0 2px 8px rgba(99,102,241,.3)' : 'none',
-                        }}>
-                        {f === 'all' ? 'All' : f === 'prompt' ? '💬 Prompt' : f === 'meeting' ? '🎙 Meeting' : '🔗 Jira'}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Sort */}
-                  <select value={projectSort} onChange={e => setProjectSort(e.target.value as 'date'|'name')}
-                    style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(0,0,0,.1)', fontSize: 13, color: '#374151', background: '#fff', cursor: 'pointer', outline: 'none', marginLeft: 'auto' }}>
-                    <option value="date">Date edited</option>
-                    <option value="name">Name</option>
-                  </select>
-                </div>
-              )}
 
               {isAdmin ? (() => {
                 const userMap = new Map(adminUsers.map(u => [u.userId, u]))
@@ -2334,7 +2332,7 @@ document.addEventListener('click', function(e) {
                         {(['all', 'COMPLETED', 'PROCESSING', 'FAILED'] as const).map(s => (
                           <button key={s} onClick={() => setAdminProjectStatus(s)}
                             style={{ padding: '7px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: '1px solid', cursor: 'pointer',
-                              background: adminProjectStatus === s ? 'linear-gradient(135deg,#7c3aed,#6366f1)' : '#fff',
+                              background: adminProjectStatus === s ? 'linear-gradient(135deg,#15395e,#019cda)' : '#fff',
                               color: adminProjectStatus === s ? '#fff' : '#6b7280',
                               borderColor: adminProjectStatus === s ? 'transparent' : 'rgba(0,0,0,.1)' }}>
                             {s === 'all' ? 'Tous' : s}
@@ -2359,7 +2357,7 @@ document.addEventListener('click', function(e) {
                           return (
                             <div key={g.generationId || i}
                               style={{ borderRadius: 16, overflow: 'hidden', background: '#fff', border: '1px solid rgba(0,0,0,.08)', boxShadow: '0 2px 8px rgba(0,0,0,.04)', transition: 'all .2s', cursor: 'pointer' }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 32px rgba(99,102,241,.15)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(124,58,237,.3)' }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 32px rgba(1,156,218,.15)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(1,156,218,.3)' }}
                               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,.04)'; (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,0,0,.08)' }}
                               onClick={() => { if (g.generationId) { setLoadingProjectId(g.generationId); loadGeneration(g.generationId) } }}>
                               {/* Thumbnail */}
@@ -2376,13 +2374,13 @@ document.addEventListener('click', function(e) {
                                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity .2s', zIndex: 5 }}
                                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0'}>
-                                  <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 10, background: 'linear-gradient(135deg,#7c3aed,#6366f1)', color: '#fff' }}>Ouvrir →</span>
+                                  <span style={{ fontSize: 13, fontWeight: 700, padding: '8px 20px', borderRadius: 10, background: 'linear-gradient(135deg,#15395e,#019cda)', color: '#fff' }}>Ouvrir →</span>
                                 </div>
                                 <span style={{ position: 'absolute', top: 10, left: 10, fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: sc.bg, color: sc.text }}>
                                   {g.status}
                                 </span>
                                 <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.55)', borderRadius: 20, padding: '2px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#fff' }}>
+                                  <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#019cda', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#fff' }}>
                                     {creatorName.charAt(0).toUpperCase()}
                                   </div>
                                   <span style={{ fontSize: 10, color: '#fff', fontWeight: 600 }}>{creatorName}</span>
@@ -2418,95 +2416,15 @@ document.addEventListener('click', function(e) {
                     </div>
                   ))}
                 </div>
-              ) : (() => {
-                const filtered = validProjects
-                  .filter(g => {
-                    if (projectSearch) {
-                      const q = projectSearch.toLowerCase()
-                      if (!(g.name || projectName2(g.prompt)).toLowerCase().includes(q) && !(g.prompt || '').toLowerCase().includes(q)) return false
-                    }
-                    if (projectFilter !== 'all') {
-                      const hasMeeting = !!(g as any).meetingAnalysis
-                      const hasJira = !!(g as any).jiraIssueKey || !!((g as any).jiraIssueKeys?.length)
-                      if (projectFilter === 'meeting' && !hasMeeting) return false
-                      if (projectFilter === 'jira' && !hasJira) return false
-                      if (projectFilter === 'prompt' && (hasMeeting || hasJira)) return false
-                    }
-                    return true
-                  })
-                  .sort((a, b) => {
-                    if (projectSort === 'name') return (a.name || projectName2(a.prompt)).localeCompare(b.name || projectName2(b.prompt))
-                    return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
-                  })
-                const displayed = filtered.slice(0, showAllProjects ? undefined : 12)
-                if (filtered.length === 0) return (
-                  <div style={{ textAlign: 'center', padding: '80px 0', border: '1px dashed rgba(0,0,0,.08)', borderRadius: 20 }}>
-                    <div style={{ fontSize: 40, marginBottom: 14 }}>✦</div>
-                    <p style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>
-                      {validProjects.length === 0 ? 'No projects yet' : 'No results found'}
-                    </p>
-                    <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', marginBottom: 24 }}>
-                      {validProjects.length === 0 ? 'Generate your first app to get started' : 'Try adjusting your search or filters'}
-                    </p>
-                    {validProjects.length === 0 && (
-                      <button onClick={() => setHomeTab('create')} style={{ background: 'linear-gradient(135deg,#7c3aed,#6366f1)', color: '#fff', border: 'none', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-                        + New Project
-                      </button>
-                    )}
-                  </div>
-                )
-                return (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 22, maxWidth: 1300 }}>
-                      {displayed.map(g => (
-                        <div key={g.generationId}
-                          className="group"
-                          style={{ borderRadius: 16, overflow: 'hidden', background: '#ffffff', border: '1px solid rgba(0,0,0,.1)', cursor: 'pointer', transition: 'all .2s', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}
-                          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(124,58,237,.35)'; el.style.boxShadow = '0 8px 40px rgba(124,58,237,.14)'; el.style.transform = 'translateY(-2px)' }}
-                          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(0,0,0,.1)'; el.style.boxShadow = '0 2px 8px rgba(0,0,0,.04)'; el.style.transform = 'none' }}
-                          onClick={() => { setLoadingProjectId(g.generationId ?? null); loadGeneration(g.generationId!) }}>
-                          <div style={{ position: 'relative', height: 200, background: '#f1f5f9', overflow: 'hidden' }}>
-                            {g.generationId && g.status === 'COMPLETED' ? (
-                              <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
-                            ) : (
-                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}>
-                                <CardThumbnail prompt={g.prompt} />
-                              </div>
-                            )}
-                            {loadingProjectId === g.generationId && (
-                              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                                <div style={{ width: 26, height: 26, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                              </div>
-                            )}
-                            <div className="opacity-0 group-hover:opacity-100" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.52)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'opacity .2s', zIndex: 5 }}>
-                              <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'linear-gradient(135deg,#7c3aed,#6366f1)', color: '#fff', boxShadow: '0 4px 20px rgba(99,102,241,.4)' }}>Open →</span>
-                              <span style={{ fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, background: 'rgba(255,255,255,.95)', color: '#1f2937', border: '1px solid rgba(0,0,0,.12)', cursor: 'pointer' }}
-                                onClick={e => { e.stopPropagation(); downloadGenerationZip(g.generationId!, accessToken) }}>⬇ ZIP</span>
-                            </div>
-                          </div>
-                          <CardFooter g={g} />
-                        </div>
-                      ))}
-                    </div>
-                    {!showAllProjects && filtered.length > 12 && (
-                      <div style={{ textAlign: 'center', marginTop: 36 }}>
-                        <button onClick={() => setShowAllProjects(true)}
-                          style={{ background: 'rgba(124,58,237,.08)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)', borderRadius: 12, padding: '12px 36px', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
-                          Show all {filtered.length} projects →
-                        </button>
-                      </div>
-                    )}
-                    {showAllProjects && filtered.length > 12 && (
-                      <div style={{ textAlign: 'center', marginTop: 36 }}>
-                        <button onClick={() => setShowAllProjects(false)}
-                          style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.4)', borderRadius: 12, padding: '12px 36px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Show less</button>
-                      </div>
-                    )}
-                  </>
-                )
-              })()}
+              ) : (<MyProjectsGridHub
+                initialProjects={mappedProjects}
+                onSelectProject={id => { setLoadingProjectId(id); void loadGeneration(id); setShowCreateForm(true); setHomeTab('create') }}
+                onOpenInIDE={id => { setLoadingProjectId(id); void loadGeneration(id); setShowCreateForm(true); setHomeTab('create') }}
+                onDeleteProject={async id => { await deleteGeneration(id, accessToken); void loadHistory() }}
+              />)}
             </div>
           )}
+
 
           {/* ── ADMIN DASHBOARD ── */}
           {homeTab === 'admin' && isAdmin && (
@@ -2534,7 +2452,7 @@ document.addEventListener('click', function(e) {
                     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
                     a.download = 'users.csv'
                     a.click()
-                  }} style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.2)', color: '#5480ba', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  }} style={{ background: 'rgba(1,156,218,.1)', border: '1px solid rgba(1,156,218,.2)', color: '#5480ba', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                     ↓ Export CSV
                   </button>
                   <button onClick={() => void loadAdminDashboard()}
@@ -2570,10 +2488,10 @@ document.addEventListener('click', function(e) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 14 }}>
                 {([
                   { label: 'Total Users', value: adminStats?.totalUsers ?? '—', Icon: Users, color: '#5480ba', bg: 'rgba(84,128,186,.08)' },
-                  { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', Icon: FolderKanban, color: '#8b5cf6', bg: 'rgba(139,92,246,.08)' },
+                  { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', Icon: FolderKanban, color: '#0284c7', bg: 'rgba(1,156,218,.08)' },
                   { label: 'Completed', value: adminStats?.completedProjects ?? '—', Icon: CheckCircle2, color: '#10b981', bg: 'rgba(16,185,129,.08)' },
                   { label: 'Processing', value: adminStats?.processingProjects ?? '—', Icon: Clock, color: '#f59e0b', bg: 'rgba(245,158,11,.08)' },
-                  { label: 'Success Rate', value: adminStats?.successRate != null ? `${adminStats.successRate}%` : '—', Icon: BarChart3, color: '#8b5cf6', bg: 'rgba(139,92,246,.08)' },
+                  { label: 'Success Rate', value: adminStats?.successRate != null ? `${adminStats.successRate}%` : '—', Icon: BarChart3, color: '#0284c7', bg: 'rgba(1,156,218,.08)' },
                 ] as { label: string; value: string | number; Icon: React.FC<{ size?: number; color?: string }>; color: string; bg: string }[]).map(stat => (
                   <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '18px 16px' }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -2638,7 +2556,7 @@ document.addEventListener('click', function(e) {
                   { key: 'audit', label: 'Audit', Icon: FileText },
                 ] as { key: typeof adminActiveTab; label: string; Icon: React.FC<{ size?: number }> }[]).map(t => (
                   <button key={t.key} onClick={() => setAdminActiveTab(t.key)}
-                    style={{ background: adminActiveTab === t.key ? 'rgba(99,102,241,.12)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#5480ba' : '#64748b', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    style={{ background: adminActiveTab === t.key ? 'rgba(1,156,218,.12)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#5480ba' : '#64748b', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <t.Icon size={14} />
                     {t.label}
                   </button>
@@ -2719,12 +2637,12 @@ document.addEventListener('click', function(e) {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? '#f59e0b' : '#94a3b8', minWidth: 16 }}>#{i + 1}</span>
                                     <span style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>{name}</span>
-                                    {u.roles?.includes('admin') && <span style={{ fontSize: 10, background: 'rgba(99,102,241,.1)', color: '#6366f1', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
+                                    {u.roles?.includes('admin') && <span style={{ fontSize: 10, background: 'rgba(1,156,218,.1)', color: '#019cda', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
                                   </div>
                                   <span style={{ fontSize: 13, fontWeight: 800, color: '#5480ba' }}>{u.projectCount ?? 0}</span>
                                 </div>
                                 <div style={{ height: 4, borderRadius: 4, background: 'rgba(0,0,0,.05)', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', borderRadius: 4, background: i === 0 ? 'linear-gradient(to right,#6366f1,#a78bfa)' : '#cbd5e1', width: `${((u.projectCount ?? 0) / (maxProjects || 1)) * 100}%`, transition: 'width .5s' }} />
+                                  <div style={{ height: '100%', borderRadius: 4, background: i === 0 ? 'linear-gradient(to right,#019cda,#7dd3fc)' : '#cbd5e1', width: `${((u.projectCount ?? 0) / (maxProjects || 1)) * 100}%`, transition: 'width .5s' }} />
                                 </div>
                               </div>
                             )
@@ -2742,7 +2660,7 @@ document.addEventListener('click', function(e) {
                             <button key={d} onClick={() => {
                               setAdminChartDays(d)
                               void getAdminDailyChart(accessToken, d).then(setAdminDailyChart)
-                            }} style={{ background: adminChartDays === d ? '#6366f1' : 'rgba(0,0,0,.05)', border: 'none', color: adminChartDays === d ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                            }} style={{ background: adminChartDays === d ? '#019cda' : 'rgba(0,0,0,.05)', border: 'none', color: adminChartDays === d ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                               {d}j
                             </button>
                           ))}
@@ -2760,7 +2678,7 @@ document.addEventListener('click', function(e) {
                                 return (
                                   <div key={d.date} style={{ flex: 1, minWidth: adminChartDays === 30 ? 14 : 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={`${d.date}: ${d.count}`}>
                                     <span style={{ fontSize: 10, fontWeight: 700, color: '#5480ba', minHeight: 14 }}>{d.count > 0 ? d.count : ''}</span>
-                                    <div style={{ width: '100%', background: d.count > 0 ? 'linear-gradient(to top,#6366f1,#a78bfa)' : 'rgba(0,0,0,.06)', borderRadius: '4px 4px 0 0', height: `${Math.max((d.count / max) * 110, d.count ? 4 : 2)}px`, transition: 'height .3s' }} />
+                                    <div style={{ width: '100%', background: d.count > 0 ? 'linear-gradient(to top,#019cda,#7dd3fc)' : 'rgba(0,0,0,.06)', borderRadius: '4px 4px 0 0', height: `${Math.max((d.count / max) * 110, d.count ? 4 : 2)}px`, transition: 'height .3s' }} />
                                     <span style={{ fontSize: 9, color: '#94a3b8', whiteSpace: 'nowrap', opacity: showLabel ? 1 : 0 }}>{d.date.slice(5)}</span>
                                   </div>
                                 )
@@ -2811,12 +2729,12 @@ document.addEventListener('click', function(e) {
                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.03)'}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
                           {/* Avatar */}
-                          <div style={{ width: 38, height: 38, borderRadius: '50%', background: isUserAdmin ? '#6366f1' : '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
+                          <div style={{ width: 38, height: 38, borderRadius: '50%', background: isUserAdmin ? '#019cda' : '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
                           {/* Name + email */}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                               <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: isUserAdmin ? 'rgba(99,102,241,.12)' : 'rgba(84,128,186,.1)', color: isUserAdmin ? '#6366f1' : '#5480ba', flexShrink: 0 }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: isUserAdmin ? 'rgba(1,156,218,.12)' : 'rgba(84,128,186,.1)', color: isUserAdmin ? '#019cda' : '#5480ba', flexShrink: 0 }}>
                                 {isUserAdmin ? 'Admin' : 'Developer'}
                               </span>
                             </div>
@@ -2860,7 +2778,7 @@ document.addEventListener('click', function(e) {
                                 ? { ...x, roles: isUserAdmin ? (x.roles ?? []).filter(r => r !== 'admin') : [...(x.roles ?? []), 'admin'] }
                                 : x))
                             })
-                          }} style={{ background: isUserAdmin ? 'rgba(248,113,113,.06)' : 'rgba(99,102,241,.08)', border: isUserAdmin ? '1px solid rgba(248,113,113,.15)' : '1px solid rgba(99,102,241,.15)', color: isUserAdmin ? '#f87171' : '#6366f1', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                          }} style={{ background: isUserAdmin ? 'rgba(248,113,113,.06)' : 'rgba(1,156,218,.08)', border: isUserAdmin ? '1px solid rgba(248,113,113,.15)' : '1px solid rgba(1,156,218,.15)', color: isUserAdmin ? '#f87171' : '#019cda', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
                             {isUserAdmin ? '↓ Rétrograder' : '↑ Promouvoir'}
                           </button>
                           {/* Enable/Disable */}
@@ -2909,7 +2827,7 @@ document.addEventListener('click', function(e) {
                       <div style={{ display: 'flex', gap: 6 }}>
                         {(['all', 'COMPLETED', 'PROCESSING', 'FAILED'] as const).map(f => (
                           <button key={f} onClick={() => setAdminActivityFilter(f)}
-                            style={{ background: adminActivityFilter === f ? '#6366f1' : 'rgba(0,0,0,.05)', border: 'none', color: adminActivityFilter === f ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                            style={{ background: adminActivityFilter === f ? '#019cda' : 'rgba(0,0,0,.05)', border: 'none', color: adminActivityFilter === f ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                             {f === 'all' ? 'Tous' : f}
                           </button>
                         ))}
@@ -2925,7 +2843,7 @@ document.addEventListener('click', function(e) {
                       return (
                         <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', borderBottom: i < filteredActivity.length - 1 ? '1px solid rgba(0,0,0,.04)' : 'none' }}>
                           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0, background: sc.bg, color: sc.text }}>{g.status}</span>
-                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#6366f1', flexShrink: 0 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#019cda', flexShrink: 0 }}>
                             {uName.charAt(0).toUpperCase()}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
@@ -2985,7 +2903,7 @@ document.addEventListener('click', function(e) {
                                 .catch(() => {/* échec silencieux */})
                                 .finally(() => setRetryingId(null))
                             }}
-                            style={{ background: isRetrying ? 'rgba(0,0,0,.04)' : 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.2)', color: isRetrying ? '#94a3b8' : '#6366f1', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: isRetrying ? 'not-allowed' : 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+                            style={{ background: isRetrying ? 'rgba(0,0,0,.04)' : 'rgba(1,156,218,.08)', border: '1px solid rgba(1,156,218,.2)', color: isRetrying ? '#94a3b8' : '#019cda', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: isRetrying ? 'not-allowed' : 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
                             <Activity size={13} />{isRetrying ? 'En cours…' : 'Relancer'}
                           </button>
                         </div>
@@ -3045,9 +2963,9 @@ document.addEventListener('click', function(e) {
                   ROLLBACK: 'Rollback version',
                 }
                 const eventTypeColor: Record<string, string> = {
-                  GENERATION_STARTED: '#6366f1', GENERATION_COMPLETED: '#10b981', GENERATION_FAILED: '#ef4444',
+                  GENERATION_STARTED: '#019cda', GENERATION_COMPLETED: '#10b981', GENERATION_FAILED: '#ef4444',
                   CODE_EDIT: '#f59e0b', REPAIR: '#ec4899', DEPLOY: '#06b6d4',
-                  ACCESSIBILITY_AUDIT: '#8b5cf6', DOCS_GENERATED: '#84cc16', ROLLBACK: '#f97316',
+                  ACCESSIBILITY_AUDIT: '#0284c7', DOCS_GENERATED: '#84cc16', ROLLBACK: '#f97316',
                 }
                 return (
                   <div>
@@ -3058,7 +2976,7 @@ document.addEventListener('click', function(e) {
                           ...adminAudit.map(e => [e.eventId ?? '', e.type ?? '', e.generationId ?? '', e.timestamp ?? '', String(e.durationMs ?? 0)])]
                         const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
                         const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv); a.download = 'audit.csv'; a.click()
-                      }} style={{ background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.2)', color: '#5480ba', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      }} style={{ background: 'rgba(1,156,218,.1)', border: '1px solid rgba(1,156,218,.2)', color: '#5480ba', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                         ↓ Export CSV
                       </button>
                     </div>
@@ -3168,7 +3086,7 @@ document.addEventListener('click', function(e) {
             style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(2,6,23,.88)', backdropFilter: 'blur(20px)' }}
           >
             {/* Ambient glow */}
-            <div style={{ position: 'absolute', width: 480, height: 480, borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', width: 480, height: 480, borderRadius: '50%', background: 'radial-gradient(circle, rgba(1,156,218,.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
             <div
               onClick={e => e.stopPropagation()}
@@ -3176,8 +3094,8 @@ document.addEventListener('click', function(e) {
                 position: 'relative', borderRadius: 24, padding: '44px 40px 36px', maxWidth: 400, width: '90%',
                 textAlign: 'center',
                 background: 'linear-gradient(145deg, rgba(15,23,42,.98), rgba(30,27,75,.95))',
-                border: '1px solid rgba(99,102,241,.25)',
-                boxShadow: '0 0 0 1px rgba(255,255,255,.04) inset, 0 32px 80px rgba(0,0,0,.6), 0 0 60px rgba(99,102,241,.12)',
+                border: '1px solid rgba(1,156,218,.25)',
+                boxShadow: '0 0 0 1px rgba(255,255,255,.04) inset, 0 32px 80px rgba(0,0,0,.6), 0 0 60px rgba(1,156,218,.12)',
               }}
             >
               {/* Checkmark ring */}
@@ -3185,18 +3103,18 @@ document.addEventListener('click', function(e) {
                 <svg width="72" height="72" viewBox="0 0 72 72" style={{ position: 'absolute', inset: 0 }}>
                   <defs>
                     <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#a855f7" />
+                      <stop offset="0%" stopColor="#019cda" />
+                      <stop offset="100%" stopColor="#0369a1" />
                     </linearGradient>
                   </defs>
-                  <circle cx="36" cy="36" r="33" fill="rgba(99,102,241,.1)" stroke="url(#ringGrad)" strokeWidth="1.5" />
+                  <circle cx="36" cy="36" r="33" fill="rgba(1,156,218,.1)" stroke="url(#ringGrad)" strokeWidth="1.5" />
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#ringGrad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <defs>
                       <linearGradient id="checkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#6366f1" />
-                        <stop offset="100%" stopColor="#a855f7" />
+                        <stop offset="0%" stopColor="#019cda" />
+                        <stop offset="100%" stopColor="#0369a1" />
                       </linearGradient>
                     </defs>
                     <polyline points="20 6 9 17 4 12" stroke="url(#checkGrad)" />
@@ -3205,7 +3123,7 @@ document.addEventListener('click', function(e) {
               </div>
 
               {/* Title */}
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#818cf8', textTransform: 'uppercase', marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#38bdf8', textTransform: 'uppercase', marginBottom: 8 }}>
                 Generation Complete
               </div>
               <h2 style={{ fontSize: 28, fontWeight: 900, color: '#f1f5f9', margin: '0 0 8px', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
@@ -3217,9 +3135,9 @@ document.addEventListener('click', function(e) {
 
               {/* Quality score pill if available */}
               {liveScores?.globalScore != null && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderRadius: 20, background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.25)', marginBottom: 24 }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z"/></svg>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#818cf8' }}>Quality Score: {liveScores.globalScore}/100</span>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderRadius: 20, background: 'rgba(1,156,218,.12)', border: '1px solid rgba(1,156,218,.25)', marginBottom: 24 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z"/></svg>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>Quality Score: {liveScores.globalScore}/100</span>
                 </div>
               )}
 
@@ -3228,9 +3146,9 @@ document.addEventListener('click', function(e) {
                 onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }}
                 style={{
                   width: '100%', padding: '14px', borderRadius: 12, fontSize: 15, fontWeight: 700,
-                  background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                  background: 'linear-gradient(135deg, #019cda, #0369a1)',
                   color: '#fff', border: 'none', cursor: 'pointer', marginBottom: 10,
-                  boxShadow: '0 4px 24px rgba(99,102,241,.4)',
+                  boxShadow: '0 4px 24px rgba(1,156,218,.4)',
                   transition: 'opacity .2s',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 }}
@@ -3416,18 +3334,18 @@ document.addEventListener('click', function(e) {
                       style={{
                         position: 'relative', padding: '0 20px', height: 38, border: 'none', cursor: 'pointer',
                         fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
-                        background: active ? 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)' : 'transparent',
-                        color: active ? '#6366f1' : '#94a3b8',
+                        background: active ? 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)' : 'transparent',
+                        color: active ? '#019cda' : '#94a3b8',
                         transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
                         borderRadius: 10,
-                        boxShadow: active ? '0 2px 8px rgba(99,102,241,.12)' : 'none'
+                        boxShadow: active ? '0 2px 8px rgba(1,156,218,.12)' : 'none'
                       }}
                       onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
                       onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>{t.icon}{t.label}</span>
                       {active && (
-                        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #6366f1, #a855f7)', borderRadius: 3 }} />
+                        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'linear-gradient(90deg, #019cda, #0369a1)', borderRadius: 3 }} />
                       )}
                     </button>
                   )
@@ -3489,7 +3407,7 @@ document.addEventListener('click', function(e) {
                   onClick={() => setPreviewReloadCount(c => c + 1)}
                   title="Reload preview"
                   type="button"
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,.15)'; e.currentTarget.style.color = '#6366f1' }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(1,156,218,.15)'; e.currentTarget.style.color = '#019cda' }}
                   onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.color = '#64748b' }}
                 >
                   ↻
@@ -3658,7 +3576,7 @@ document.addEventListener('click', function(e) {
                               setShareCopied(true)
                               setTimeout(() => setShareCopied(false), 2000)
                             }}
-                            style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, background: shareCopied ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s', minWidth: 64 }}
+                            style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, background: shareCopied ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#019cda,#0369a1)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s', minWidth: 64 }}
                           >
                             {shareCopied ? '✓ Copied' : 'Copy'}
                           </button>
@@ -3684,16 +3602,16 @@ document.addEventListener('click', function(e) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
                       fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-                      background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                      background: 'linear-gradient(135deg, #15395e 0%, #0369a1 100%)',
                       border: 'none', color: '#fff',
                       cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: '0 2px 8px rgba(124,58,237,.35)'
+                      boxShadow: '0 2px 8px rgba(1,156,218,.35)'
                     }}
                     onClick={() => setRightTab('meeting')}
                     title="View meeting requirements"
                     type="button"
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(124,58,237,.45)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(124,58,237,.35)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(1,156,218,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(1,156,218,.35)' }}
                   >
                     <Mic size={14} />
                     MEETING
@@ -3705,15 +3623,15 @@ document.addEventListener('click', function(e) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 7, padding: '0 16px', height: 38, borderRadius: 10,
                       fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-                      background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', border: 'none', color: '#fff',
+                      background: 'linear-gradient(135deg, #019cda 0%, #0369a1 100%)', border: 'none', color: '#fff',
                       cursor: 'pointer', transition: 'all .25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      boxShadow: '0 2px 8px rgba(99,102,241,.35)'
+                      boxShadow: '0 2px 8px rgba(1,156,218,.35)'
                     }}
                     onClick={() => setIsTedOpen(true)}
                     title="Open TED AI Assistant"
                     type="button"
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(99,102,241,.45)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,.35)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 20px rgba(1,156,218,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(1,156,218,.35)' }}
                   >
                     <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6v6l4 2"/></svg>
                     TED
@@ -3777,7 +3695,7 @@ document.addEventListener('click', function(e) {
                         </button>
                         <button
                           onClick={() => downloadCleanZip(apiResult!.generationId!, accessToken)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #6366f1, #a855f7)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg, #019cda, #0369a1)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                         >
                           📦 Clean Stack ZIP
                         </button>
@@ -3837,35 +3755,55 @@ document.addEventListener('click', function(e) {
 
             {!isAdmin && <div className="flex flex-col shrink-0" style={{ width: 360, background: '#ffffff', borderLeft: '1px solid #e2e8f0', height: '100%', overflow: 'hidden' }}>
               <div style={{ height: 50, borderBottom: '1px solid #e2e8f0', background: '#fff', display: 'flex', alignItems: 'center' }}>
-                {([
-                  { id: 'chat', label: 'Chat' },
-                  { id: 'versions', label: 'Versions' },
-                  ...(selectedGeneration?.meetingAnalysis ? [{ id: 'meeting', label: 'Meeting' }] : []),
-                ] as { id: RightTab; label: string }[]).map((t) => {
-                  const active = rightTab === t.id
-                  return (
-                    <button
-                      key={t.id}
-                      style={{
-                        flex: 1, height: '100%', border: 'none', cursor: 'pointer', position: 'relative',
-                        fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
-                        background: active ? '#f8fafc' : 'transparent',
-                        color: active ? '#5480ba' : '#94a3b8',
-                        borderBottom: active ? '3px solid #5480ba' : '3px solid transparent',
-                        transition: 'all .2s',
-                      }}
-                      onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
-                      onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
-                      onClick={() => {
-                        setRightTab(t.id)
-                        if (t.id === 'versions' && selectedGenerationId) void loadVersions(selectedGenerationId)
-                      }}
-                      type="button"
-                    >
-                      {t.label}
-                    </button>
-                  )
-                })}
+                <div style={{ display: 'flex', flex: 1, height: '100%' }}>
+                  {([
+                    { id: 'chat', label: 'Chat' },
+                    { id: 'versions', label: 'Versions' },
+                    ...(selectedGeneration?.meetingAnalysis ? [{ id: 'meeting', label: 'Meeting' }] : []),
+                  ] as { id: RightTab; label: string }[]).map((t) => {
+                    const active = rightTab === t.id
+                    return (
+                      <button
+                        key={t.id}
+                        style={{
+                          flex: 1, height: '100%', border: 'none', cursor: 'pointer', position: 'relative',
+                          fontSize: 12, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
+                          background: active ? '#f8fafc' : 'transparent',
+                          color: active ? '#5480ba' : '#94a3b8',
+                          borderBottom: active ? '3px solid #5480ba' : '3px solid transparent',
+                          transition: 'all .2s',
+                        }}
+                        onMouseEnter={e => { if (!active) { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = '#f8fafc' } }}
+                        onMouseLeave={e => { if (!active) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent' } }}
+                        onClick={() => {
+                          setRightTab(t.id)
+                          if (t.id === 'versions' && selectedGenerationId) void loadVersions(selectedGenerationId)
+                        }}
+                        type="button"
+                      >
+                        {t.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                {activeProjectId && (
+                  <div style={{ paddingRight: 10, flexShrink: 0 }}>
+                    <CollaborationPanel
+                      projectId={activeProjectId}
+                      userName={username}
+                      connected={collabConnected}
+                      activeUsers={collabUsers}
+                      projectLock={projectLock}
+                      isOwner={
+                        (() => {
+                          const ownerId = selectedGeneration?.userId ?? (apiResult as any)?.userId
+                          return !ownerId || ownerId === userSub
+                        })()
+                      }
+                      accessToken={accessToken}
+                    />
+                  </div>
+                )}
               </div>
 
               {rightTab === 'chat' ? (
@@ -3896,6 +3834,9 @@ document.addEventListener('click', function(e) {
                   onPrefillUsed={() => setChatPrefill('')}
                   onClearZone={() => setSelectedZone(null)}
                   onPreviewOverride={setPreviewOverrideCSS}
+                  projectLock={projectLock}
+                  onEditStart={lockProject}
+                  onEditEnd={unlockProject}
                 />
               ) : (
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -3961,7 +3902,7 @@ document.addEventListener('click', function(e) {
                         )}
                         {nfReqs.length > 0 && (
                           <div style={sectionStyle}>
-                            <div style={headStyle}>Non-Functional Requirements <span style={tagStyle('#6366f1')}>{nfReqs.length}</span></div>
+                            <div style={headStyle}>Non-Functional Requirements <span style={tagStyle('#019cda')}>{nfReqs.length}</span></div>
                             <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
                               {nfReqs.map((r: any, i: number) => (
                                 <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.5 }}>{getText(r)}</li>
@@ -4020,7 +3961,7 @@ document.addEventListener('click', function(e) {
                         )}
                         {questions.length > 0 && (
                           <div style={sectionStyle}>
-                            <div style={headStyle}>Open Questions <span style={tagStyle('#8b5cf6')}>{questions.length}</span></div>
+                            <div style={headStyle}>Open Questions <span style={tagStyle('#0284c7')}>{questions.length}</span></div>
                             <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
                               {questions.map((q: any, i: number) => (
                                 <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.5 }}>{getText(q)}</li>
@@ -4106,13 +4047,13 @@ document.addEventListener('click', function(e) {
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '10px 16px', borderRadius: 12,
                 background: 'linear-gradient(135deg, rgba(15,23,42,.96), rgba(30,27,75,.94))',
-                border: '1px solid rgba(99,102,241,.35)',
-                boxShadow: '0 8px 32px rgba(0,0,0,.4), 0 0 24px rgba(99,102,241,.15)',
+                border: '1px solid rgba(1,156,218,.35)',
+                boxShadow: '0 8px 32px rgba(0,0,0,.4), 0 0 24px rgba(1,156,218,.15)',
                 animation: 'fadeUp .25s ease',
               }}
             >
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(99,102,241,.15)', border: '1px solid rgba(99,102,241,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(1,156,218,.15)', border: '1px solid rgba(1,156,218,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               </div>

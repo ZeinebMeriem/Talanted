@@ -6,11 +6,14 @@ export default {
     extend: {
       // Semantic Colors
       colors: {
+        // Talanted brand tokens (matches template)
+        'primary-blue': '#15395e',
+        'accent-blue':  '#019cda',
         // Brand colors
         primary: {
-          DEFAULT: '#5480ba',
-          dark: '#3d6494',
-          light: '#7fa3d4',
+          DEFAULT: '#019cda',
+          dark: '#15395e',
+          light: '#38bdf8',
           50: '#f0f5fb',
           100: '#d9e6f5',
           200: '#b3ceea',
@@ -86,6 +89,7 @@ export default {
       // Spacing scale
       spacing: {
         0: '0',
+        0.2: '1px',
         0.5: '2px',
         1: '4px',
         1.5: '6px',
@@ -94,12 +98,18 @@ export default {
         3: '12px',
         3.5: '14px',
         4: '16px',
+        4.5: '18px',
         5: '20px',
+        5.5: '22px',
         6: '24px',
+        6.5: '26px',
         7: '28px',
+        7.5: '30px',
         8: '32px',
+        8.5: '34px',
         9: '36px',
         10: '40px',
+        11: '44px',
         12: '48px',
         14: '56px',
         16: '64px',
@@ -107,6 +117,17 @@ export default {
         24: '96px',
         28: '112px',
         32: '128px',
+        36: '144px',
+        40: '160px',
+        44: '176px',
+        48: '192px',
+        52: '208px',
+        56: '224px',
+        60: '240px',
+        64: '256px',
+        72: '288px',
+        80: '320px',
+        96: '384px',
       },
       // Shadows
       boxShadow: {

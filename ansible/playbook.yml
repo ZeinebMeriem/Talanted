@@ -108,6 +108,23 @@
         rsync_opts:
           - "--chown=azureuser:azureuser"
 
+    # ── 7a. Copy nginx config ─────────────────────────────────────────────────
+    - name: Create nginx directory
+      file:
+        path: "{{ app_dir }}/nginx"
+        state: directory
+        owner: azureuser
+        group: azureuser
+        mode: "0755"
+
+    - name: Copy nginx config
+      copy:
+        src: ../nginx/nginx.conf
+        dest: "{{ app_dir }}/nginx/nginx.conf"
+        owner: azureuser
+        group: azureuser
+        mode: "0644"
+
     # ── 7. Copy monitoring configs ────────────────────────────────────────────
     - name: Create monitoring directories
       file:

@@ -115,32 +115,28 @@ export const Modal: React.FC<ModalProps> = ({
         ref={modalRef}
         className={`
           w-full ${sizeMap[size]} max-h-[90vh] overflow-auto
-          rounded-2xl bg-white dark:bg-slate-900
+          rounded-2xl bg-white dark:bg-stone-900
           shadow-2xl
           animate-modal-scale
-          border border-white/40 dark:border-slate-800/40
+          border border-stone-200 dark:border-stone-800
         `}
-        style={{
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), inset 0 1px 2px rgba(255,255,255,0.3)',
-          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
-        }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
       >
         {title && (
-          <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <h2 id="modal-title" className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          <div className="px-6 py-5 border-b border-stone-100 dark:border-stone-800 flex items-center justify-between">
+            <h2 id="modal-title" className="text-sm font-bold text-stone-900 dark:text-stone-100">
               {title}
             </h2>
             <button
               className="
-                text-slate-400 hover:text-slate-600 dark:hover:text-slate-300
-                text-2xl leading-none
-                hover:bg-slate-100 dark:hover:bg-slate-800
-                p-1 rounded-lg
+                text-stone-400 hover:text-stone-600 dark:hover:text-stone-300
+                text-lg leading-none
+                hover:bg-stone-100 dark:hover:bg-stone-800
+                p-1.5 rounded-lg
                 transition-all duration-200
-                focus-visible:outline-2 focus-visible:outline-blue-500
+                focus-visible:outline-2 focus-visible:outline-[#019cda]
               "
               onClick={onClose}
               aria-label="Close dialog"
@@ -156,7 +152,7 @@ export const Modal: React.FC<ModalProps> = ({
         </div>
 
         {footer && (
-          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 rounded-b-2xl flex gap-3 justify-end">
+          <div className="px-6 py-4 border-t border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/50 rounded-b-2xl flex gap-3 justify-end">
             {footer}
           </div>
         )}

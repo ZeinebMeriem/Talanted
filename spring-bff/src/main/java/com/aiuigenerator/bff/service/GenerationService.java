@@ -1683,7 +1683,7 @@ public class GenerationService {
     }
 
     public List<Generation> listGenerations(String userId) {
-        return generationRepo.findByUserIdOrderByCreatedAtDesc(userId);
+        return generationRepo.findAccessibleByUserId(userId);
     }
 
     public void deleteGeneration(String generationId) {
@@ -1713,6 +1713,34 @@ public class GenerationService {
         g.setShareEnabled(false);
         g.setUpdatedAt(Instant.now());
         generationRepo.save(g);
+    }
+
+    public List<String> getCollaborators(String generationId) {
+        Generation g = getGeneration(generationId);
+        List<String> c = g.getCollaborators();
+        return c != null ? c : List.of();
+    }
+
+    public void addCollaborator(String generationId, String collaboratorUserId) {
+        Generation g = getGeneration(generationId);
+        List<String> collaborators = g.getCollaborators();
+        if (collaborators == null) collaborators = new ArrayList<>();
+        if (!collaborators.contains(collaboratorUserId)) {
+            collaborators.add(collaboratorUserId);
+            g.setCollaborators(collaborators);
+            g.setUpdatedAt(Instant.now());
+            generationRepo.save(g);
+        }
+    }
+
+    public void removeCollaborator(String generationId, String collaboratorUserId) {
+        Generation g = getGeneration(generationId);
+        List<String> collaborators = g.getCollaborators();
+        if (collaborators != null && collaborators.remove(collaboratorUserId)) {
+            g.setCollaborators(collaborators);
+            g.setUpdatedAt(Instant.now());
+            generationRepo.save(g);
+        }
     }
 
     public void saveMeetingAnalysis(String generationId, String meetingAnalysis) {

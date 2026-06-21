@@ -24,64 +24,56 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const sizeMap = {
-      sm: 'px-4 py-2 text-sm',
-      md: 'px-6 py-2.5 text-base',
-      lg: 'px-8 py-3 text-lg',
+      sm: 'px-3.5 py-2 text-[11px]',
+      md: 'px-4 py-2.5 text-xs',
+      lg: 'px-6 py-3 text-sm',
     }
 
     const variantMap = {
       primary: `
-        bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600
-        text-white font-semibold
-        shadow-lg shadow-blue-500/30
-        hover:shadow-2xl hover:shadow-blue-500/40
-        hover:scale-105
-        active:scale-95
+        bg-[#019cda] hover:bg-[#008fc9]
+        text-white font-bold
+        shadow-sm shadow-sky-500/10
+        active:scale-[0.99]
         transition-all duration-200
         border-0
       `,
       secondary: `
-        bg-gradient-to-r from-slate-100 to-slate-200
-        text-slate-700 font-semibold
-        hover:from-slate-200 hover:to-slate-300
-        hover:scale-105
-        active:scale-95
+        bg-stone-100 hover:bg-stone-200
+        text-stone-800 font-bold
+        border border-stone-200
+        active:scale-[0.99]
         transition-all duration-200
-        border-0
       `,
       danger: `
-        bg-gradient-to-r from-red-500 to-rose-600
-        text-white font-semibold
-        shadow-lg shadow-red-500/30
-        hover:shadow-2xl hover:shadow-red-500/40
-        hover:scale-105
-        active:scale-95
+        bg-red-500 hover:bg-red-600
+        text-white font-bold
+        shadow-sm shadow-red-500/15
+        active:scale-[0.99]
         transition-all duration-200
         border-0
       `,
       ghost: `
-        bg-transparent text-slate-600 font-medium
-        hover:bg-slate-100 hover:text-slate-800
-        active:bg-slate-200
+        bg-transparent text-stone-600 font-semibold
+        hover:bg-stone-100 hover:text-stone-800
+        active:bg-stone-200
         transition-all duration-200
         border border-transparent
-        hover:border-slate-300
       `,
       outline: `
-        bg-transparent text-blue-600 font-semibold
-        border border-blue-300
-        hover:border-blue-500 hover:bg-blue-50
-        hover:scale-105
-        active:scale-95
+        bg-transparent text-[#019cda] font-bold
+        border border-[#019cda]/30
+        hover:border-[#019cda] hover:bg-sky-50
+        active:scale-[0.99]
         transition-all duration-200
       `,
     }
 
     const baseClass = `
-      inline-flex items-center justify-center gap-2 rounded-lg
-      font-medium transition-all duration-200
-      disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100
-      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500
+      inline-flex items-center justify-center gap-1.5 rounded-xl
+      font-bold transition-all duration-200 cursor-pointer
+      disabled:opacity-50 disabled:cursor-not-allowed
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#019cda]
       whitespace-nowrap
     `
 

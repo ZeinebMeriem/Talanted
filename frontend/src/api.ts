@@ -909,6 +909,44 @@ export async function unshareProject(generationId: string, accessToken?: string)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
 }
 
+export type CollaboratorInfo = { userId: string; username: string }
+
+export async function getCollaborators(generationId: string, accessToken?: string): Promise<CollaboratorInfo[]> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/collaborators`, {
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) return []
+  const data = await readJsonOrNull(res)
+  return Array.isArray(data) ? (data as CollaboratorInfo[]) : []
+}
+
+export async function addCollaborator(generationId: string, userId: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/collaborators`, {
+    method: 'POST',
+    headers: { ...authHeaders(accessToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function removeCollaborator(generationId: string, userId: string, accessToken?: string): Promise<void> {
+  const res = await fetch(`${BFF_BASE_URL}/api/generations/${encodeURIComponent(generationId)}/collaborators/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+}
+
+export async function searchUsers(q: string, accessToken?: string): Promise<CollaboratorInfo[]> {
+  if (!q || q.length < 2) return []
+  const res = await fetch(`${BFF_BASE_URL}/api/users/search?q=${encodeURIComponent(q)}`, {
+    headers: authHeaders(accessToken),
+  })
+  if (!res.ok) return []
+  const data = await readJsonOrNull(res)
+  return Array.isArray(data) ? (data as CollaboratorInfo[]) : []
+}
+
 export async function getPublicShare(token: string): Promise<PublicShareInfo> {
   const res = await fetch(`${BFF_BASE_URL}/api/public/share/${encodeURIComponent(token)}`)
   const data: unknown = await readJsonOrNull(res)

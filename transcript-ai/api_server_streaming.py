@@ -1240,6 +1240,28 @@ def handle_inject_spec_context(data):
         print(f"❌ Error injecting spec context: {e}")
 
 
+@app.route('/api/generate-specification', methods=['POST'])
+def generate_specification_rest():
+    """REST endpoint — same logic as the WebSocket handler but fetch-compatible."""
+    data = request.get_json() or {}
+    pipeline_results = data.get('pipeline_results', {})
+    try:
+        gen = SpecificationGenerator()
+        diagram_path = None
+        diagram_file = pipeline_results.get('diagram_file')
+        if diagram_file:
+            candidate = os.path.join(PipelineConfig.DIAGRAMS_DIR, diagram_file)
+            if os.path.exists(candidate):
+                diagram_path = candidate
+        pdf_path = gen.generate(pipeline_results=pipeline_results, diagram_path=diagram_path)
+        filename = os.path.basename(pdf_path)
+        return jsonify({'filename': filename, 'download_url': f'/api/reports/{filename}'})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @socketio.on('generate_specification')
 def handle_generate_specification(data):
     """Generate a Project Specification PDF from the pipeline results.

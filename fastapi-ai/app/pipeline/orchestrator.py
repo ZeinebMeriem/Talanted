@@ -23,6 +23,7 @@ from .agents import (
     PlannerAgent,
     DesignSystemAgent,
     LlmCodegenAgent,
+    ValidatorAgent,
     ImageAgent,
     UIEvaluatorAgent,
 )
@@ -53,6 +54,7 @@ class Orchestrator:
         self.planner = PlannerAgent(planner_provider)
         self.design_system = DesignSystemAgent(planner_provider)
         self.llm_codegen = LlmCodegenAgent(coder_provider)
+        self.validator = ValidatorAgent()
         self.image_agent = ImageAgent()
         self.ui_evaluator = UIEvaluatorAgent(planner_provider)
         self.entity_extractor = EntityExtractorAgent(planner_provider)
@@ -310,6 +312,23 @@ class Orchestrator:
                 CodeFile(path="styles.css", content="/* generation failed */"),
             ])
         durations["codegen_ms"] = int((time.perf_counter() - t_codegen) * 1000)
+
+        # Validation — check HTML/CSS/JS structure of generated files
+        t_validate = time.perf_counter()
+        _emit("validate", 83, "Validating generated code…")
+        try:
+            validated_files = []
+            for cf in code.files:
+                ok, issues, fixed_content = self.validator.validate_and_fix(cf.path, cf.content)
+                if not ok:
+                    logger.warning("ValidatorAgent: %s — %s", cf.path, "; ".join(issues))
+                validated_files.append(CodeFile(path=cf.path, content=fixed_content))
+            code = CodeBundle(files=validated_files)
+            pipeline.append("validator")
+        except Exception:  # noqa: BLE001
+            logger.exception("ValidatorAgent failed, continuing with unvalidated code")
+            pipeline.append("validator:failed")
+        durations["validate_ms"] = int((time.perf_counter() - t_validate) * 1000)
 
         # Image injection — replace placeholders with real photos
         t_images = time.perf_counter()

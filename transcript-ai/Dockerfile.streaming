@@ -11,7 +11,10 @@ RUN pip install --no-cache-dir \
     flask==3.0.0 \
     flask-cors==4.0.0 \
     requests>=2.31.0 \
-    python-dotenv>=1.0.0
+    python-dotenv>=1.0.0 \
+    reportlab>=4.0.0
+
+RUN mkdir -p /app/pipeline_outputs/reports
 
 COPY api_browser.py .
 

@@ -273,21 +273,22 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 58 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "rate(mongodb_op_counters_total[1m])", "refId": "A", "legendFormat": "{{type}}" }
+        { "expr": "rate(mongodb_driver_commands_seconds_count{job=\"spring-bff\"}[1m])", "refId": "A", "legendFormat": "{{command}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "lineWidth": 2 } } },
       "options": { "tooltip": { "mode": "multi" } }
     },
 
     {
-      "id": 63, "type": "timeseries", "title": "MongoDB Memory",
+      "id": 63, "type": "timeseries", "title": "MongoDB Connection Pool",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 58 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "mongodb_process_virtual_memory_bytes", "refId": "A", "legendFormat": "Virtual" },
-        { "expr": "mongodb_process_resident_memory_bytes", "refId": "B", "legendFormat": "Resident" }
+        { "expr": "mongodb_driver_pool_size{job=\"spring-bff\"}", "refId": "A", "legendFormat": "Pool Size" },
+        { "expr": "mongodb_driver_pool_checkedout{job=\"spring-bff\"}", "refId": "B", "legendFormat": "Checked Out" },
+        { "expr": "mongodb_driver_pool_waitqueuesize{job=\"spring-bff\"}", "refId": "C", "legendFormat": "Wait Queue" }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } } }
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } }
     },
 
     { "type": "row", "title": "🖥️ System — Node Exporter", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 66 }, "id": 104, "collapsed": false },
@@ -317,7 +318,7 @@
       "gridPos": { "h": 4, "w": 8, "x": 0, "y": 75 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "node_filesystem_avail_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"}", "refId": "A", "legendFormat": "Available" }
+        { "expr": "node_filesystem_avail_bytes{mountpoint=\"/run/desktop/mnt/host/c\",fstype!=\"tmpfs\"}", "refId": "A", "legendFormat": "Available" }
       ],
       "fieldConfig": { "defaults": { "unit": "bytes", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 5368709120 }, { "color": "green", "value": 10737418240 }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }

@@ -1,5 +1,5 @@
 import { useAuth } from 'react-oidc-context'
-import { AiEditor } from './AiEditor'
+import { AiEditor as RemixApp } from './AiEditor'
 import { JiraImportPage } from './JiraImportPage'
 import LandingPage from './pages/LandingPage'
 import SharePage from './pages/SharePage'
@@ -37,7 +37,7 @@ function AuthenticatedApp() {
       <>
         <style>{spinnerCss}</style>
         <div style={{ minHeight: '100vh', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid rgba(99,102,241,0.15)', borderTopColor: '#6366f1', animation: 'spin-ring 0.8s linear infinite' }} />
+          <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid rgba(1,156,218,0.15)', borderTopColor: '#019cda', animation: 'spin-ring 0.8s linear infinite' }} />
         </div>
       </>
     )
@@ -47,7 +47,7 @@ function AuthenticatedApp() {
     return (
       <div style={{ minHeight: '100vh', background: '#fafafa', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, fontFamily: 'Inter, sans-serif' }}>
         <div style={{ color: '#ef4444', fontSize: 14 }}>Auth error: {String(auth.error)}</div>
-        <button onClick={() => void auth.signinRedirect()} style={{ padding: '10px 24px', background: 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>
+        <button onClick={() => void auth.signinRedirect()} style={{ padding: '10px 24px', background: 'linear-gradient(135deg,#019cda,#0369a1)', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>
           Try again
         </button>
       </div>
@@ -55,7 +55,67 @@ function AuthenticatedApp() {
   }
 
   if (!auth.isAuthenticated) {
-    return <LandingPage onSignIn={() => void auth.signinRedirect()} />
+    async function signinWithCredentials(identifier: string, password: string): Promise<string | null> {
+      const authority = import.meta.env.VITE_OIDC_AUTHORITY as string
+      const clientId = import.meta.env.VITE_OIDC_CLIENT_ID as string
+      try {
+        const res = await fetch(`${authority}/protocol/openid-connect/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'password',
+            client_id: clientId,
+            username: identifier,
+            password,
+            scope: 'openid profile email',
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({})) as Record<string, string>
+          return err.error_description || 'Invalid email or password.'
+        }
+        const tokens = await res.json() as Record<string, string | number>
+        // Decode JWT payload to get profile
+        const parseJwt = (t: string) => { try { return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))) } catch { return {} } }
+        const profile = parseJwt(tokens.id_token as string || tokens.access_token as string)
+        const storageKey = `oidc.user:${authority}:${clientId}`
+        const userObj = {
+          id_token: tokens.id_token,
+          session_state: tokens.session_state ?? null,
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          token_type: 'Bearer',
+          scope: tokens.scope,
+          profile,
+          expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in as number),
+        }
+        sessionStorage.setItem(storageKey, JSON.stringify(userObj))
+        window.location.reload()
+        return null
+      } catch {
+        return 'Network error. Please try again.'
+      }
+    }
+    async function register(
+      firstName: string, lastName: string, email: string, username: string, password: string
+    ): Promise<string | null> {
+      try {
+        const bff = import.meta.env.VITE_BFF_BASE_URL as string || 'http://localhost:8081'
+        const res = await fetch(`${bff}/api/users/public/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firstName, lastName, email, username, password }),
+        })
+        const data = await res.json() as Record<string, string>
+        if (!res.ok) return data.error || 'Registration failed.'
+        // Auto-login with ROPC after successful registration
+        return signinWithCredentials(email, password)
+      } catch {
+        return 'Network error. Please try again.'
+      }
+    }
+
+    return <LandingPage onSignIn={() => void auth.signinRedirect()} onSignInWithCredentials={signinWithCredentials} onRegister={register} />
   }
 
   const profile = auth.user?.profile as any
@@ -95,12 +155,8 @@ function AuthenticatedApp() {
     return <JiraImportPage isOpen={true} onClose={() => window.location.assign('/')} accessToken={auth.user?.access_token} />
   }
 
-  const params = new URLSearchParams(window.location.search)
-  const generationIdFromUrl = params.get('gen')
-  const initialHomeTab = params.get('mode') as 'create' | 'projects' | 'profile' | 'admin' | null
-
   return (
-    <AiEditor
+    <RemixApp
       accessToken={auth.user?.access_token}
       username={username}
       email={email}
@@ -109,8 +165,6 @@ function AuthenticatedApp() {
       userSub={userSub}
       roles={roles}
       onLogout={doLogout}
-      initialGenerationId={generationIdFromUrl}
-      initialHomeTab={initialHomeTab || undefined}
     />
   )
 }

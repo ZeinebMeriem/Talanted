@@ -7,6 +7,7 @@ from .text_prep_agent import TextPrepAgent
 from .planner_agent import PlannerAgent
 from .design_system_agent import DesignSystemAgent
 from .codegen_agent import LlmCodegenAgent
+from .validator_agent import ValidatorAgent
 from .image_agent import ImageAgent
 from .ui_evaluator_agent import UIEvaluatorAgent
 from .entity_extractor_agent import EntityExtractorAgent
@@ -21,6 +22,7 @@ __all__ = [
     "PlannerAgent",
     "DesignSystemAgent",
     "LlmCodegenAgent",
+    "ValidatorAgent",
     "ImageAgent",
     "UIEvaluatorAgent",
     "EntityExtractorAgent",

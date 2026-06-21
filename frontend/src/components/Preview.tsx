@@ -107,9 +107,9 @@ const INSPECT_SCRIPT = `
     const d = document.createElement('div');
     d.style.cssText = [
       'position:fixed;pointer-events:none;display:none',
-      'border:2px solid #6366f1',
-      'background:rgba(99,102,241,0.1)',
-      'box-shadow:0 0 0 3px rgba(99,102,241,0.25),inset 0 0 0 1px rgba(99,102,241,0.3)',
+      'border:2px solid #019cda',
+      'background:rgba(1,156,218,0.1)',
+      'box-shadow:0 0 0 3px rgba(1,156,218,0.25),inset 0 0 0 1px rgba(1,156,218,0.3)',
       'border-radius:3px',
       'z-index:2147483646',
     ].join(';');
@@ -121,7 +121,7 @@ const INSPECT_SCRIPT = `
     const d = document.createElement('div');
     d.style.cssText = [
       'position:fixed;pointer-events:none;display:none',
-      'background:#6366f1;color:#fff',
+      'background:#019cda;color:#fff',
       'font:600 11px/1 -apple-system,sans-serif',
       'padding:3px 7px;border-radius:4px',
       'white-space:nowrap',
@@ -522,7 +522,7 @@ export const Preview: React.FC<PreviewProps> = ({
             <button
               onClick={onRepair}
               disabled={isRepairing}
-              style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: isRepairing ? 'rgba(99,102,241,.4)' : 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: isRepairing ? 'not-allowed' : 'pointer' }}
+              style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: isRepairing ? 'rgba(1,156,218,.4)' : 'linear-gradient(135deg,#019cda,#0369a1)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: isRepairing ? 'not-allowed' : 'pointer' }}
             >
               {isRepairing ? '⟳ Fixing…' : '🔧 Fix with AI'}
             </button>
@@ -579,7 +579,7 @@ export const Preview: React.FC<PreviewProps> = ({
                     <button
                       onClick={onRepair}
                       disabled={isRepairing}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 24px', borderRadius: 10, border: 'none', background: isRepairing ? 'rgba(99,102,241,.5)' : 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: isRepairing ? 'not-allowed' : 'pointer', boxShadow: '0 4px 16px rgba(99,102,241,.35)', marginBottom: 12 }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 24px', borderRadius: 10, border: 'none', background: isRepairing ? 'rgba(1,156,218,.5)' : 'linear-gradient(135deg,#019cda,#0369a1)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: isRepairing ? 'not-allowed' : 'pointer', boxShadow: '0 4px 16px rgba(1,156,218,.35)', marginBottom: 12 }}
                     >
                       {isRepairing ? '⟳ AI is fixing the build…' : '🔧 Fix Build Errors with AI'}
                     </button>
@@ -597,10 +597,10 @@ export const Preview: React.FC<PreviewProps> = ({
             {inspectMode && !selectedElement && (
               <div style={{
                 position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-                background: 'linear-gradient(135deg,#6366f1,#a855f7)',
+                background: 'linear-gradient(135deg,#019cda,#0369a1)',
                 color: '#fff', padding: '8px 18px', borderRadius: 999,
                 fontSize: 12, fontWeight: 600, letterSpacing: '0.01em',
-                boxShadow: '0 4px 20px rgba(99,102,241,.45)',
+                boxShadow: '0 4px 20px rgba(1,156,218,.45)',
                 display: 'flex', alignItems: 'center', gap: 8, zIndex: 50,
                 pointerEvents: 'none',
               }}>
@@ -631,7 +631,7 @@ export const Preview: React.FC<PreviewProps> = ({
                 }}>
                   {/* Element badges */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 }}>
-                    <span style={{ padding: '2px 8px', borderRadius: 5, background: '#6366f1', color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 5, background: '#019cda', color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }}>
                       {selectedElement.tagName}
                     </span>
                     {selectedElement.id && (
@@ -655,7 +655,7 @@ export const Preview: React.FC<PreviewProps> = ({
                     {(['style', 'layout'] as const).map(tab => (
                       <button key={tab} onClick={() => setActiveTab(tab)} style={{
                         padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                        background: activeTab === tab ? '#6366f1' : 'transparent',
+                        background: activeTab === tab ? '#019cda' : 'transparent',
                         color: activeTab === tab ? '#fff' : '#64748b',
                         transition: 'all .15s',
                       }}>
@@ -735,7 +735,7 @@ export const Preview: React.FC<PreviewProps> = ({
                         {[['left','←'],['center','↔'],['right','→']].map(([a,ic]) => (
                           <button key={a} onClick={() => handleStyleChange('textAlign', a)} style={{
                             flex: 1, padding: '5px 0', border: 'none', cursor: 'pointer', fontSize: 12,
-                            background: (editedStyles.textAlign || selectedElement.styles?.textAlign) === a ? '#6366f1' : '#fff',
+                            background: (editedStyles.textAlign || selectedElement.styles?.textAlign) === a ? '#019cda' : '#fff',
                             color: (editedStyles.textAlign || selectedElement.styles?.textAlign) === a ? '#fff' : '#64748b',
                           }}>{ic}</button>
                         ))}
@@ -813,7 +813,7 @@ export const Preview: React.FC<PreviewProps> = ({
                       setEditedStyles({})
                     }} style={{
                       padding: '5px 14px', borderRadius: 7, border: 'none', cursor: isApplying ? 'default' : 'pointer',
-                      background: isApplying ? '#a5b4fc' : 'linear-gradient(135deg,#6366f1,#a855f7)',
+                      background: isApplying ? '#7dd3fc' : 'linear-gradient(135deg,#019cda,#0369a1)',
                       color: '#fff', fontSize: 11, fontWeight: 700,
                       display: 'flex', alignItems: 'center', gap: 6, opacity: isApplying ? 0.75 : 1,
                     }}>

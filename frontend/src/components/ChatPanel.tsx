@@ -25,6 +25,9 @@ interface ChatPanelProps {
   onPrefillUsed?: () => void
   onClearZone?: () => void
   onPreviewOverride?: (css: string | null) => void
+  projectLock?: { lockedBy: string } | null
+  onEditStart?: () => void
+  onEditEnd?: () => void
 }
 
 // ── Color palettes ──────────────────────────────────────────────────────────
@@ -238,6 +241,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   onPrefillUsed,
   onClearZone,
   onPreviewOverride,
+  projectLock,
+  onEditStart,
+  onEditEnd,
 }) => {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -362,6 +368,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const sendChat = useCallback(async () => {
     if (!chatInput.trim() || !selectedGenerationId || isSending) return
 
+    // Block if another user holds the edit lock
+    if (projectLock && projectLock.lockedBy) {
+      onFileUpdated([...chatMessages, { role: 'user', text: chatInput }, {
+        role: 'ai',
+        text: `Locked by ${projectLock.lockedBy} — please wait until they finish editing.`,
+      }], [])
+      setChatInput('')
+      return
+    }
+
+    onEditStart?.()
     const userMsg: ChatMsg = { role: 'user', text: chatInput }
     setChatInput('')
     setIsSending(true)
@@ -400,8 +417,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       onFileUpdated([...chatMessages, userMsg, errorMsg], [])
     } finally {
       setIsSending(false)
+      onEditEnd?.()
     }
-  }, [chatInput, isSending, selectedZone, selectedGenerationId, selectedModel, accessToken, chatMessages, onFileUpdated, setDiffEdits, setDiffVisible, setChatInput])
+  }, [chatInput, isSending, selectedZone, selectedGenerationId, selectedModel, accessToken, chatMessages, projectLock, onFileUpdated, onEditStart, onEditEnd, setDiffEdits, setDiffVisible, setChatInput])
 
   const zoneSuggestions = selectedZone
     ? (ZONE_SUGGESTIONS[selectedZone.label] ?? FALLBACK_SUGGESTIONS)
@@ -604,14 +622,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     // quick / zone chip — just show the instruction preview
     return (
       <div style={{ maxWidth: 200 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', marginBottom: 6 }}>{data.emoji} {data.label}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#38bdf8', marginBottom: 6 }}>{data.emoji} {data.label}</div>
         <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>{String(data.instruction).slice(0, 100)}…</div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-slate-900 to-slate-800">
+    <div className="flex flex-col h-full bg-gradient-to-b from-[#0d1f30] to-[#091828]">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ minHeight: 0 }}>
         {chatMessages.map((msg, idx) => (
@@ -620,10 +638,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               style={{
                 maxWidth: '82%', padding: '10px 14px', borderRadius: 12, fontSize: 13, lineHeight: 1.5,
                 background: msg.role === 'user'
-                  ? 'linear-gradient(135deg,#6366f1,#a855f7)'
-                  : 'rgba(255,255,255,.07)',
-                color: msg.role === 'user' ? '#fff' : '#cbd5e1',
-                border: msg.role === 'user' ? 'none' : '1px solid rgba(255,255,255,.08)',
+                  ? 'linear-gradient(135deg,#019cda,#0369a1)'
+                  : 'rgba(1,156,218,.07)',
+                color: msg.role === 'user' ? '#fff' : '#bae6fd',
+                border: msg.role === 'user' ? 'none' : '1px solid rgba(1,156,218,.12)',
               }}
             >
               {msg.text}
@@ -639,10 +657,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         ))}
         {isSending && (
           <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-            <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.08)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(1,156,218,.07)', border: '1px solid rgba(1,156,218,.12)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ display: 'flex', gap: 4 }}>
                 {[0, 1, 2].map(i => (
-                  <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#818cf8', animation: 'bounce 1s infinite', animationDelay: `${i * 0.15}s` }} />
+                  <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', animation: 'bounce 1s infinite', animationDelay: `${i * 0.15}s` }} />
                 ))}
               </div>
               <span style={{ fontSize: 12, color: '#64748b' }}>Applying edit…</span>
@@ -655,8 +673,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       {/* ── Suggestions panel ── */}
       {selectedZone && (
         <div style={{
-          borderTop: '1px solid rgba(255,255,255,.06)',
-          background: 'rgba(15,23,42,.8)',
+          borderTop: '1px solid rgba(1,156,218,.08)',
+          background: 'rgba(9,24,40,.85)',
           flexShrink: 0,
         }}>
           {/* Zone header + toggle */}
@@ -664,8 +682,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer' }}
             onClick={() => setSuggestionsOpen(o => !o)}
           >
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', flexShrink: 0 }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.1em', flex: 1 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'linear-gradient(135deg,#019cda,#0369a1)', flexShrink: 0 }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.1em', flex: 1 }}>
               {selectedZone.label} — suggestions
             </span>
             <svg
@@ -695,8 +713,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               }}>
                 {hoverPreview && (
                   <div style={{
-                    background: 'rgba(255,255,255,.05)',
-                    border: '1px solid rgba(99,102,241,.25)',
+                    background: 'rgba(1,156,218,.04)',
+                    border: '1px solid rgba(1,156,218,.2)',
                     borderRadius: 10,
                     padding: 10,
                     overflow: 'hidden',
@@ -732,7 +750,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       borderRadius: 8, padding: '6px 8px', cursor: 'pointer',
                       transition: 'all .15s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,.15)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,.4)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(1,156,218,.15)'; e.currentTarget.style.borderColor = 'rgba(1,156,218,.4)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)' }}
                   >
                     {/* Swatch row */}
@@ -760,13 +778,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     key={i}
                     onClick={() => { injectSuggestion(s.instruction); showPreview('quick', { ...s }) }}
                     style={{
-                      padding: '5px 10px', borderRadius: 20, border: '1px solid rgba(99,102,241,.25)',
-                      background: 'rgba(99,102,241,.08)',
-                      color: '#a5b4fc', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      padding: '5px 10px', borderRadius: 20, border: '1px solid rgba(1,156,218,.25)',
+                      background: 'rgba(1,156,218,.08)',
+                      color: '#7dd3fc', fontSize: 11, fontWeight: 600, cursor: 'pointer',
                       transition: 'all .15s', display: 'flex', alignItems: 'center', gap: 4,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,.22)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,.5)'; e.currentTarget.style.color = '#c7d2fe' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,.08)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,.25)'; e.currentTarget.style.color = '#a5b4fc' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(1,156,218,.22)'; e.currentTarget.style.borderColor = 'rgba(1,156,218,.5)'; e.currentTarget.style.color = '#bae6fd' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(1,156,218,.08)'; e.currentTarget.style.borderColor = 'rgba(1,156,218,.25)'; e.currentTarget.style.color = '#7dd3fc' }}
                   >
                     <span style={{ fontSize: 12 }}>{s.emoji}</span>
                     {s.label}
@@ -792,7 +810,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
                       transition: 'all .15s', minWidth: 52,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,.15)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,.4)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(1,156,218,.15)'; e.currentTarget.style.borderColor = 'rgba(1,156,218,.4)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)' }}
                   >
                     <span style={{ fontSize: 16, fontWeight: t.style.fontWeight as number, fontFamily: t.style.fontFamily, color: '#c7d2fe', lineHeight: 1 }}>
@@ -858,8 +876,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       {/* Input — Lovable-style floating dark prompt bar */}
       <div style={{
         padding: '12px 14px 14px',
-        borderTop: '1px solid rgba(255,255,255,.06)',
-        background: 'linear-gradient(to top, rgba(10,10,20,.95) 0%, rgba(15,23,42,.85) 100%)',
+        borderTop: '1px solid rgba(1,156,218,.08)',
+        background: 'linear-gradient(to top, rgba(6,18,32,.97) 0%, rgba(9,24,40,.9) 100%)',
         flexShrink: 0,
         animation: 'slideUpPrompt .3s cubic-bezier(.4,0,.2,1)',
       }}>
@@ -870,55 +888,60 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           }
         `}</style>
         {selectedZone && (
-          <div style={{ fontSize: 11, color: '#a78bfa', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#a78bfa', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
+          <div style={{ fontSize: 11, color: '#38bdf8', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }} />
             Editing: {selectedZone.label}
           </div>
         )}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          background: 'rgba(255,255,255,.07)',
-          border: '1px solid rgba(255,255,255,.12)',
+          background: 'rgba(1,156,218,.07)',
+          border: '1px solid rgba(1,156,218,.15)',
           borderRadius: 14,
           padding: '6px 8px 6px 14px',
-          boxShadow: '0 4px 24px rgba(0,0,0,.35)',
+          boxShadow: '0 4px 24px rgba(0,0,0,.4)',
           transition: 'border-color .2s',
         }}
-          onFocusCapture={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(139,92,246,.5)'}
-          onBlurCapture={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,.12)'}
+          onFocusCapture={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(1,156,218,.5)'}
+          onBlurCapture={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(1,156,218,.15)'}
         >
           <input
             ref={inputRef}
             type="text"
-            placeholder={selectedZone ? `Change ${selectedZone.label}…` : 'Ask Talanted to edit…'}
+            placeholder={
+              projectLock && projectLock.lockedBy
+                ? `${projectLock.lockedBy} est en train d'éditer...`
+                : selectedZone ? `Change ${selectedZone.label}…` : 'Ask Talanted to edit…'
+            }
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendChat() }
             }}
-            disabled={isSending || !selectedGenerationId}
+            disabled={isSending || !selectedGenerationId || !!projectLock}
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
               fontSize: 14, color: '#f1f5f9', fontFamily: 'inherit',
-              opacity: (isSending || !selectedGenerationId) ? 0.45 : 1,
+              opacity: (isSending || !selectedGenerationId || !!projectLock) ? 0.45 : 1,
             }}
           />
           <button
             onClick={() => void sendChat()}
-            disabled={!chatInput.trim() || isSending || !selectedGenerationId}
+            disabled={!chatInput.trim() || isSending || !selectedGenerationId || !!projectLock}
+            title={projectLock ? `${projectLock.lockedBy} est en train d'éditer` : undefined}
             style={{
               width: 34, height: 34, borderRadius: 10, border: 'none', flexShrink: 0,
-              background: (!chatInput.trim() || isSending || !selectedGenerationId)
+              background: (!chatInput.trim() || isSending || !selectedGenerationId || !!projectLock)
                 ? 'rgba(255,255,255,.08)'
-                : 'linear-gradient(135deg,#6366f1,#a855f7)',
-              color: (!chatInput.trim() || isSending || !selectedGenerationId) ? '#475569' : '#fff',
-              cursor: (!chatInput.trim() || isSending || !selectedGenerationId) ? 'not-allowed' : 'pointer',
+                : 'linear-gradient(135deg,#019cda,#0369a1)',
+              color: (!chatInput.trim() || isSending || !selectedGenerationId || !!projectLock) ? '#475569' : '#fff',
+              cursor: (!chatInput.trim() || isSending || !selectedGenerationId || !!projectLock) ? 'not-allowed' : 'pointer',
               transition: 'all .2s', display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 16, fontWeight: 700,
-              boxShadow: (!chatInput.trim() || isSending || !selectedGenerationId) ? 'none' : '0 2px 10px rgba(99,102,241,.4)',
+              boxShadow: (!chatInput.trim() || isSending || !selectedGenerationId || !!projectLock) ? 'none' : '0 2px 10px rgba(1,156,218,.4)',
             }}
           >
-            {isSending ? <span style={{ fontSize: 11 }}>…</span> : '↑'}
+            {isSending ? <span style={{ fontSize: 11 }}>…</span> : projectLock ? '🔒' : '↑'}
           </button>
         </div>
         <p style={{ fontSize: 10, color: 'rgba(255,255,255,.25)', margin: '6px 0 0 4px' }}>Enter to send · Ctrl+Enter in prompt box to generate</p>

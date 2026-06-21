@@ -190,7 +190,7 @@ pipeline {
                 dir('spring-bff') {
                     sh '''
                         mvn org.owasp:dependency-check-maven:check \
-                          -DfailBuildOnCVSS=11 \
+                          -DfailBuildOnCVSS=8 \
                           -DretireJsAnalyzerEnabled=false \
                           -DnodeAnalyzerEnabled=false \
                           -Dmaven.repo.local=/var/jenkins_home/.m2/repository \
@@ -261,7 +261,16 @@ pipeline {
                         echo "${ACR_PASS}" | docker login ${ACR_LOGIN_SERVER} -u ${ACR_USER} --password-stdin
 
                         echo "=== Building images (build #${BUILD_NUMBER}) ==="
-                        docker build -t ${ACR_LOGIN_SERVER}/frontend:${BUILD_NUMBER}             -t ${ACR_LOGIN_SERVER}/frontend:latest             ./frontend
+                        # Frontend needs build-time VITE_ args so Vite bakes the correct public URLs
+                        docker build \
+                          --build-arg VITE_OIDC_AUTHORITY=http://${VM_PUBLIC_IP}/realms/ai-ui \
+                          --build-arg VITE_OIDC_CLIENT_ID=ai-ui-frontend \
+                          --build-arg VITE_OIDC_REDIRECT_URI=http://${VM_PUBLIC_IP}/auth/callback \
+                          --build-arg VITE_BFF_BASE_URL="" \
+                          --build-arg VITE_API_BASE_URL="" \
+                          -t ${ACR_LOGIN_SERVER}/frontend:${BUILD_NUMBER} \
+                          -t ${ACR_LOGIN_SERVER}/frontend:latest \
+                          ./frontend
                         docker build -t ${ACR_LOGIN_SERVER}/spring-bff:${BUILD_NUMBER}           -t ${ACR_LOGIN_SERVER}/spring-bff:latest           ./spring-bff
                         docker build -t ${ACR_LOGIN_SERVER}/fastapi-ai:${BUILD_NUMBER}           -t ${ACR_LOGIN_SERVER}/fastapi-ai:latest           ./fastapi-ai
                         docker build -t ${ACR_LOGIN_SERVER}/transcript-streaming:${BUILD_NUMBER} -t ${ACR_LOGIN_SERVER}/transcript-streaming:latest ./transcript-ai -f ./transcript-ai/Dockerfile.streaming
@@ -381,8 +390,7 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        echo "=== Checking Ansible installation ==="
-                        which ansible-playbook || (apt-get update -qq && apt-get install -y -qq ansible) || pip3 install --quiet ansible --break-system-packages
+                        echo "=== Ansible version ===" && ansible --version
 
                         echo "=== Generating Ansible inventory ==="
                         cat > ${ANSIBLE_DIR}/inventory.ini <<EOF
@@ -398,9 +406,15 @@ EOF
                         export GROQ_API_KEY=${GROQ_API_KEY}
                         export VM_PUBLIC_IP=${VM_PUBLIC_IP}
                         export MINIO_BUCKET=ai-ui-files
+                        export MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+                        export MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+                        export KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
                         export INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-changeme-in-prod}
                         export GRAFANA_PASSWORD=${GRAFANA_PASSWORD:-admin}
+                        export GEMINI_API_KEY=${GEMINI_API_KEY:-}
+                        export ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
 
+                        ANSIBLE_CONFIG=${ANSIBLE_DIR}/ansible.cfg \
                         ansible-playbook \
                           -i ${ANSIBLE_DIR}/inventory.ini \
                           ${ANSIBLE_DIR}/playbook.yml \
@@ -421,10 +435,12 @@ EOF
                     sleep 15
                     curl -f http://${VM_PUBLIC_IP}:8000/health  || exit 1
                     curl -f http://${VM_PUBLIC_IP}:8081/actuator/health || exit 1
+                    curl -f http://${VM_PUBLIC_IP}/realms/ai-ui/.well-known/openid-configuration || exit 1
                     echo "✅ Smoke tests passed"
-                    echo "   Frontend : http://${VM_PUBLIC_IP}:5173"
-                    echo "   API      : http://${VM_PUBLIC_IP}:8081"
-                    echo "   Keycloak : http://${VM_PUBLIC_IP}:8083"
+                    echo "   App      : http://${VM_PUBLIC_IP}  (nginx — main entry point)"
+                    echo "   Frontend : http://${VM_PUBLIC_IP}:5173  (direct)"
+                    echo "   API      : http://${VM_PUBLIC_IP}:8081  (direct)"
+                    echo "   Keycloak : http://${VM_PUBLIC_IP}:8083  (direct)"
                     echo "   Grafana  : http://${VM_PUBLIC_IP}:3000"
                 '''
             }

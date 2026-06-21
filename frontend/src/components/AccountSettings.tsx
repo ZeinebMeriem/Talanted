@@ -168,7 +168,7 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
-      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(99,102,241,.15)', borderTopColor: '#6366f1', animation: 'spin 1s linear infinite' }} />
+      <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid rgba(1,156,218,.15)', borderTopColor: '#019cda', animation: 'spin 1s linear infinite' }} />
     </div>
   )
 
@@ -202,7 +202,7 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
       {/* ── Hero banner ── */}
       <div style={{
         borderRadius: 24, overflow: 'hidden', marginBottom: 24,
-        background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%)',
+        background: 'linear-gradient(135deg, #019cda 0%, #0369a1 50%, #0369a1 100%)',
         position: 'relative',
       }}>
         {/* Decorative blobs */}
@@ -226,7 +226,7 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
               onClick={() => fileRef.current?.click()}
               style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,.2)' }}
             >
-              <Camera size={14} color="#6366f1" />
+              <Camera size={14} color="#019cda" />
             </button>
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) processFile(e.target.files[0]) }} />
           </div>
@@ -270,7 +270,7 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
         {avatarFile && (
           <div style={{ background: 'rgba(0,0,0,.2)', padding: '10px 32px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 13, color: 'rgba(255,255,255,.85)', flex: 1 }}>New photo selected: <strong>{avatarFile.name}</strong></span>
-            <button onClick={handleUpload} disabled={uploadingAvatar} style={{ background: '#fff', color: '#6366f1', border: 'none', borderRadius: 8, padding: '6px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            <button onClick={handleUpload} disabled={uploadingAvatar} style={{ background: '#fff', color: '#019cda', border: 'none', borderRadius: 8, padding: '6px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               {uploadingAvatar ? 'Uploading…' : 'Save photo'}
             </button>
             <button onClick={() => { setAvatarFile(null); const saved = localStorage.getItem(AVATAR_KEY); setAvatarPreview(saved || profile?.avatarUrl || null) }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
@@ -300,16 +300,16 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
           onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) processFile(f) }}
           onClick={() => fileRef.current?.click()}
           style={{
-            border: `2px dashed ${dragging ? '#6366f1' : 'rgba(0,0,0,.1)'}`,
+            border: `2px dashed ${dragging ? '#019cda' : 'rgba(0,0,0,.1)'}`,
             borderRadius: 14,
             padding: '28px 20px',
             textAlign: 'center',
             cursor: 'pointer',
-            background: dragging ? 'rgba(99,102,241,.04)' : 'transparent',
+            background: dragging ? 'rgba(1,156,218,.04)' : 'transparent',
             transition: 'all .2s ease',
           }}
         >
-          <Camera size={28} color={dragging ? '#6366f1' : '#94a3b8'} style={{ margin: '0 auto 10px' }} />
+          <Camera size={28} color={dragging ? '#019cda' : '#94a3b8'} style={{ margin: '0 auto 10px' }} />
           <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: '0 0 4px' }}>Drag & drop or click to upload</p>
           <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>PNG, JPEG or WebP — max 5 MB</p>
         </div>
@@ -329,7 +329,7 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
             placeholder="A few words about yourself..."
             rows={3}
             style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', outline: 'none', transition: 'border-color .2s' }}
-            onFocus={e => e.target.style.borderColor = '#6366f1'}
+            onFocus={e => e.target.style.borderColor = '#019cda'}
             onBlur={e => e.target.style.borderColor = '#e5e7eb'}
           />
         </FormField>
@@ -365,10 +365,10 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
           disabled={saving}
           style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            background: saving ? '#c7d2fe' : 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+            background: saving ? '#7dd3fc' : 'linear-gradient(135deg, #019cda, #0369a1)',
             color: '#fff', border: 'none', borderRadius: 12,
             padding: '13px 24px', fontSize: 14, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
-            boxShadow: saving ? 'none' : '0 4px 14px rgba(99,102,241,.35)',
+            boxShadow: saving ? 'none' : '0 4px 14px rgba(1,156,218,.35)',
             transition: 'all .2s ease',
           }}
         >
@@ -391,7 +391,7 @@ function Card({ title, icon, children }: { title: string; icon: React.ReactNode;
   return (
     <div style={{ background: '#fff', border: '1.5px solid #f0f0f8', borderRadius: 20, padding: 24, marginBottom: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(99,102,241,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1' }}>{icon}</div>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(1,156,218,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#019cda' }}>{icon}</div>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>{title}</h3>
       </div>
       {children}
@@ -403,7 +403,7 @@ function FormField({ label, icon, children }: { label: string; icon?: React.Reac
   return (
     <div style={{ marginBottom: 16 }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-        {icon && <span style={{ color: '#6366f1' }}>{icon}</span>}
+        {icon && <span style={{ color: '#019cda' }}>{icon}</span>}
         {label}
       </label>
       {children}
@@ -432,9 +432,9 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
       onClick={() => onChange(!checked)}
       style={{
         width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', flexShrink: 0,
-        background: checked ? 'linear-gradient(135deg, #4f46e5, #7c3aed)' : '#e5e7eb',
+        background: checked ? 'linear-gradient(135deg, #019cda, #0369a1)' : '#e5e7eb',
         position: 'relative', transition: 'background .25s ease',
-        boxShadow: checked ? '0 2px 8px rgba(99,102,241,.4)' : 'none',
+        boxShadow: checked ? '0 2px 8px rgba(1,156,218,.4)' : 'none',
       }}
     >
       <span style={{

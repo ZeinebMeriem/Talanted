@@ -39,13 +39,13 @@
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
-      "redirectUris": ["http://localhost:5173/*", "https://20.86.174.233/*"],
+      "redirectUris": ["http://localhost:5173/*", "http://localhost/*", "http://20.86.174.233/*", "http://20.86.174.233:5173/*"],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:5173/*##https://20.86.174.233/*"
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost/*##http://20.86.174.233/*##http://20.86.174.233:5173/*"
       },
-      "webOrigins": ["http://localhost:5173", "https://20.86.174.233"],
+      "webOrigins": ["http://localhost:5173", "http://localhost", "http://20.86.174.233", "http://20.86.174.233:5173"],
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "implicitFlowEnabled": false,
       "protocolMappers": [
         {

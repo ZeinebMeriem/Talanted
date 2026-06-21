@@ -13,7 +13,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region"
   type        = string
-  default     = "francecentral"
+  default     = "westeurope"
 }
 
 variable "acr_name" {
@@ -23,9 +23,9 @@ variable "acr_name" {
 }
 
 variable "vm_size" {
-  description = "Azure VM size — Standard_D4s_v3 = 4 vCPU / 16 GB RAM (handles 13 Docker services)"
+  description = "Azure VM size — Standard_D2s_v5 = 2 vCPU / 8 GB RAM (subscription quota limit)"
   type        = string
-  default     = "Standard_D4s_v3"
+  default     = "Standard_D2s_v5"
 }
 
 variable "admin_username" {

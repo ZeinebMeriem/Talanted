@@ -2,7 +2,9 @@ package com.aiuigenerator.bff.web;
 
 import com.aiuigenerator.bff.domain.Generation;
 import com.aiuigenerator.bff.domain.GenerationStatus;
+import com.aiuigenerator.bff.repo.AuditEventRepository;
 import com.aiuigenerator.bff.repo.GenerationRepository;
+import com.aiuigenerator.bff.service.GenerationService;
 import com.aiuigenerator.bff.service.KeycloakAdminService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,6 +45,12 @@ class AdminControllerTest {
 
     @MockBean
     private GenerationRepository generationRepo;
+
+    @MockBean
+    private GenerationService generationService;
+
+    @MockBean
+    private AuditEventRepository auditRepo;
 
     // ── USERS ─────────────────────────────────────────────────────────────────
 

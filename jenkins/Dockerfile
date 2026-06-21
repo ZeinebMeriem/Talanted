@@ -9,7 +9,9 @@ RUN apt-get update -qq && \
         gnupg \
         maven \
         python3 \
-        python3-pip && \
+        python3-pip \
+        ansible \
+        rsync && \
     install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \

@@ -13,7 +13,6 @@ import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.messaging.simp.annotation.SubscribeMapping;
 import org.springframework.stereotype.Controller;
 
 /**
@@ -36,6 +35,10 @@ public class CollaborationController {
     // projectId → list of connected user display names
     private final Map<String, CopyOnWriteArrayList<String>> presence = new ConcurrentHashMap<>();
 
+    // projectId → [userName, lockedAtEpochMs]
+    private final Map<String, String[]> projectLocks = new ConcurrentHashMap<>();
+    private static final long LOCK_TIMEOUT_MS = 60_000;
+
     private final SimpMessagingTemplate messaging;
 
     public CollaborationController(SimpMessagingTemplate messaging) {
@@ -51,21 +54,50 @@ public class CollaborationController {
         String timestamp
     ) {}
 
+    private boolean isLockExpired(String[] lock) {
+        try { return System.currentTimeMillis() - Long.parseLong(lock[1]) > LOCK_TIMEOUT_MS; }
+        catch (Exception e) { return true; }
+    }
+
+    private Map<String, Object> currentLockData(String projectId) {
+        String[] lock = projectLocks.get(projectId);
+        if (lock == null || isLockExpired(lock)) {
+            projectLocks.remove(projectId);
+            return Map.of("locked", false, "lockedBy", "");
+        }
+        return Map.of("locked", true, "lockedBy", lock[0]);
+    }
+
+    private String resolveUserName(CollabEvent event, Principal principal) {
+        if (event != null && event.userName() != null && !event.userName().isBlank()
+                && !event.userName().equals("anonymous")) {
+            return event.userName();
+        }
+        return principal != null && principal.getName() != null ? principal.getName() : "anonymous";
+    }
+
     /**
-     * Called when a client subscribes to /topic/project/{id}/events.
-     * Sends the current presence list immediately.
+     * Explicit join sent by the client after connecting and subscribing.
+     * Destination: /app/project/{id}/join
      */
-    @SubscribeMapping("/project/{projectId}/events")
-    public void onSubscribe(
+    @MessageMapping("/project/{projectId}/join")
+    public void join(
             @DestinationVariable String projectId,
+            @Payload CollabEvent event,
             Principal principal) {
 
-        String userName = principal != null ? principal.getName() : "anonymous";
-        presence.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>()).add(userName);
+        String userName = resolveUserName(event, principal);
+        List<String> users = presence.computeIfAbsent(projectId, k -> new CopyOnWriteArrayList<>());
+        if (!users.contains(userName)) users.add(userName);
+
+        Map<String, Object> joinData = new java.util.HashMap<>();
+        joinData.put("action", "join");
+        joinData.put("users", List.copyOf(users));
+        joinData.putAll(currentLockData(projectId));
 
         CollabEvent joined = new CollabEvent(
             "presence", projectId, userName, userName,
-            Map.of("action", "join", "users", presence.getOrDefault(projectId, new CopyOnWriteArrayList<>())),
+            joinData,
             Instant.now().toString()
         );
         messaging.convertAndSend("/topic/project/" + projectId + "/events", joined);
@@ -82,7 +114,38 @@ public class CollaborationController {
             @Payload CollabEvent event,
             Principal principal) {
 
-        String userName = principal != null ? principal.getName() : "anonymous";
+        String userName = resolveUserName(event, principal);
+
+        if ("lock".equals(event.type())) {
+            String[] existing = projectLocks.get(projectId);
+            boolean canAcquire = existing == null || isLockExpired(existing) || userName.equals(existing[0]);
+            if (canAcquire) {
+                projectLocks.put(projectId, new String[]{userName, String.valueOf(System.currentTimeMillis())});
+                CollabEvent lockEvent = new CollabEvent("lock", projectId, userName, userName,
+                    Map.of("locked", true, "lockedBy", userName, "denied", false),
+                    Instant.now().toString());
+                messaging.convertAndSend("/topic/project/" + projectId + "/events", lockEvent);
+            } else {
+                CollabEvent denyEvent = new CollabEvent("lock", projectId, existing[0], existing[0],
+                    Map.of("locked", true, "lockedBy", existing[0], "denied", true),
+                    Instant.now().toString());
+                messaging.convertAndSend("/topic/project/" + projectId + "/events", denyEvent);
+            }
+            return;
+        }
+
+        if ("unlock".equals(event.type())) {
+            String[] existing = projectLocks.get(projectId);
+            if (existing != null && userName.equals(existing[0])) {
+                projectLocks.remove(projectId);
+                CollabEvent unlockEvent = new CollabEvent("unlock", projectId, userName, userName,
+                    Map.of("locked", false, "lockedBy", ""),
+                    Instant.now().toString());
+                messaging.convertAndSend("/topic/project/" + projectId + "/events", unlockEvent);
+            }
+            return;
+        }
+
         CollabEvent enriched = new CollabEvent(
             event.type(),
             projectId,
@@ -95,19 +158,21 @@ public class CollaborationController {
     }
 
     /**
-     * Remove a user from presence when they leave (called explicitly by client on disconnect).
+     * Remove a user from presence when they leave.
      * Destination: /app/project/{id}/leave
      */
     @MessageMapping("/project/{projectId}/leave")
     public void leave(
             @DestinationVariable String projectId,
+            @Payload CollabEvent event,
             Principal principal) {
 
-        String userName = principal != null ? principal.getName() : "anonymous";
+        String userName = resolveUserName(event, principal);
         List<String> users = presence.get(projectId);
-        if (users != null) {
-            users.remove(userName);
-        }
+        if (users != null) users.remove(userName);
+        // Release lock if this user held it
+        String[] lock = projectLocks.get(projectId);
+        if (lock != null && userName.equals(lock[0])) projectLocks.remove(projectId);
 
         CollabEvent left = new CollabEvent(
             "presence", projectId, userName, userName,

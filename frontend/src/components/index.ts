@@ -14,6 +14,7 @@ export { DarkModeToggle } from './DarkModeToggle'
 export { HomePage, type HomePageProps } from './HomePage'
 export { NotFound } from './NotFound'
 export { MeetingRecorder } from './MeetingRecorder'
+export { default as MyProjectsGridHub, type ProjectItem } from './MyProjectsGridHub'
 
 // Enterprise UI Components
 export { ToastProvider, useToastContext, type ToastType, type ToastMessage } from './ui/Toast'
