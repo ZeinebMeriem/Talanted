@@ -1,8 +1,0 @@
-{
-  "name": "Remix: Remix: Workspace Hub",
-  "description": "An elegant and interactive personal workspace dashboard featuring a focused task manager, visual metrics, local note taker, and highly polished ambient timers.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
