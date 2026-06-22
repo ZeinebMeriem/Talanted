@@ -39,11 +39,21 @@
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
-      "redirectUris": ["http://localhost:5173/*", "http://localhost/*", "http://20.86.174.233/*", "http://20.86.174.233:5173/*"],
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost/*",
+        "http://20.86.174.233/*",
+        "http://20.86.174.233:5173/*"
+      ],
       "attributes": {
         "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost/*##http://20.86.174.233/*##http://20.86.174.233:5173/*"
       },
-      "webOrigins": ["http://localhost:5173", "http://localhost", "http://20.86.174.233", "http://20.86.174.233:5173"],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost",
+        "http://20.86.174.233",
+        "http://20.86.174.233:5173"
+      ],
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "implicitFlowEnabled": false,
@@ -70,8 +80,12 @@
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
-      "redirectUris": ["http://localhost/*"],
-      "webOrigins": ["*"],
+      "redirectUris": [
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "implicitFlowEnabled": false
@@ -88,8 +102,9 @@
       "credentials": [
         {
           "type": "password",
-          "value": "developpeur",
-          "temporary": false
+          "temporary": false,
+          "credentialData": "{\"hashIterations\":27500,\"algorithm\":\"pbkdf2-sha256\",\"additionalParameters\":{}}",
+          "secretData": "{\"value\":\"sCHKL3cgEEfMag+XJzzTD0sjZ48myNVmynfQOCps59iFEQq9HGVyzOFl1Gdl1vetxxgRflSa/GsHJ0XRCnmnBQ==\",\"salt\":\"BF/XnxqUAY61n4qzJq5QkQ==\",\"additionalParameters\":{}}"
         }
       ]
     },
@@ -103,11 +118,14 @@
       "credentials": [
         {
           "type": "password",
-          "value": "Admin@1234",
-          "temporary": false
+          "temporary": false,
+          "credentialData": "{\"hashIterations\":27500,\"algorithm\":\"pbkdf2-sha256\",\"additionalParameters\":{}}",
+          "secretData": "{\"value\":\"4odcP+nWuqKZE1Qq3T2IPH6Z/Wg4xcWSXrknTU7S3qfy3fjsy6rQ8jBbUBi2zhpnq6+4YM/PdXXSWuWGGek+bQ==\",\"salt\":\"Jse+nAs2jLk77UwufWPBKw==\",\"additionalParameters\":{}}"
         }
       ],
-      "realmRoles": ["admin"]
+      "realmRoles": [
+        "admin"
+      ]
     }
   ]
 }
