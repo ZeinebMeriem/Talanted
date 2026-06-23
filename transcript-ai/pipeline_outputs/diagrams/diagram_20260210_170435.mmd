@@ -1,0 +1,13 @@
+flowchart TD
+    N[Network] --> C[Client Portal]
+    C --> V[Video Codec]
+    V --> S[Server]
+    S --> D[Data Storage]
+    S --> M[Moderator Service]
+    M --> V
+    C --> A[Audio Codec]
+    A --> S
+    S --> D
+    C --> R[Rendering Engine]
+    R --> C
+    N --> C

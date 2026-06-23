@@ -1,0 +1,1 @@
+export { useTed } from './useTed'

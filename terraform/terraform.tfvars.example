@@ -1,0 +1,11 @@
+# Copy this file to terraform.tfvars and fill in your values
+# terraform.tfvars is in .gitignore — never commit real values
+
+subscription_id     = "5ee12f35-f0e8-46a4-b867-d1aa54ca0cc8"
+resource_group_name = "ai-ui-generator-rg"
+location            = "westeurope"
+acr_name            = "aiuigeneratoracr"
+vm_size             = "Standard_D2s_v5"
+admin_username      = "azureuser"
+ssh_public_key_path = "/var/jenkins_home/.ssh/id_rsa.pub"
+environment         = "staging"

@@ -1,0 +1,55 @@
+sequenceDiagram
+    participant Elias
+    participant Nour
+    participant BookingSystem
+    participant PaymentGateway
+    participant InventoryManagementSystem
+    Elias->>Nour: What are your needs exactly
+    Nour-->>Elias: Its an e-commerce application
+    Elias->>Nour: Is it a website or just mobile app
+    Nour-->>Elias: I want a mobile application
+    Elias->>Nour: Do you have any technologies in mind
+    Nour-->>Elias: Flutter
+    participant ECommerceApp
+    participant MobileDevice
+    ECommerceApp->>MobileDevice: Provide seamless shopping experience on
+    PaymentGateway->>ECommerceApp: Facilitate secure transactions for customers
+    InventoryManagementSystem->>ECommerceApp: Ensure accurate stock levels and
+    BookingSystem-->>ECommerceApp: Integrate with current business systems
+    Nour->>Elias: The application must be cross-platform
+    Elias->>Nour: Do you have any technologies in mind
+    Nour-->>Elias: Flutter
+    subgraph "Mobile Device Subsystem"
+        participant MobileOS
+        participant MobileBrowser
+        participant MobileAppInterface
+    ECommerceApp->>MobileDevice: Ensure responsive design for various
+    MobileDevice->>MobileOS: Run application on device OS
+    MobileDevice->>MobileBrowser: Use web view to display app content
+    MobileDevice->>MobileAppInterface: Communicate with application backend using
+    PaymentGateway-->>MobileDevice: Securely process payment transactions
+    end
+    subgraph "Backend Subsystem"
+        participant BackendAPI
+        participant Database
+        participant BusinessLogic
+    ECommerceApp->>BackendAPI: Interact with business logic and data storage
+    BackendAPI-->>Database: Fetch and store product inventory,
+    BackendAPI-->>BusinessLogic: Handle complex business rules and integrations
+    end
+    subgraph "Payment Gateway Subsystem"
+        participant PaymentGatewayAPI
+        participant SecureTokenGenerator
+    ECommerceApp->>PaymentGatewayAPI: Facilitate secure transactions
+    PaymentGatewayAPI-->>SecureTokenGenerator: Generate and validate tokens for
+    end
+    subgraph "Inventory Management Subsystem"
+        participant InventoryManagementSystemAPI
+        participant StockLevelUpdater
+    ECommerceApp->>InventoryManagementSystemAPI: Ensure accurate stock levels and
+    InventoryManagementSystemAPI-->>StockLevelUpdater: Update stock levels in real-time
+    end
+    Nour->>Elias: The application must be cross-platform
+    Elias->>Nour: Do you have any technologies in mind
+    Nour-->>Elias: Flutter
+    ECommerceApp->>MobileDevice: Ensure responsive design for various

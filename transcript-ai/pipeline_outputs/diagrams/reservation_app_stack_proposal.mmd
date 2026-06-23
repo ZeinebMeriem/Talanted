@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant Nour
+    participant Ilyes
+    participant RequestHandler
+    Nour->>Ilyes: What are your needs exactly?
+    Ilyes-->>Nour: A web application or mobile application for flight booking.
+    Ilyes->>RequestHandler: User Account Management and Payment Methods Request
+    RequestHandler-->>Ilyes: React Frontend, NestJS Backend, MongoDB Database Response
+    Nour->>Ilyes: What technology do you have in mind?
+    Ilyes-->>Nour: Suggestions are open.
+    Ilyes->>RequestHandler: Stack Proposal for the App Request
+    RequestHandler-->>Ilyes: React Frontend, NestJS Backend, MongoDB Database Response

@@ -1,0 +1,190 @@
+groups:
+  - name: ai-ui-generator
+    interval: 30s
+    rules:
+      # Service Availability
+      - alert: SpringBFFDown
+        expr: up{job="spring-bff"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: spring-bff
+        annotations:
+          summary: "Spring BFF is down"
+          description: "Spring BFF service has been unavailable for 2+ minutes"
+
+      - alert: FastAPIDown
+        expr: up{job="fastapi-ai"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: fastapi-ai
+        annotations:
+          summary: "FastAPI is down"
+          description: "FastAPI (generation pipeline) has been unavailable for 2+ minutes"
+
+      - alert: MongoDBDown
+        expr: up{job="mongodb"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: mongodb
+        annotations:
+          summary: "MongoDB is down"
+          description: "MongoDB has been unavailable for 5+ minutes"
+
+      # API Performance
+      - alert: HighHTTPErrorRate
+        expr: (rate(http_server_requests_seconds_count{status=~"5.."}[5m]) / rate(http_server_requests_seconds_count[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High HTTP error rate (5xx > 5%)"
+          description: "Error rate is above 5%"
+
+      - alert: HighHTTPLatency
+        expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API latency (p95 > 5s)"
+          description: "95th percentile HTTP latency is above 5 seconds"
+
+      # Resource Utilization
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage (> 85%)"
+          description: "Memory usage is above 85%"
+
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL: Memory critically low (> 95%)"
+          description: "Memory usage is above 95% - immediate action needed"
+
+      - alert: HighCPUUsage
+        expr: (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage (> 80%)"
+          description: "Aggregate CPU usage is above 80%"
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Low disk space (< 15% available)"
+          description: "Available disk is running low"
+
+      - alert: CriticalDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "CRITICAL: Disk nearly full (< 5% available)"
+          description: "Available disk is critically low - immediate action required"
+
+      # JVM Metrics
+      - alert: HighGCPauseTime
+        expr: histogram_quantile(0.95, jvm_gc_pause_seconds) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: jvm
+        annotations:
+          summary: "High garbage collection pause time (p95 > 2s)"
+          description: "GC pause time is above 2 seconds"
+
+      - alert: JVMHeapUsageHigh
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: jvm
+        annotations:
+          summary: "JVM heap usage high (> 85%)"
+          description: "Heap usage is above 85% - may lead to GC spikes"
+
+      - alert: TooManyJVMThreads
+        expr: jvm_threads_live > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: jvm
+        annotations:
+          summary: "Unusually high JVM thread count (> 100)"
+          description: "Current thread count is above 100"
+
+      # MongoDB
+      - alert: MongoDBHighConnections
+        expr: mongodb_connections{state="current"} > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: mongodb
+        annotations:
+          summary: "MongoDB high connection count (> 100)"
+          description: "Current MongoDB connections are above 100"
+
+      # AI Generation Pipeline
+      - alert: HighGenerationErrorRate
+        expr: (rate(generation_requests_total{status="error"}[5m]) / rate(generation_requests_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: fastapi-ai
+        annotations:
+          summary: "High AI generation error rate (> 10%)"
+          description: "More than 10% of generation requests are failing"
+
+      - alert: GenerationPipelineStalled
+        expr: active_generations > 10
+        for: 10m
+        labels:
+          severity: warning
+          service: fastapi-ai
+        annotations:
+          summary: "Too many concurrent generations (> 10 active)"
+          description: "The generation pipeline may be stalled — {{ $value }} requests in progress"
+
+      # Config Reload
+      - alert: PrometheusConfigReloadFailures
+        expr: prometheus_config_last_reload_successful == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: prometheus
+        annotations:
+          summary: "Prometheus configuration reload failed"
+          description: "Check prometheus.yml for syntax errors"
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 3m
+        labels:
+          severity: warning
+          component: prometheus
+        annotations:
+          summary: "Prometheus scrape target down"
+          description: "A scrape target has been down for 3+ minutes"

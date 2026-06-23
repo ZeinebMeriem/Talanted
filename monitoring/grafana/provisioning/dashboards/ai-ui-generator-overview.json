@@ -1,0 +1,328 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["ai-ui-generator"],
+  "title": "AI UI Generator — Overview",
+  "uid": "ai-ui-overview",
+  "version": 2,
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "panels": [
+
+    { "type": "row", "title": "🟢 Service Health", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "collapsed": false },
+
+    {
+      "id": 1, "type": "stat", "title": "Spring BFF",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "up{job=\"spring-bff\"}", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" }
+    },
+
+    {
+      "id": 2, "type": "stat", "title": "FastAPI AI",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "up{job=\"fastapi-ai\"}", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" }
+    },
+
+    {
+      "id": 3, "type": "stat", "title": "MongoDB",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "up{job=\"mongodb\"}", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" }
+    },
+
+    {
+      "id": 4, "type": "stat", "title": "Targets Up",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "count(up == 1)", "refId": "A", "legendFormat": "Up" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 2 }, { "color": "green", "value": 3 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    },
+
+    {
+      "id": 5, "type": "stat", "title": "Targets Down",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "count(up == 0) or vector(0)", "refId": "A", "legendFormat": "Down" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 2 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    },
+
+    { "type": "row", "title": "📡 HTTP Traffic — Spring BFF", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "id": 101, "collapsed": false },
+
+    {
+      "id": 10, "type": "timeseries", "title": "Request Rate (req/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{job=\"spring-bff\"}[1m])) by (uri)", "refId": "A", "legendFormat": "{{uri}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 11, "type": "timeseries", "title": "HTTP Error Rate (5xx %)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "100 * sum(rate(http_server_requests_seconds_count{job=\"spring-bff\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"spring-bff\"}[5m]))", "refId": "A", "legendFormat": "5xx %" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] }, "custom": { "lineWidth": 2 } } }
+    },
+
+    {
+      "id": 12, "type": "timeseries", "title": "Response Latency — p50 / p95 / p99",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{job=\"spring-bff\"}[5m])) by (le))", "refId": "A", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"spring-bff\"}[5m])) by (le))", "refId": "B", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"spring-bff\"}[5m])) by (le))", "refId": "C", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } }
+    },
+
+    { "type": "row", "title": "🐍 FastAPI — AI Pipeline", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }, "id": 102, "collapsed": false },
+
+    {
+      "id": 20, "type": "timeseries", "title": "FastAPI Request Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_request_duration_seconds_count{job=\"fastapi-ai\"}[1m])) by (handler)", "refId": "A", "legendFormat": "{{handler}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2 } } }
+    },
+
+    {
+      "id": 21, "type": "timeseries", "title": "FastAPI Latency — p95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"fastapi-ai\"}[5m])) by (le, handler))", "refId": "A", "legendFormat": "p95 {{handler}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } }
+    },
+
+    { "type": "row", "title": "🤖 Business KPIs — Generation Pipeline", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 }, "id": 105, "collapsed": false },
+
+    {
+      "id": 50, "type": "stat", "title": "Generations (last 1h)",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "increase(generation_requests_total[1h])", "refId": "A", "legendFormat": "Total" }],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } },
+      "options": { "reduceOptions": { "calcs": ["sum"] }, "colorMode": "background", "graphMode": "none" }
+    },
+
+    {
+      "id": 51, "type": "stat", "title": "Active Generations",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "active_generations", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    },
+
+    {
+      "id": 52, "type": "stat", "title": "Error Rate",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "100 * sum(rate(generation_requests_total{status=\"error\"}[5m])) / sum(rate(generation_requests_total[5m]))", "refId": "A", "legendFormat": "Error %" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    },
+
+    {
+      "id": 53, "type": "timeseries", "title": "Generation Rate by Type (req/min)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(generation_requests_total{status=\"success\"}[1m])) by (type) * 60", "refId": "A", "legendFormat": "✅ {{type}}" },
+        { "expr": "sum(rate(generation_requests_total{status=\"error\"}[1m])) by (type) * 60", "refId": "B", "legendFormat": "❌ {{type}} error" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 54, "type": "timeseries", "title": "Generation Duration — p50 / p95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(generation_duration_seconds_bucket[5m])) by (le, type))", "refId": "A", "legendFormat": "p50 {{type}}" },
+        { "expr": "histogram_quantile(0.95, sum(rate(generation_duration_seconds_bucket[5m])) by (le, type))", "refId": "B", "legendFormat": "p95 {{type}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } }
+    },
+
+    { "type": "row", "title": "☕ JVM — Spring BFF", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 }, "id": 103, "collapsed": false },
+
+    {
+      "id": 30, "type": "timeseries", "title": "JVM Heap Memory",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{job=\"spring-bff\",area=\"heap\"}", "refId": "A", "legendFormat": "Used" },
+        { "expr": "jvm_memory_max_bytes{job=\"spring-bff\",area=\"heap\"}", "refId": "B", "legendFormat": "Max" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } } }
+    },
+
+    {
+      "id": 31, "type": "timeseries", "title": "JVM Threads",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 45 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "jvm_threads_live_threads{job=\"spring-bff\"}", "refId": "A", "legendFormat": "Live" },
+        { "expr": "jvm_threads_daemon_threads{job=\"spring-bff\"}", "refId": "B", "legendFormat": "Daemon" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } }
+    },
+
+    {
+      "id": 32, "type": "timeseries", "title": "GC Pause Time",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 45 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(jvm_gc_pause_seconds_sum{job=\"spring-bff\"}[1m])", "refId": "A", "legendFormat": "{{action}} {{cause}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } }
+    },
+
+    { "type": "row", "title": "🍃 MongoDB", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 }, "id": 106, "collapsed": false },
+
+    {
+      "id": 60, "type": "stat", "title": "Active Connections",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 54 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "mongodb_connections{state=\"current\"}", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    },
+
+    {
+      "id": 61, "type": "stat", "title": "Available Connections",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 54 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "mongodb_connections{state=\"available\"}", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 100 }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    },
+
+    {
+      "id": 62, "type": "timeseries", "title": "MongoDB Operations/sec",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 58 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(mongodb_driver_commands_seconds_count{job=\"spring-bff\"}[1m])", "refId": "A", "legendFormat": "{{command}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "lineWidth": 2 } } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 63, "type": "timeseries", "title": "MongoDB Connection Pool",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 58 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "mongodb_driver_pool_size{job=\"spring-bff\"}", "refId": "A", "legendFormat": "Pool Size" },
+        { "expr": "mongodb_driver_pool_checkedout{job=\"spring-bff\"}", "refId": "B", "legendFormat": "Checked Out" },
+        { "expr": "mongodb_driver_pool_waitqueuesize{job=\"spring-bff\"}", "refId": "C", "legendFormat": "Wait Queue" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } } }
+    },
+
+    { "type": "row", "title": "🖥️ System — Node Exporter", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 66 }, "id": 104, "collapsed": false },
+
+    {
+      "id": 40, "type": "timeseries", "title": "CPU Usage %",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 67 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "refId": "A", "legendFormat": "CPU %" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 85 }] }, "custom": { "lineWidth": 2 } } }
+    },
+
+    {
+      "id": 41, "type": "timeseries", "title": "Memory Usage %",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 67 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", "refId": "A", "legendFormat": "RAM %" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] }, "custom": { "lineWidth": 2 } } }
+    },
+
+    {
+      "id": 42, "type": "stat", "title": "Disk Available",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 75 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "node_filesystem_avail_bytes{mountpoint=\"/run/desktop/mnt/host/c\",fstype!=\"tmpfs\"}", "refId": "A", "legendFormat": "Available" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 5368709120 }, { "color": "green", "value": 10737418240 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" }
+    }
+
+  ]
+}

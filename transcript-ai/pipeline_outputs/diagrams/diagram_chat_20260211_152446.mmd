@@ -1,0 +1,8 @@
+sequenceDiagram
+    participant TestTeam
+    participant TestingSystem
+    participant BookingSystem
+    TestTeam->>TestingSystem: Feature Request
+    TestingSystem-->>TestTeam: Feature Response
+    TestTeam->>BookingSystem: Setup Request
+    BookingSystem-->>TestTeam: Setup Response

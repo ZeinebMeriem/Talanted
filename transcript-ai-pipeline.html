@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pipeline Transcript AI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f8f9ff;
+      padding: 30px 20px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      color: #2d2d5e;
+      margin-bottom: 28px;
+      letter-spacing: 0.5px;
+    }
+
+    h1::before { content: "• "; color: #7c5cbf; }
+
+    .pipeline-wrapper {
+      max-width: 1280px;
+      margin: 0 auto;
+      border: 2.5px solid #b8a9e0;
+      border-radius: 16px;
+      padding: 24px 20px;
+      background: #ffffff;
+    }
+
+    /* ── Row ── */
+    .row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+      margin-bottom: 18px;
+      position: relative;
+    }
+
+    /* Step labels above row */
+    .row-labels {
+      display: flex;
+      gap: 0;
+      margin-bottom: 4px;
+    }
+
+    .step-label {
+      font-size: 10px;
+      color: #888;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    /* ── Arrow ── */
+    .arrow {
+      display: flex;
+      align-items: center;
+      padding-top: 22px;
+      flex-shrink: 0;
+    }
+
+    .arrow svg { display: block; }
+
+    /* ── Box ── */
+    .box {
+      border-radius: 10px;
+      border: 2px solid;
+      padding: 10px 10px 8px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .box-title {
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    .box-items {
+      list-style: none;
+      padding: 0;
+    }
+
+    .box-items li {
+      font-size: 10px;
+      color: #333;
+      line-height: 1.5;
+      padding-left: 10px;
+      position: relative;
+    }
+
+    .box-items li::before {
+      content: "•";
+      position: absolute;
+      left: 2px;
+      color: #666;
+    }
+
+    .box-sub {
+      font-size: 9.5px;
+      color: #555;
+      margin-top: 5px;
+      border-top: 1px dashed #ccc;
+      padding-top: 4px;
+      font-weight: 600;
+    }
+
+    .box-sub span {
+      display: block;
+      padding-left: 10px;
+      position: relative;
+    }
+
+    .box-sub span::before {
+      content: "├─";
+      position: absolute;
+      left: -2px;
+      color: #999;
+      font-size: 9px;
+    }
+
+    /* ── Color themes ── */
+    /* Input */
+    .c-input  { border-color: #7c7cbb; background: #eeeeff; }
+    .c-input .box-title { color: #3c3c8a; }
+
+    /* Audio / STT */
+    .c-stt    { border-color: #5ba85b; background: #edfaed; }
+    .c-stt .box-title { color: #2e6e2e; }
+
+    /* RAG / Ingest */
+    .c-rag    { border-color: #9b70c0; background: #f5eeff; }
+    .c-rag .box-title { color: #5a2d8a; }
+
+    /* Analysis */
+    .c-analysis { border-color: #5aa8c8; background: #eaf6fc; }
+    .c-analysis .box-title { color: #1a5f7a; }
+
+    /* LLM / Generation */
+    .c-llm    { border-color: #d4733a; background: #fff3eb; }
+    .c-llm .box-title { color: #8a3a10; }
+
+    /* Output */
+    .c-output { border-color: #3a9e6e; background: #e6f9f0; }
+    .c-output .box-title { color: #1a5e3e; }
+
+    /* Final box */
+    .box-final {
+      border-color: #3a9e6e;
+      background: linear-gradient(135deg, #e6f9f0, #d0f5e5);
+      text-align: center;
+    }
+
+    .box-final .box-title { font-size: 14px; color: #1a5e3e; }
+
+    .output-tag {
+      display: inline-block;
+      background: #3a9e6e;
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      margin: 3px 2px;
+    }
+
+    /* ── Down arrow between rows ── */
+    .down-arrow {
+      text-align: center;
+      margin: 4px 0 8px;
+      color: #888;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #ddd;
+      font-size: 10px;
+      color: #555;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid;
+    }
+
+    .step-num {
+      font-size: 9px;
+      color: #999;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 3px;
+    }
+
+    .col-wrap {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Pipeline Transcript AI</h1>
+
+<div class="pipeline-wrapper">
+
+  <!-- ══════════ ROW 1 ══════════ -->
+  <div class="row">
+
+    <!-- INPUT -->
+    <div class="col-wrap">
+      <div class="step-num">INPUT</div>
+      <div class="box c-input">
+        <div class="box-title">🎙️ Entrée</div>
+        <ul class="box-items">
+          <li>Fichier Audio</li>
+          <li>Fichier Vidéo</li>
+          <li>Enregistrement live</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- STT -->
+    <div class="col-wrap">
+      <div class="step-num">Step 1</div>
+      <div class="box c-stt">
+        <div class="box-title">ElevenLabs STT Agent</div>
+        <ul class="box-items">
+          <li>Transcription temps réel</li>
+          <li>Diarisation locuteurs</li>
+          <li>Détection de langue</li>
+          <li>VAD (silence detection)</li>
+        </ul>
+        <div class="box-sub">
+          <span>Chunks 3s + overlap 300ms</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- RAG Ingest -->
+    <div class="col-wrap">
+      <div class="step-num">Step 2</div>
+      <div class="box c-rag">
+        <div class="box-title">RAG Ingest Agent</div>
+        <ul class="box-items">
+          <li>Indexation vectorielle</li>
+          <li>Semantic Chunking</li>
+          <li>Vector Embedding</li>
+          <li>ChromaDB Store</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- Requirements -->
+    <div class="col-wrap">
+      <div class="step-num">Step 3</div>
+      <div class="box c-analysis">
+        <div class="box-title">Requirements Agent</div>
+        <ul class="box-items">
+          <li>Extraction exigences</li>
+          <li>User Stories</li>
+          <li>Fonctionnalités clés</li>
+        </ul>
+        <div class="box-sub">
+          <span>Qwen + RAG</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- Summary -->
+    <div class="col-wrap">
+      <div class="step-num">Step 4</div>
+      <div class="box c-analysis">
+        <div class="box-title">Summary Agent</div>
+        <ul class="box-items">
+          <li>Résumé de réunion</li>
+          <li>Décisions clés</li>
+          <li>Points d'action</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- Ambiguity -->
+    <div class="col-wrap">
+      <div class="step-num">Step 5</div>
+      <div class="box c-analysis">
+        <div class="box-title">Ambiguity Agent</div>
+        <ul class="box-items">
+          <li>Détection ambiguïtés</li>
+          <li>Warnings & risques</li>
+          <li>Completeness Score</li>
+        </ul>
+      </div>
+    </div>
+
+  </div><!-- end row 1 -->
+
+  <div class="down-arrow">↓</div>
+
+  <!-- ══════════ ROW 2 ══════════ -->
+  <div class="row">
+
+    <!-- Clarification -->
+    <div class="col-wrap">
+      <div class="step-num">Step 6</div>
+      <div class="box c-llm">
+        <div class="box-title">Clarification Agent</div>
+        <ul class="box-items">
+          <li>Questions de clarification</li>
+          <li>Agenda de réunion</li>
+          <li>Priorités questions</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- Consultant -->
+    <div class="col-wrap">
+      <div class="step-num">Step 7</div>
+      <div class="box c-llm">
+        <div class="box-title">Consultant Agent</div>
+        <ul class="box-items">
+          <li>Insights stratégiques</li>
+          <li>Incohérences détectées</li>
+          <li>Exigences cachées</li>
+          <li>Recommandation stack</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- Architecture -->
+    <div class="col-wrap">
+      <div class="step-num">Step 8</div>
+      <div class="box c-llm">
+        <div class="box-title">Architecture Agent</div>
+        <ul class="box-items">
+          <li>Conception système</li>
+          <li>Composants & services</li>
+          <li>Flux de données</li>
+          <li>Patterns recommandés</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- Diagram -->
+    <div class="col-wrap">
+      <div class="step-num">Step 9</div>
+      <div class="box c-rag">
+        <div class="box-title">Diagram Agent</div>
+        <ul class="box-items">
+          <li>Génération Mermaid</li>
+          <li>Rendu image PNG</li>
+          <li>Flowchart architecture</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- PDF -->
+    <div class="col-wrap">
+      <div class="step-num">FINAL</div>
+      <div class="box c-output">
+        <div class="box-title">PDF Report Agent</div>
+        <ul class="box-items">
+          <li>Consolidation résultats</li>
+          <li>Rapport complet</li>
+          <li>Export téléchargeable</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <svg width="28" height="20"><line x1="0" y1="10" x2="22" y2="10" stroke="#aaa" stroke-width="1.5"/><polygon points="22,6 28,10 22,14" fill="#aaa"/></svg>
+    </div>
+
+    <!-- OUTPUT -->
+    <div class="col-wrap">
+      <div class="step-num">OUTPUT</div>
+      <div class="box box-final c-output">
+        <div class="box-title">📄 Livrables</div>
+        <div style="margin-top:6px;">
+          <span class="output-tag">Transcription</span>
+          <span class="output-tag">Exigences</span>
+          <span class="output-tag">Résumé</span>
+          <span class="output-tag">Diagramme</span>
+          <span class="output-tag">PDF Rapport</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end row 2 -->
+
+  <!-- ══════════ LEGEND ══════════ -->
+  <div class="legend">
+    <strong style="color:#444">Flux d'interaction :</strong>
+    <div class="legend-item">
+      <svg width="30" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#5ba85b" stroke-width="1.5"/><polygon points="24,2 30,5 24,8" fill="#5ba85b"/></svg>
+      Traitement Audio
+    </div>
+    <div class="legend-item">
+      <svg width="30" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#5aa8c8" stroke-width="1.5"/><polygon points="24,2 30,5 24,8" fill="#5aa8c8"/></svg>
+      Analyse IA
+    </div>
+    <div class="legend-item">
+      <svg width="30" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#d4733a" stroke-width="1.5" stroke-dasharray="4,2"/><polygon points="24,2 30,5 24,8" fill="#d4733a"/></svg>
+      Génération LLM
+    </div>
+    <div class="legend-item">
+      <svg width="30" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#3a9e6e" stroke-width="1.5"/><polygon points="24,2 30,5 24,8" fill="#3a9e6e"/></svg>
+      Export / Rapport
+    </div>
+    <div class="legend-item" style="margin-left:auto; font-style:italic; color:#999;">
+      Streaming WebSocket temps réel • ElevenLabs STT • RAG ChromaDB
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

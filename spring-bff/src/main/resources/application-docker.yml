@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  data:
+    mongodb:
+      uri: mongodb://mongo:27017/ai_ui_generator
+
+app:
+  security:
+    dev-mode: true
+  fastapi:
+    base-url: http://fastapi-ai:8000
+  bff:
+    base-url: http://localhost:8080
+  minio:
+    endpoint: http://minio:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: ai-ui-files

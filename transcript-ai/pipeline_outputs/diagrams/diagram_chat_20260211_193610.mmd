@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant Client
+    participant Consultant
+    participant Flutter
+    participant MessagingService
+    participant ProfileService
+    participant NewsFeedService
+    participant AuthenticationService
+    Client->>Consultant: What are your needs, Elias
+    Consultant-->>Client: I want you to make me a mobile application
+    Consultant->>Flutter: Do you have any idea
+    Flutter-->>Consultant: Maybe Flutter will be good
+    Consultant-->>Client: Great See you next time
+    Client->>MessagingService: Implement messaging functionality
+    MessagingService->>ProfileService: Retrieve user profile information for messages
+    ProfileService->>NewsFeedService: Fetch news feed items related to the user
+    NewsFeedService->>AuthenticationService: Authenticate users for accessing news
+    Consultant-->>Flutter: Use Flutter for development
+    Client->>ProfileService: Implement profile creation functionality
+    Client->>NewsFeedService: Implement fetching of news feed items
+    Client->>MessagingService: Implement messaging functionality
+    Client->>AuthenticationService: Handle user authentication flow
+    Consultant-->>Consultant: Ensure all services are integrated

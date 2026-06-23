@@ -1,0 +1,513 @@
+package com.aiuigenerator.bff.web;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import jakarta.servlet.http.HttpServletResponse;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.aiuigenerator.bff.domain.AuditEvent;
+import com.aiuigenerator.bff.domain.Generation;
+import com.aiuigenerator.bff.dto.ChatMessageDto;
+import com.aiuigenerator.bff.dto.CodeBundleDto;
+import com.aiuigenerator.bff.dto.EditFileRequest;
+import com.aiuigenerator.bff.dto.EditFileResponse;
+import com.aiuigenerator.bff.dto.GenerationCreateResponse;
+import com.aiuigenerator.bff.dto.GenerationRollbackResponse;
+import com.aiuigenerator.bff.dto.GenerationVersionsResponse;
+import com.aiuigenerator.bff.dto.GitLabPushDto;
+import com.aiuigenerator.bff.service.AuditService;
+import com.aiuigenerator.bff.service.GenerationService;
+import com.aiuigenerator.bff.service.KeycloakAdminService;
+import com.aiuigenerator.bff.service.SimpleGitLabService;
+
+@RestController
+@RequestMapping("/api/generations")
+public class GenerationController {
+
+    private static final Logger log = LoggerFactory.getLogger(GenerationController.class);
+    private final GenerationService service;
+    private final AuditService audit;
+    private final SimpleGitLabService gitLabService;
+    private final KeycloakAdminService keycloakAdmin;
+
+    @Value("${app.security.dev-mode:false}")
+    private boolean devMode;
+
+    public GenerationController(GenerationService service, AuditService audit, SimpleGitLabService gitLabService, KeycloakAdminService keycloakAdmin) {
+        this.service = service;
+        this.audit = audit;
+        this.gitLabService = gitLabService;
+        this.keycloakAdmin = keycloakAdmin;
+    }
+
+    private boolean hasAccess(Generation g, JwtAuthenticationToken token) {
+        if (devMode || token == null || token.getToken() == null) return true;
+        Object sub = token.getToken().getClaims().get("sub");
+        if (sub == null) return false;
+        String userId = sub.toString();
+        if (g.getUserId().equals(userId)) return true;
+        boolean isAdmin = token.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_admin"));
+        if (isAdmin) return true;
+        List<String> collaborators = g.getCollaborators();
+        return collaborators != null && collaborators.contains(userId);
+    }
+
+    private boolean isOwner(Generation g, JwtAuthenticationToken token) {
+        if (devMode || token == null || token.getToken() == null) return true;
+        Object sub = token.getToken().getClaims().get("sub");
+        return sub != null && g.getUserId().equals(sub.toString());
+    }
+
+    /**
+     * Streaming generation endpoint.
+     *
+     * Writes SSE directly to HttpServletResponse to bypass Spring MVC / Tomcat
+     * response buffering. SseEmitter buffers internally and does not flush after
+     * each event, so progress events never reach the client until the pipeline
+     * finishes. Writing directly to the output stream and calling flush() after
+     * every event fixes the 0% progress bar problem.
+     *
+     * This is a SYNCHRONOUS handler — Spring MVC will block the thread until
+     * the response is committed, which is fine because the pipeline can take
+     * up to 10 minutes and we need to stream in real time.
+     */
+    @PostMapping(value = "/stream", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public void createStream(
+            @RequestParam(name = "prompt", required = false) String prompt,
+            @RequestParam(name = "files", required = false) List<MultipartFile> files,
+            @RequestParam(name = "domain", required = false) String domain,
+            @RequestParam(name = "model", required = false) String model,
+            @RequestParam(name = "themePreset", required = false) String themePreset,
+            @RequestParam(name = "jiraIssueKeys", required = false) List<String> jiraIssueKeys,
+            @RequestParam(name = "jiraIssueKey", required = false) String jiraIssueKey,
+            @RequestParam(name = "meetingAnalysis", required = false) String meetingAnalysis,
+            @RequestParam(name = "figmaUrl", required = false) String figmaUrl,
+            @RequestParam(name = "figmaToken", required = false) String figmaToken,
+            JwtAuthenticationToken token,
+            HttpServletResponse response) throws IOException {
+
+        String userId = "dev-user";
+        if (token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub != null)
+                userId = String.valueOf(sub);
+        }
+
+        String safePrompt = prompt == null ? "" : prompt;
+        int jiraKeysCount = (jiraIssueKeys == null ? 0 : jiraIssueKeys.size());
+        log.info(
+                "POST /api/generations/stream: userId={}, jiraKeysCount={}, jiraIssueKey={}, promptLen={}, filesCount={}, domain={}, model={}",
+                userId, jiraKeysCount, jiraIssueKey, safePrompt.length(),
+                files == null ? 0 : files.size(), domain, model);
+
+        // Set SSE headers — disable all buffering layers
+        response.setContentType("text/event-stream");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setHeader("X-Accel-Buffering", "no"); // disables Nginx proxy buffering
+        response.setHeader("Connection", "keep-alive");
+        response.flushBuffer(); // commit the headers immediately
+
+        PrintWriter writer = response.getWriter();
+
+        List<String> keys = (jiraIssueKeys != null)
+                ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList()
+                : List.of();
+        if (keys.isEmpty() && jiraIssueKey != null && !jiraIssueKey.isBlank()) {
+            keys = List.of(jiraIssueKey.trim());
+        }
+
+        if (!keys.isEmpty()) {
+            service.createGenerationStreamFromJiraMulti(userId, keys, safePrompt, files, domain, model, writer);
+        } else {
+            service.createGenerationStream(userId, safePrompt, files, domain, model, themePreset, meetingAnalysis, figmaUrl, figmaToken, writer);
+        }
+
+        // Ensure the response is fully committed
+        if (!writer.checkError()) {
+            writer.flush();
+        }
+    }
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<GenerationCreateResponse> create(
+            @RequestParam(name = "prompt", required = false) String prompt,
+            @RequestParam(name = "files", required = false) List<MultipartFile> files,
+            @RequestParam(name = "domain", required = false) String domain,
+            @RequestParam(name = "jiraIssueKeys", required = false) List<String> jiraIssueKeys,
+            @RequestParam(name = "jiraIssueKey", required = false) String jiraIssueKey,
+            JwtAuthenticationToken token) {
+
+        String userId = "dev-user";
+        if (token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub != null)
+                userId = String.valueOf(sub);
+        }
+
+        String safePrompt = prompt == null ? "" : prompt;
+        List<String> keys = (jiraIssueKeys != null)
+                ? jiraIssueKeys.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList()
+                : List.of();
+        if (keys.isEmpty() && jiraIssueKey != null && !jiraIssueKey.isBlank()) {
+            keys = List.of(jiraIssueKey.trim());
+        }
+
+        GenerationCreateResponse out;
+        if (!keys.isEmpty()) {
+            out = service.createGenerationFromJiraMulti(userId, keys, safePrompt, files, domain);
+        } else {
+            out = service.createGeneration(userId, safePrompt, files, domain);
+        }
+        return ResponseEntity.status(201).body(out);
+    }
+
+    @GetMapping("/{id}")
+    public Generation get(@PathVariable("id") String id, JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!hasAccess(g, token)) throw new IllegalArgumentException("generation not found");
+        return g;
+    }
+
+    @GetMapping
+    public Map<String, Object> list(
+            JwtAuthenticationToken token,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction) {
+
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(50, Math.max(1, size));
+
+        List<Generation> all;
+        if (devMode) {
+            all = service.listAllGenerations();
+        } else {
+            if (token == null || token.getToken() == null)
+                throw new IllegalArgumentException("Authentication required");
+            Object subClaim = token.getToken().getClaims().get("sub");
+            if (subClaim == null)
+                throw new IllegalArgumentException("Invalid token - missing 'sub' claim");
+            all = service.listGenerations(subClaim.toString());
+        }
+
+        int total = all.size();
+        int fromIdx = Math.min(safePage * safeSize, total);
+        int toIdx = Math.min(fromIdx + safeSize, total);
+        List<Generation> pageContent = all.subList(fromIdx, toIdx);
+
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("content", pageContent);
+        response.put("page", safePage);
+        response.put("size", safeSize);
+        response.put("total", total);
+        response.put("totalPages", (int) Math.ceil((double) total / safeSize));
+        response.put("hasNext", toIdx < total);
+        response.put("hasPrev", safePage > 0);
+        return response;
+    }
+
+    @GetMapping("/{id}/code")
+    public CodeBundleDto code(@PathVariable("id") String id) {
+        return service.getCode(id);
+    }
+
+    @GetMapping("/{id}/audit")
+    public List<AuditEvent> audit(@PathVariable("id") String id) {
+        return audit.listEventsForGeneration(id);
+    }
+
+    @GetMapping("/{id}/versions")
+    public GenerationVersionsResponse versions(@PathVariable("id") String id) {
+        return service.getVersions(id);
+    }
+
+    /** Returns quality scores for a generation, optionally scoped to a specific version. */
+    @GetMapping("/{id}/quality")
+    public ResponseEntity<java.util.Map<String, Object>> quality(
+            @PathVariable("id") String id,
+            @RequestParam(value = "version", required = false) Integer version) {
+        return ResponseEntity.ok(service.getQualityScores(id, version));
+    }
+
+    @PostMapping("/{id}/rollback")
+    public GenerationRollbackResponse rollback(
+            @PathVariable("id") String id,
+            @RequestParam("version") int version) {
+        return service.rollback(id, version);
+    }
+
+    @PostMapping("/{id}/edit-file")
+    public ResponseEntity<EditFileResponse> editFile(
+            @PathVariable("id") String id,
+            @RequestBody EditFileRequest body,
+            JwtAuthenticationToken token) {
+        body.generationId = id;
+        EditFileResponse resp = service.editFile(id, body.filePath, body.instruction, body.model);
+        return ResponseEntity.ok(resp);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteGeneration(@PathVariable("id") String id) {
+        service.deleteGeneration(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/name")
+    public ResponseEntity<Void> renameGeneration(
+            @PathVariable("id") String id,
+            @RequestBody java.util.Map<String, String> body) {
+        service.renameGeneration(id, body.getOrDefault("name", ""));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/meeting-analysis")
+    public ResponseEntity<Void> saveMeetingAnalysis(
+            @PathVariable("id") String id,
+            @RequestBody java.util.Map<String, String> body) {
+        String analysis = body.get("meetingAnalysis");
+        if (analysis == null || analysis.isBlank()) return ResponseEntity.badRequest().build();
+        service.saveMeetingAnalysis(id, analysis);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/chat")
+    public List<ChatMessageDto> chatHistory(@PathVariable("id") String id) {
+        return service.getChatHistory(id);
+    }
+
+    @PostMapping("/{id}/duplicate")
+    public ResponseEntity<com.aiuigenerator.bff.dto.DuplicateResponse> duplicate(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        String userId = "dev-user";
+        if (token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub != null) userId = sub.toString();
+        }
+        com.aiuigenerator.bff.dto.DuplicateResponse resp = service.duplicateGeneration(id, userId);
+        return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * Push generated code to GitLab repository
+     */
+    @PostMapping("/{id}/push-to-gitlab")
+    public ResponseEntity<?> pushToGitLab(
+            @PathVariable("id") String generationId,
+            @RequestBody GitLabPushDto.PushRequest request) {
+
+        log.info("POST /api/generations/{}/push-to-gitlab: project={}", generationId, request.projectPath);
+
+        try {
+            // 1. Validate inputs
+            if (request.gitlabUrl == null || request.gitlabUrl.isBlank()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("GitLab URL is required"));
+            }
+            if (request.projectPath == null || request.projectPath.isBlank()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("Project path is required"));
+            }
+            if (request.personalAccessToken == null || request.personalAccessToken.isBlank()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("Personal access token is required"));
+            }
+            if (request.branch == null || request.branch.isBlank()) {
+                request.branch = "main";
+            }
+            if (request.commitMessage == null || request.commitMessage.isBlank()) {
+                request.commitMessage = "feat: initial commit";
+            }
+
+            // 2. Get code content
+            CodeBundleDto code = service.getCode(generationId);
+            if (code == null || code.files == null || code.files.isEmpty()) {
+                return ResponseEntity.ok(GitLabPushDto.PushResponse.error("No code found for this generation"));
+            }
+
+            // 3. Push to GitLab — files are written to their real paths in the repo
+            GitLabPushDto.PushResponse response = gitLabService.pushCode(
+                    request.gitlabUrl,
+                    request.personalAccessToken,
+                    request.projectPath,
+                    request.branch,
+                    request.commitMessage,
+                    code.files,
+                    request.forceOverwrite);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error pushing to GitLab: {}", e.getMessage(), e);
+            return ResponseEntity.ok(GitLabPushDto.PushResponse.error("Error: " + e.getMessage()));
+        }
+    }
+
+
+    @PostMapping("/{id}/share")
+    public ResponseEntity<Map<String, String>> enableShare(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!devMode && token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub == null || !g.getUserId().equals(sub.toString()))
+                return ResponseEntity.status(403).build();
+        }
+        String shareToken = service.enableShare(id);
+        return ResponseEntity.ok(Map.of("shareToken", shareToken));
+    }
+
+    @DeleteMapping("/{id}/share")
+    public ResponseEntity<Void> disableShare(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!devMode && token != null && token.getToken() != null) {
+            Object sub = token.getToken().getClaims().get("sub");
+            if (sub == null || !g.getUserId().equals(sub.toString()))
+                return ResponseEntity.status(403).build();
+        }
+        service.disableShare(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ── Collaborators ────────────────────────────────────────────────────────
+
+    @GetMapping("/{id}/collaborators")
+    public ResponseEntity<List<Map<String, Object>>> getCollaborators(
+            @PathVariable("id") String id,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!hasAccess(g, token)) return ResponseEntity.status(403).build();
+        List<String> ids = service.getCollaborators(id);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String uid : ids) {
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("userId", uid);
+            try {
+                Map<String, Object> user = keycloakAdmin.getUserById(uid);
+                entry.put("username", user != null ? user.getOrDefault("username", uid) : uid);
+            } catch (Exception e) {
+                entry.put("username", uid);
+            }
+            result.add(entry);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/collaborators")
+    public ResponseEntity<Void> addCollaborator(
+            @PathVariable("id") String id,
+            @RequestBody Map<String, String> body,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!isOwner(g, token)) return ResponseEntity.status(403).build();
+        String collaboratorId = body.get("userId");
+        if (collaboratorId == null || collaboratorId.isBlank()) return ResponseEntity.badRequest().build();
+        if (collaboratorId.equals(g.getUserId())) return ResponseEntity.badRequest().build();
+        service.addCollaborator(id, collaboratorId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{id}/collaborators/{collaboratorId}")
+    public ResponseEntity<Void> removeCollaborator(
+            @PathVariable("id") String id,
+            @PathVariable("collaboratorId") String collaboratorId,
+            JwtAuthenticationToken token) {
+        Generation g = service.getGeneration(id);
+        if (!isOwner(g, token)) return ResponseEntity.status(403).build();
+        service.removeCollaborator(id, collaboratorId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Agentic Repair — trigger self-healing on an existing project and return updated scores. */
+    @PostMapping("/{id}/repair")
+    public ResponseEntity<java.util.Map<String, Object>> repair(@PathVariable("id") String id) {
+        java.util.Map<String, Object> result = service.repairGeneration(id);
+        return ResponseEntity.ok(result);
+    }
+
+    /** Accessibility Audit — generate detailed WCAG 2.1 AA report for an existing project. */
+    @PostMapping("/{id}/accessibility")
+    public ResponseEntity<java.util.Map<String, Object>> accessibilityReport(@PathVariable("id") String id) {
+        java.util.Map<String, Object> result = service.generateAccessibilityReport(id);
+        return ResponseEntity.ok(result);
+    }
+
+    /** Get accessibility audit history for a generation. */
+    @GetMapping("/{id}/accessibility/history")
+    public ResponseEntity<java.util.List<?>> getAccessibilityHistory(@PathVariable("id") String id) {
+        java.util.List<?> history = service.getAccessibilityHistory(id);
+        return ResponseEntity.ok(history);
+    }
+
+    /** Apply accessibility fix to project file. */
+    @PostMapping("/{id}/accessibility/apply-fix")
+    public ResponseEntity<java.util.Map<String, Object>> applyAccessibilityFix(
+            @PathVariable("id") String id,
+            @org.springframework.web.bind.annotation.RequestBody(required = false) java.util.Map<String, String> body) {
+        try {
+            if (body == null) {
+                return ResponseEntity.badRequest().body(java.util.Map.of("success", false, "message", "Request body is required"));
+            }
+            String filePath = body.getOrDefault("filePath", "").trim();
+            String fixCode = body.getOrDefault("fixCode", "").trim();
+            String currentCode = body.getOrDefault("currentCode", "").trim();
+            if (filePath.isBlank() || fixCode.isBlank()) {
+                return ResponseEntity.badRequest().body(java.util.Map.of("success", false, "message", "filePath and fixCode are required"));
+            }
+            java.util.Map<String, Object> result = service.applyAccessibilityFix(id, filePath, fixCode, currentCode);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(getClass()).error("Error in applyAccessibilityFix: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(java.util.Map.of("success", false, "message", "Server error: " + e.getMessage()));
+        }
+    }
+
+    /** Auto-Documentation — generate README.md + JSDoc for an existing project. */
+    @PostMapping("/{id}/docs")
+    public ResponseEntity<java.util.Map<String, Object>> generateDocs(@PathVariable("id") String id) {
+        java.util.Map<String, Object> result = service.generateDocs(id);
+        return ResponseEntity.ok(result);
+    }
+
+    /** Deploy to Netlify — proxies to FastAPI, persists public URL. */
+    @PostMapping("/{id}/deploy")
+    public ResponseEntity<java.util.Map<String, Object>> deploy(
+            @PathVariable("id") String id,
+            @RequestBody java.util.Map<String, String> body) {
+        String provider = body.getOrDefault("provider", "netlify");
+        String token    = body.getOrDefault("token", "");
+        if (token.isBlank()) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", "token is required"));
+        }
+        java.util.Map<String, Object> result = "netlify".equals(provider)
+                ? service.deployToNetlify(id, token)
+                : java.util.Map.of("error", "Unsupported provider: " + provider);
+        return ResponseEntity.ok(result);
+    }
+}
+

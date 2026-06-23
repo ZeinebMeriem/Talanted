@@ -1,0 +1,15 @@
+classDiagram
+  class UserAccountManagement {
+    +manageUserAccounts()
+    +validateCredentials(user: string)
+  }
+  class PaymentMethods {
+    +processPayment(paymentDetails: object)
+    +verifyPaymentStatus(paymentId: string)
+  }
+  class AIFunctionalities {
+    +analyzeFlightData(flightData: FlightDataModel)
+    +suggestOptimalRoute(routeData: RouteDataModel)
+  }
+  UserAccountManagement * PaymentMethods
+  UserAccountManagement * AIFunctionalities

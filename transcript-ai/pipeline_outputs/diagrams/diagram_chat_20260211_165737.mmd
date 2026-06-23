@@ -1,0 +1,12 @@
+graph TD
+    A[User] --> B[Test]
+    B --> C{Testing Request}
+    C -- Start Testing Request --> D[BookingSystem]
+    D --> E{Testing Response}
+    E --> F[Test]
+    F --> G{Feature Verification Request}
+    G -- Feature Verification Request --> H[BookingSystem]
+    H --> I{Feature Verification Response}
+    I --> J[Test]
+    J --> K{End Testing Request}
+    K -- End Testing Request --> L[BookingSystem]

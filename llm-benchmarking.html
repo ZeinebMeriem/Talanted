@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Benchmarking LLMs — AI UI Generator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f4f6ff;
+      padding: 30px 20px;
+      color: #222;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      color: #2d2d5e;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 26px;
+    }
+
+    .wrapper { max-width: 1200px; margin: 0 auto; }
+
+    /* ── section ── */
+    .card {
+      background: white;
+      border: 2px solid #c8c0e8;
+      border-radius: 14px;
+      padding: 20px 22px;
+      margin-bottom: 20px;
+    }
+
+    .sec-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #2d2d5e;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+    }
+
+    /* ── main bench table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
+    }
+
+    thead th {
+      background: #2d2d5e;
+      color: white;
+      padding: 10px 12px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    thead th:first-child { text-align: left; border-radius: 8px 0 0 0; }
+    thead th:last-child  { border-radius: 0 8px 0 0; }
+
+    tbody tr:nth-child(even) { background: #f8f9ff; }
+    tbody tr:hover { background: #eeecff; transition: background 0.15s; }
+
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee;
+      vertical-align: middle;
+      text-align: center;
+    }
+
+    td:first-child { text-align: left; }
+
+    .model-name   { font-weight: 700; font-size: 12.5px; color: #1a1a3e; }
+    .model-org    { font-size: 9.5px; color: #999; display: block; margin-top: 1px; }
+
+    /* score bar */
+    .bar-cell { min-width: 110px; }
+
+    .bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: flex-start;
+    }
+
+    .bar-bg {
+      flex: 1;
+      background: #eee;
+      border-radius: 6px;
+      height: 11px;
+      overflow: hidden;
+      max-width: 90px;
+    }
+
+    .bar-fg {
+      height: 100%;
+      border-radius: 6px;
+    }
+
+    .bar-score {
+      font-size: 11px;
+      font-weight: 700;
+      min-width: 38px;
+      color: #333;
+    }
+
+    /* color scale */
+    .s-top    { background: linear-gradient(90deg, #1a8040, #2eb860); }
+    .s-high   { background: linear-gradient(90deg, #3a9850, #6aca80); }
+    .s-mid    { background: linear-gradient(90deg, #d09020, #f0b840); }
+    .s-low    { background: linear-gradient(90deg, #c04020, #e07040); }
+
+    /* speed pill */
+    .pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 10.5px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .p-vfast { background: #c8f8d0; color: #0a5020; }
+    .p-fast  { background: #d8f0dc; color: #1a6030; }
+    .p-med   { background: #fff3cc; color: #7a5000; }
+    .p-slow  { background: #fde0d0; color: #7a2000; }
+
+    /* cost */
+    .free  { color: #1a8030; font-weight: 700; font-size: 11px; }
+    .paid  { color: #c04020; font-weight: 700; font-size: 11px; }
+    .local { color: #606060; font-weight: 700; font-size: 11px; }
+
+    /* role used */
+    .role {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 8px;
+      font-size: 9.5px;
+      font-weight: 600;
+      margin: 2px;
+    }
+
+    .r-code   { background: #ddf0ff; color: #0050a0; }
+    .r-plan   { background: #ddffee; color: #005030; }
+    .r-chat   { background: #fff0dd; color: #804000; }
+    .r-vision { background: #f0ddff; color: #600080; }
+    .r-local  { background: #eeeeee; color: #404040; }
+
+    /* highlight rows */
+    .tr-primary  { border-left: 4px solid #2eb860; }
+    .tr-fallback { border-left: 4px solid #f0b429; }
+    .tr-local    { border-left: 4px solid #aaaaaa; }
+
+    /* ── radar section ── */
+    .radar-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 12px;
+    }
+
+    .radar-card {
+      border: 1.5px solid #ddd;
+      border-radius: 10px;
+      padding: 12px;
+      background: #fafbff;
+    }
+
+    .radar-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #2d2d5e;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .radar-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .radar-label {
+      font-size: 9.5px;
+      color: #666;
+      width: 70px;
+      flex-shrink: 0;
+    }
+
+    .radar-bar-bg {
+      flex: 1;
+      height: 8px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .radar-bar-fg { height: 100%; border-radius: 4px; }
+
+    .radar-val {
+      font-size: 9px;
+      font-weight: 700;
+      color: #555;
+      width: 28px;
+      text-align: right;
+    }
+
+    /* ── note ── */
+    .note {
+      font-size: 10px;
+      color: #999;
+      margin-top: 10px;
+      font-style: italic;
+    }
+
+    /* ── legend ── */
+    .legend {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 10px;
+      color: #666;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Benchmarking des LLMs intégrés</h1>
+<p class="subtitle">Sources : rapports officiels HumanEval · MMLU · GSM8K · LiveCodeBench — modèles utilisés dans AI UI Generator</p>
+
+<div class="wrapper">
+
+<!-- ════════ TABLE PRINCIPALE ════════ -->
+<div class="card">
+  <div class="sec-title">📊 Scores sur benchmarks standards</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="min-width:160px">Modèle</th>
+        <th class="bar-cell">HumanEval<br><span style="font-weight:400;font-size:9px">(génération code)</span></th>
+        <th class="bar-cell">MMLU<br><span style="font-weight:400;font-size:9px">(raisonnement général)</span></th>
+        <th class="bar-cell">GSM8K<br><span style="font-weight:400;font-size:9px">(logique / maths)</span></th>
+        <th>Vitesse<br><span style="font-weight:400;font-size:9px">(tok/s)</span></th>
+        <th>Contexte</th>
+        <th>Coût</th>
+        <th>Rôle projet</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <!-- Llama 3.3 70B via Groq -->
+      <tr class="tr-primary">
+        <td>
+          <span class="model-name">Llama 3.3 70B</span>
+          <span class="model-org">Meta · via Groq (LPU)</span>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-top" style="width:88%"></div></div>
+            <span class="bar-score">88.4%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-high" style="width:86%"></div></div>
+            <span class="bar-score">86.0%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-top" style="width:93%"></div></div>
+            <span class="bar-score">93.0%</span>
+          </div>
+        </td>
+        <td><span class="pill p-vfast">~300 tok/s</span></td>
+        <td>128K</td>
+        <td><span class="free">Gratuit</span></td>
+        <td>
+          <span class="role r-chat">TED Chat</span>
+          <span class="role r-code">Codegen</span>
+        </td>
+      </tr>
+
+      <!-- Gemini 2.0 Flash -->
+      <tr class="tr-primary">
+        <td>
+          <span class="model-name">Gemini 2.0 Flash</span>
+          <span class="model-org">Google DeepMind</span>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-high" style="width:84%"></div></div>
+            <span class="bar-score">84.0%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-high" style="width:76%"></div></div>
+            <span class="bar-score">76.4%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-high" style="width:87%"></div></div>
+            <span class="bar-score">87.0%</span>
+          </div>
+        </td>
+        <td><span class="pill p-fast">~120 tok/s</span></td>
+        <td><strong>1M</strong></td>
+        <td><span class="free">Gratuit*</span></td>
+        <td>
+          <span class="role r-code">Codegen</span>
+          <span class="role r-vision">Vision/OCR</span>
+        </td>
+      </tr>
+
+      <!-- Claude Sonnet 4.6 -->
+      <tr class="tr-fallback">
+        <td>
+          <span class="model-name">Claude Sonnet 4.6</span>
+          <span class="model-org">Anthropic</span>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-top" style="width:92%"></div></div>
+            <span class="bar-score">92.0%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-top" style="width:90%"></div></div>
+            <span class="bar-score">90.1%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-top" style="width:95%"></div></div>
+            <span class="bar-score">95.0%</span>
+          </div>
+        </td>
+        <td><span class="pill p-med">~90 tok/s</span></td>
+        <td>200K</td>
+        <td><span class="paid">$3/$15 MTok</span></td>
+        <td>
+          <span class="role r-plan">Planner</span>
+          <span class="role r-code">Design Sys.</span>
+        </td>
+      </tr>
+
+      <!-- Claude Haiku 4.5 -->
+      <tr class="tr-fallback">
+        <td>
+          <span class="model-name">Claude Haiku 4.5</span>
+          <span class="model-org">Anthropic · modèle léger</span>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-high" style="width:80%"></div></div>
+            <span class="bar-score">80.4%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:76%"></div></div>
+            <span class="bar-score">76.0%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-high" style="width:88%"></div></div>
+            <span class="bar-score">88.4%</span>
+          </div>
+        </td>
+        <td><span class="pill p-fast">~130 tok/s</span></td>
+        <td>200K</td>
+        <td><span class="paid">$0.8/$4 MTok</span></td>
+        <td>
+          <span class="role r-plan">Planner fb.</span>
+          <span class="role r-vision">Vision</span>
+        </td>
+      </tr>
+
+      <!-- Qwen 2.5-Coder -->
+      <tr class="tr-local">
+        <td>
+          <span class="model-name">Qwen 2.5-Coder 7B</span>
+          <span class="model-org">Alibaba · Ollama local</span>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-top" style="width:88%"></div></div>
+            <span class="bar-score">88.4%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:74%"></div></div>
+            <span class="bar-score">74.2%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-high" style="width:82%"></div></div>
+            <span class="bar-score">82.0%</span>
+          </div>
+        </td>
+        <td><span class="pill p-slow">~20 tok/s</span></td>
+        <td>32K</td>
+        <td><span class="local">100% local</span></td>
+        <td>
+          <span class="role r-code">Codegen local</span>
+        </td>
+      </tr>
+
+      <!-- Qwen 2.5:3B -->
+      <tr class="tr-local">
+        <td>
+          <span class="model-name">Qwen 2.5:3B</span>
+          <span class="model-org">Alibaba · Transcript AI</span>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:65%"></div></div>
+            <span class="bar-score">65.0%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:65%"></div></div>
+            <span class="bar-score">65.0%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:75%"></div></div>
+            <span class="bar-score">75.0%</span>
+          </div>
+        </td>
+        <td><span class="pill p-med">~35 tok/s</span></td>
+        <td>32K</td>
+        <td><span class="local">100% local</span></td>
+        <td>
+          <span class="role r-local">Transcript AI</span>
+        </td>
+      </tr>
+
+      <!-- Mistral Small -->
+      <tr class="tr-fallback">
+        <td>
+          <span class="model-name">Mistral Small</span>
+          <span class="model-org">Mistral AI</span>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:45%"></div></div>
+            <span class="bar-score">45.1%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:74%"></div></div>
+            <span class="bar-score">74.2%</span>
+          </div>
+        </td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg"><div class="bar-fg s-mid" style="width:72%"></div></div>
+            <span class="bar-score">72.0%</span>
+          </div>
+        </td>
+        <td><span class="pill p-fast">~110 tok/s</span></td>
+        <td>32K</td>
+        <td><span class="paid">Payant</span></td>
+        <td>
+          <span class="role r-vision">Vision (Pixtral)</span>
+        </td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <div class="legend">
+    <span><span class="legend-dot" style="background:#2eb860;"></span>Provider primaire (clé API configurée)</span>
+    <span><span class="legend-dot" style="background:#f0b429;"></span>Fallback cloud</span>
+    <span><span class="legend-dot" style="background:#aaa;"></span>Fallback local (Ollama)</span>
+    <span style="margin-left:auto;">* Gemini 2.0 Flash : 15 RPM / 1M tokens/jour gratuit</span>
+  </div>
+  <p class="note">Sources : Meta AI (Llama 3.3), Google AI (Gemini 2.0), Anthropic (Claude 4), Alibaba (Qwen 2.5), Mistral AI — HumanEval pass@1, MMLU 5-shot, GSM8K 8-shot CoT</p>
+</div>
+
+
+<!-- ════════ PROFILS PAR USAGE ════════ -->
+<div class="card">
+  <div class="sec-title">🎯 Profil par usage — Pourquoi ce modèle pour ce rôle ?</div>
+
+  <div class="radar-grid">
+
+    <!-- Codegen -->
+    <div class="radar-card">
+      <div class="radar-title">⚙️ Génération de code<br><small style="color:#3a9858;font-weight:600;">→ Llama 3.3 70B + Gemini</small></div>
+      <div class="radar-row">
+        <span class="radar-label">HumanEval</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:88%;background:#2eb860;"></div></div>
+        <span class="radar-val">88%</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Vitesse</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:95%;background:#2eb860;"></div></div>
+        <span class="radar-val">300/s</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Coût</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:100%;background:#2eb860;"></div></div>
+        <span class="radar-val">Gratuit</span>
+      </div>
+      <div style="font-size:9.5px;color:#666;margin-top:8px;">Groq LPU = inférence 10× plus rapide qu'un GPU classique. Idéal pour la génération multi-fichiers.</div>
+    </div>
+
+    <!-- Planner -->
+    <div class="radar-card">
+      <div class="radar-title">🗺️ Planning & Raisonnement<br><small style="color:#3a9858;font-weight:600;">→ Claude Sonnet 4.6</small></div>
+      <div class="radar-row">
+        <span class="radar-label">MMLU</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:90%;background:#2eb860;"></div></div>
+        <span class="radar-val">90%</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">GSM8K</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:95%;background:#2eb860;"></div></div>
+        <span class="radar-val">95%</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Contexte</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:80%;background:#2eb860;"></div></div>
+        <span class="radar-val">200K</span>
+      </div>
+      <div style="font-size:9.5px;color:#666;margin-top:8px;">Meilleur score MMLU. Le Planner doit comprendre l'intention du prompt et structurer les dépendances.</div>
+    </div>
+
+    <!-- Vision -->
+    <div class="radar-card">
+      <div class="radar-title">👁️ Vision / OCR<br><small style="color:#3a9858;font-weight:600;">→ Gemini 2.0 Flash</small></div>
+      <div class="radar-row">
+        <span class="radar-label">Vision</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:92%;background:#2eb860;"></div></div>
+        <span class="radar-val">Top</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Contexte</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:100%;background:#2eb860;"></div></div>
+        <span class="radar-val">1M tok</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Coût</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:100%;background:#2eb860;"></div></div>
+        <span class="radar-val">Gratuit</span>
+      </div>
+      <div style="font-size:9.5px;color:#666;margin-top:8px;">Seul modèle gratuit avec support vision natif et contexte 1M tokens pour les PDFs longs.</div>
+    </div>
+
+    <!-- TED Chat -->
+    <div class="radar-card">
+      <div class="radar-title">💬 Assistant TED (Chat)<br><small style="color:#3a9858;font-weight:600;">→ Groq Llama 3.3 70B</small></div>
+      <div class="radar-row">
+        <span class="radar-label">Vitesse</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:98%;background:#2eb860;"></div></div>
+        <span class="radar-val">300/s</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">MMLU</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:86%;background:#5ba85b;"></div></div>
+        <span class="radar-val">86%</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Coût</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:100%;background:#2eb860;"></div></div>
+        <span class="radar-val">Gratuit</span>
+      </div>
+      <div style="font-size:9.5px;color:#666;margin-top:8px;">Un assistant conversationnel doit répondre en &lt;1s. Groq LPU = latence 3× inférieure aux autres APIs.</div>
+    </div>
+
+    <!-- Transcript / Qwen -->
+    <div class="radar-card">
+      <div class="radar-title">📋 Transcript AI (Analyse)<br><small style="color:#606060;font-weight:600;">→ Qwen 2.5:3B local</small></div>
+      <div class="radar-row">
+        <span class="radar-label">HumanEval</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:65%;background:#e09030;"></div></div>
+        <span class="radar-val">65%</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Coût</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:100%;background:#2eb860;"></div></div>
+        <span class="radar-val">0€</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Privacité</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:100%;background:#2eb860;"></div></div>
+        <span class="radar-val">Local</span>
+      </div>
+      <div style="font-size:9.5px;color:#666;margin-top:8px;">Les transcriptions de réunion contiennent des données sensibles. Traitement 100% local = conformité RGPD.</div>
+    </div>
+
+    <!-- Qwen Coder -->
+    <div class="radar-card">
+      <div class="radar-title">🔧 Codegen local (fallback)<br><small style="color:#606060;font-weight:600;">→ Qwen 2.5-Coder 7B</small></div>
+      <div class="radar-row">
+        <span class="radar-label">HumanEval</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:88%;background:#2eb860;"></div></div>
+        <span class="radar-val">88%</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Taille</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:35%;background:#5090d0;"></div></div>
+        <span class="radar-val">7B</span>
+      </div>
+      <div class="radar-row">
+        <span class="radar-label">Coût</span>
+        <div class="radar-bar-bg"><div class="radar-bar-fg" style="width:100%;background:#2eb860;"></div></div>
+        <span class="radar-val">0€</span>
+      </div>
+      <div style="font-size:9.5px;color:#666;margin-top:8px;">HumanEval 88% avec 7B paramètres seulement. Meilleur ratio performance/taille pour du code.</div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════ CONCLUSION ════════ -->
+<div class="card" style="background:#f8f9ff;">
+  <div class="sec-title">💡 Conclusion — Stratégie de sélection</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;font-size:11.5px;color:#444;line-height:1.6;">
+    <div>
+      <strong style="color:#2d2d5e;">Groq = vitesse</strong><br>
+      Le LPU (Language Processing Unit) de Groq traite ~300 tokens/s contre ~90 tok/s pour un GPU standard. Choisi pour TED et le codegen où la latence impacte l'UX directement.
+    </div>
+    <div>
+      <strong style="color:#2d2d5e;">Gemini = contexte + vision</strong><br>
+      Le seul modèle gratuit avec 1M tokens de contexte et support vision natif. Indispensable pour l'OCR des maquettes et le traitement de longs PDFs.
+    </div>
+    <div>
+      <strong style="color:#2d2d5e;">Claude = précision maximale</strong><br>
+      Meilleur MMLU et HumanEval de la sélection. Réservé aux agents critiques (Planner, Design System) où la qualité prime sur le coût.
+    </div>
+    <div>
+      <strong style="color:#2d2d5e;">Qwen local = RGPD + zéro coût</strong><br>
+      Les transcriptions de réunion sont des données sensibles. Qwen via Ollama traite tout localement, sans envoyer de données vers un cloud externe.
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

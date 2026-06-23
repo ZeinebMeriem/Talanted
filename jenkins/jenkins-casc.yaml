@@ -1,0 +1,63 @@
+jenkins:
+  systemMessage: "AI UI Generator — Jenkins CI/CD Pipeline"
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin123"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+
+  remotingSecurity:
+    enabled: true
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              id: "github-token"
+              scope: GLOBAL
+              username: "${GITHUB_USER:-MeriemBoukraa}"
+              password: "${GITHUB_TOKEN:-changeme}"
+              description: "GitHub Personal Access Token"
+          - string:
+              id: "sonar-token"
+              scope: GLOBAL
+              secret: "${SONAR_TOKEN:-changeme}"
+              description: "SonarQube Analysis Token"
+          - string:
+              id: "gitlab-token"
+              scope: GLOBAL
+              secret: "${GITLAB_TOKEN:-changeme}"
+              description: "GitLab Personal Access Token"
+          - usernamePassword:
+              id: "docker-registry-credentials"
+              scope: GLOBAL
+              username: "${DOCKER_REGISTRY_USER:-}"
+              password: "${DOCKER_REGISTRY_PASS:-}"
+              description: "Docker Hub credentials (set DOCKER_REGISTRY_USER / DOCKER_REGISTRY_PASS in jenkins/.env)"
+
+unclassified:
+  location:
+    url: "http://localhost:8090/"
+
+  sonarGlobalConfiguration:
+    installations:
+      - name: "SonarQube-Server"
+        serverUrl: "http://ai-ui-sonarqube:9000"
+        credentialsId: ""
+        mojoVersion: ""
+
+tool:
+  git:
+    installations:
+      - name: "Git"
+        home: "git"

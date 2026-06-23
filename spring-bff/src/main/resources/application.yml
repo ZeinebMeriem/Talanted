@@ -1,0 +1,116 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: spring-bff
+  mvc:
+    async:
+      request-timeout: 660000 # 11 minutes — matches SseEmitter timeout
+  data:
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/ai_ui_generator}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+  mail:
+    host: ${MAIL_HOST:smtp.mailtrap.io}
+    port: ${MAIL_PORT:2525}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+    from: ${MAIL_FROM:noreply@ai-ui-generator.local}
+  thymeleaf:
+    mode: HTML
+    encoding: UTF-8
+
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+logging:
+  level:
+    root: INFO
+    com.aiuigenerator.bff: DEBUG
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/spring-bff.log
+    max-size: 10MB
+    max-history: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: spring-bff
+      environment: production
+
+app:
+  security:
+    # dev-mode: true  = mock "dev-user", no OAuth2 validation
+    # dev-mode: false = require real Keycloak OAuth2 JWT tokens
+    dev-mode: ${APP_SECURITY_DEV_MODE:false}
+  fastapi:
+    base-url: ${FASTAPI_BASE_URL:http://localhost:8000}
+    timeout-seconds: ${FASTAPI_TIMEOUT_SECONDS:3600}
+  minio:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:ai-ui-files}
+  upload:
+    max-bytes: 52428800 # 50MB
+    allowed-mime: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/markdown,text/csv,text/html,text/css,text/javascript,application/json,application/xml,application/yaml,image/png,image/jpeg,image/gif,image/webp,image/bmp,image/svg+xml,application/octet-stream,text/x-mermaid,text/vnd.mermaid
+  keycloak:
+    internal-url: ${KEYCLOAK_INTERNAL_URL:http://keycloak:8080}
+    realm: ${KEYCLOAK_REALM:ai-ui}
+  jira:
+    base-url: ${JIRA_BASE_URL:}
+    email: ${JIRA_EMAIL:}
+    api-token: ${JIRA_API_TOKEN:}
+    timeout-seconds: ${JIRA_TIMEOUT_SECONDS:30}
+    frontend-labels: ${JIRA_FRONTEND_LABELS:ui,interface,ux}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+gitlab:
+  oauth:
+    client-id: d1152c3ca144adc13273603e6baea0abbc6ec04ab913c2b7bf1f6056190b528e
+    client-secret: gloas-aa32cd15325996201e6c1c5a67e71aa289781499343fcdaca602b3b31510d585
+    redirect-uri: http://127.0.0.1:8081/api/gitlab/auth/callback
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    disable-swagger-default-url: true
+  show-actuator: false

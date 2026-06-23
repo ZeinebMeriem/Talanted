@@ -1,0 +1,15 @@
+python-dotenv>=1.0.0
+requests>=2.31.0
+numpy>=1.24.0,<2.0.0
+elevenlabs>=1.0.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
+langdetect>=1.0.9
+flask>=3.0.0
+flask-cors>=4.0.0
+flask-socketio>=5.3.5
+python-socketio>=5.10.0
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+eventlet>=0.33.0
