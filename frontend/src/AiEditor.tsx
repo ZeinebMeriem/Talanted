@@ -1142,7 +1142,7 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  const startBuild = async (promptOverride?: string, nameOverride?: string) => {
+  const startBuild = async (promptOverride?: string, nameOverride?: string, figmaUrlOverride?: string | null, figmaTokenOverride?: string | null) => {
     setIsBuilding(true)
     setBuildError(null)
     setBuildPct(0)
@@ -1155,7 +1155,10 @@ document.addEventListener('click', function(e) {
       setDocsGenerated(false)
       const capturedMeetingAnalysis = pendingMeetingAnalysis
       setPendingMeetingAnalysis(null)
-      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel, undefined, undefined, selectedTheme, capturedMeetingAnalysis, figmaUrl, figmaToken)) {
+      // Use override values when called immediately after setState (avoids React batching issue)
+      const effectiveFigmaUrl   = figmaUrlOverride   !== undefined ? figmaUrlOverride   : figmaUrl
+      const effectiveFigmaToken = figmaTokenOverride !== undefined ? figmaTokenOverride : figmaToken
+      for await (const event of streamGeneration(prompt, attachedFiles, accessToken, activeDomain, selectedModel, undefined, undefined, selectedTheme, capturedMeetingAnalysis, effectiveFigmaUrl, effectiveFigmaToken)) {
         if (event.type === 'progress') {
           setBuildPct(event.progress)
           setBuildMsg(event.message)
@@ -2453,6 +2456,14 @@ document.addEventListener('click', function(e) {
             setFigmaUrl(url)
             setFigmaToken(token)
             setFigmaFileName(fileName)
+            // Auto-generate immediately — pass url/token directly to bypass React state batching
+            const autoPrompt = `Generate a React UI that faithfully reproduces the "${fileName}" Figma design. Implement every visible screen, component, and interaction.`
+            const autoName = fileName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 28) || 'figma-ui'
+            setCustomPrompt(autoPrompt)
+            setProjectName(autoName)
+            setShowCreateForm(true)   // show the build progress UI
+            setHomeTab('create')
+            void startBuild(autoPrompt, autoName, url, token)
           }}
         />
       </div>
