@@ -61,6 +61,7 @@ import { FigmaImportModal } from './components/FigmaImportModal'
 import { JiraImportPage } from './JiraImportPage'
 import { CollaborationPanel } from './components/CollaborationPanel'
 import { useCollaboration } from './hooks/useCollaboration'
+import { AdminDashboard } from './components/AdminDashboard'
 
 type CenterTab = 'preview' | 'code' | 'quality' | 'accessibility'
 
@@ -224,6 +225,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
 
   // Navigation — admin lands directly on admin dashboard
   const [homeTab, setHomeTab] = useState<'create' | 'projects' | 'profile' | 'admin'>(initialHomeTab || (isAdmin ? 'admin' : 'create'))
+  const [adminActiveMenu, setAdminActiveMenu] = useState<string>('Overview')
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [createMode, setCreateMode] = useState<'scratch' | 'jira'>('scratch')
 
@@ -1745,20 +1747,49 @@ document.addEventListener('click', function(e) {
                   </div>
                 </div>
                 {/* Nav */}
-                <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                  {[
-                    { id:'create',   label:'Home',                              icon:<Home size={14}/> },
-                    { id:'projects', label:`All projects (${validProjects.length})`, icon:<Folder size={14}/> },
-                    ...(!isAdmin ? [{ id:'profile', label:'Profile', icon:<User size={14}/> }] : []),
-                    ...(isAdmin  ? [{ id:'admin',   label:'Admin Dashboard', icon:<LayoutDashboard size={14}/> }] : []),
-                  ].map(item => (
-                    <button key={item.id} onClick={() => setHomeTab(item.id as any)}
-                      style={{ width:'100%', textAlign:'left', padding:'8px 10px', borderRadius:10, fontSize:12, fontWeight: homeTab===item.id?800:500, display:'flex', alignItems:'center', gap:8, border:'none', cursor:'pointer', transition:'all .15s', background: homeTab===item.id?'rgba(124,58,237,.18)':'transparent', color: homeTab===item.id?'#c4b5fd':'rgba(255,255,255,.65)', boxShadow: homeTab===item.id?'inset 0 0 0 1px rgba(124,58,237,.3)':'none' }}>
-                      {item.icon}<span style={{ color:'inherit' }}>{item.label}</span>
-                      {item.id==='projects' && <span style={{ marginLeft:'auto', fontSize:9, fontFamily:'monospace', fontWeight:700, background:'rgba(124,58,237,.2)', color:'#a78bfa', padding:'1px 6px', borderRadius:6 }}>{validProjects.length}</span>}
+                {homeTab !== 'admin' ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                    {[
+                      { id:'create',   label:'Home',                              icon:<Home size={14}/> },
+                      { id:'projects', label:`All projects (${validProjects.length})`, icon:<Folder size={14}/> },
+                      ...(!isAdmin ? [{ id:'profile', label:'Profile', icon:<User size={14}/> }] : []),
+                      ...(isAdmin  ? [{ id:'admin',   label:'Admin Dashboard', icon:<LayoutDashboard size={14}/> }] : []),
+                    ].map(item => (
+                      <button key={item.id} onClick={() => setHomeTab(item.id as any)}
+                        style={{ width:'100%', textAlign:'left', padding:'8px 10px', borderRadius:10, fontSize:12, fontWeight: homeTab===item.id?800:500, display:'flex', alignItems:'center', gap:8, border:'none', cursor:'pointer', transition:'all .15s', background: homeTab===item.id?'rgba(124,58,237,.18)':'transparent', color: homeTab===item.id?'#c4b5fd':'rgba(255,255,255,.65)', boxShadow: homeTab===item.id?'inset 0 0 0 1px rgba(124,58,237,.3)':'none' }}>
+                        {item.icon}<span style={{ color:'inherit' }}>{item.label}</span>
+                        {item.id==='projects' && <span style={{ marginLeft:'auto', fontSize:9, fontFamily:'monospace', fontWeight:700, background:'rgba(124,58,237,.2)', color:'#a78bfa', padding:'1px 6px', borderRadius:6 }}>{validProjects.length}</span>}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  /* ── ADMIN PORTAL NAV ── */
+                  <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                    <button onClick={() => setHomeTab('create')}
+                      style={{ width:'100%', textAlign:'left', padding:'8px 10px', borderRadius:10, fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:8, border:'1px solid rgba(124,58,237,.25)', cursor:'pointer', background:'rgba(124,58,237,.1)', color:'#c4b5fd', marginBottom:10 }}>
+                      <span>←</span><span>Exit Admin Panel</span>
                     </button>
-                  ))}
-                </div>
+                    <div style={{ fontSize:9, letterSpacing:'0.12em', color:'rgba(255,255,255,.3)', fontWeight:700, textTransform:'uppercase', fontFamily:'monospace', marginBottom:4, paddingLeft:4 }}>Dashboards</div>
+                    {[
+                      { id:'Overview',     label:"Vue d'ensemble", icon:'📊' },
+                      { id:'Users',        label:'Utilisateurs',   icon:'👥' },
+                      { id:'Generations',  label:'Compilations',   icon:'⚡' },
+                      { id:'System',       label:'Paramètres',     icon:'🛠️' },
+                    ].map(item => (
+                      <button key={item.id} onClick={() => setAdminActiveMenu(item.id)}
+                        style={{ width:'100%', textAlign:'left', padding:'8px 10px', borderRadius:10, fontSize:12, fontWeight: adminActiveMenu===item.id?800:500, display:'flex', alignItems:'center', gap:8, border:'none', cursor:'pointer', transition:'all .15s', background: adminActiveMenu===item.id?'rgba(124,58,237,.18)':'transparent', color: adminActiveMenu===item.id?'#c4b5fd':'rgba(255,255,255,.65)', boxShadow: adminActiveMenu===item.id?'inset 0 0 0 1px rgba(124,58,237,.3)':'none' }}>
+                        <span style={{ fontSize:14 }}>{item.icon}</span><span style={{ color:'inherit' }}>{item.label}</span>
+                      </button>
+                    ))}
+                    <div style={{ fontSize:9, letterSpacing:'0.12em', color:'rgba(255,255,255,.3)', fontWeight:700, textTransform:'uppercase', fontFamily:'monospace', margin:'14px 0 6px', paddingLeft:4 }}>Live Channels</div>
+                    <div style={{ background:'rgba(255,255,255,.04)', borderRadius:12, padding:'10px 12px', border:'1px solid rgba(255,255,255,.06)', fontSize:10, fontFamily:'monospace', display:'flex', flexDirection:'column', gap:6 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', color:'rgba(255,255,255,.35)', paddingBottom:4, borderBottom:'1px solid rgba(255,255,255,.07)' }}><span>Channel</span><span>Status</span></div>
+                      <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:'rgba(255,255,255,.65)' }}>● Gemini 2.0 Router</span><span style={{ color:'#34d399', fontWeight:600 }}>Online</span></div>
+                      <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:'rgba(255,255,255,.65)' }}>● GitLab Webhooks</span><span style={{ color:'#818cf8', fontWeight:600 }}>Active</span></div>
+                      <div style={{ display:'flex', justifyContent:'space-between' }}><span style={{ color:'rgba(255,255,255,.65)' }}>● D2C Compiler</span><span style={{ color:'#34d399', fontWeight:600 }}>Idle</span></div>
+                    </div>
+                  </div>
+                )}
                 {/* Recents */}
                 {validProjects.length > 0 && (
                   <div>
@@ -2266,645 +2297,12 @@ document.addEventListener('click', function(e) {
 
           {/* ── ADMIN DASHBOARD ── */}
           {homeTab === 'admin' && isAdmin && (
-            <div style={{ maxWidth: 980, margin: '0 auto', padding: '48px 40px 80px' }}>
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-                <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111827', margin: '0 0 6px', fontFamily: "'Inter',sans-serif" }}>Admin Dashboard</h1>
-                  <p style={{ fontSize: 14, color: 'rgba(0,0,0,.4)', margin: 0 }}>Platform overview and user management</p>
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={() => {
-                    const rows = [['Name', 'Username', 'Email', 'Joined', 'Projects', 'Verified', 'Status']]
-                    adminUsers.forEach(u => rows.push([
-                      [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '',
-                      u.username || '',
-                      u.email || '',
-                      u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString() : '',
-                      String(u.projectCount ?? 0),
-                      u.emailVerified ? 'Yes' : 'No',
-                      u.enabled === false ? 'Disabled' : 'Active',
-                    ]))
-                    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-                    const a = document.createElement('a')
-                    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
-                    a.download = 'users.csv'
-                    a.click()
-                  }} style={{ background: 'rgba(1,156,218,.1)', border: '1px solid rgba(1,156,218,.2)', color: '#5480ba', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                    ↓ Export CSV
-                  </button>
-                  <button onClick={() => void loadAdminDashboard()}
-                    style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: 'rgba(0,0,0,.4)', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                    {adminLoading ? '…' : '↻ Refresh'}
-                  </button>
-                </div>
-              </div>
-
-              {/* ── ALERTS BANNER ── */}
-              {(() => {
-                const downServices = adminHealth ? Object.entries(adminHealth).filter(([, v]) => v.status === 'DOWN').map(([k]) => k) : []
-                const total = adminStats?.totalProjects ?? 0
-                const failed = adminStats?.failedProjects ?? 0
-                const failRate = total > 0 ? Math.round((failed / total) * 100) : 0
-                const alerts: { level: 'error' | 'warn'; msg: string }[] = []
-                if (downServices.length > 0) alerts.push({ level: 'error', msg: `Service(s) DOWN: ${downServices.join(', ')}` })
-                if (failRate >= 30 && total > 0) alerts.push({ level: 'warn', msg: `Taux d'échec élevé: ${failRate}% (${failed}/${total} projets)` })
-                if (alerts.length === 0) return null
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-                    {alerts.map((a, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderRadius: 12, background: a.level === 'error' ? 'rgba(239,68,68,.08)' : 'rgba(245,158,11,.08)', border: `1px solid ${a.level === 'error' ? 'rgba(239,68,68,.2)' : 'rgba(245,158,11,.2)'}` }}>
-                        <AlertTriangle size={15} color={a.level === 'error' ? '#ef4444' : '#f59e0b'} />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: a.level === 'error' ? '#ef4444' : '#d97706' }}>{a.msg}</span>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })()}
-
-              {/* Stats cards — row 1: activity */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 14 }}>
-                {([
-                  { label: 'Total Users', value: adminStats?.totalUsers ?? '—', Icon: Users, color: '#5480ba', bg: 'rgba(84,128,186,.08)' },
-                  { label: 'Total Projects', value: adminStats?.totalProjects ?? '—', Icon: FolderKanban, color: '#0284c7', bg: 'rgba(1,156,218,.08)' },
-                  { label: 'Completed', value: adminStats?.completedProjects ?? '—', Icon: CheckCircle2, color: '#10b981', bg: 'rgba(16,185,129,.08)' },
-                  { label: 'Processing', value: adminStats?.processingProjects ?? '—', Icon: Clock, color: '#f59e0b', bg: 'rgba(245,158,11,.08)' },
-                  { label: 'Success Rate', value: adminStats?.successRate != null ? `${adminStats.successRate}%` : '—', Icon: BarChart3, color: '#0284c7', bg: 'rgba(1,156,218,.08)' },
-                ] as { label: string; value: string | number; Icon: React.FC<{ size?: number; color?: string }>; color: string; bg: string }[]).map(stat => (
-                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '18px 16px' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                      <stat.Icon size={18} color={stat.color} />
-                    </div>
-                    <p style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>{String(stat.value)}</p>
-                    <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-              {/* Stats cards — row 2: quality & integrations */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 28 }}>
-                {([
-                  {
-                    label: 'Avg. Gen. Time',
-                    value: adminStats?.avgGenerationSeconds != null
-                      ? adminStats.avgGenerationSeconds >= 60
-                        ? `${Math.floor(adminStats.avgGenerationSeconds / 60)}m ${adminStats.avgGenerationSeconds % 60}s`
-                        : `${adminStats.avgGenerationSeconds}s`
-                      : '—',
-                    Icon: Timer, color: '#06b6d4', bg: 'rgba(6,182,212,.08)'
-                  },
-                  {
-                    label: 'Avg. Quality Score',
-                    value: adminStats?.avgQualityScore != null ? `${adminStats.avgQualityScore}/100` : '—',
-                    Icon: Award, color: '#f59e0b', bg: 'rgba(245,158,11,.08)'
-                  },
-                  {
-                    label: 'Failed',
-                    value: adminStats?.failedProjects ?? '—',
-                    Icon: XCircle, color: '#ef4444', bg: 'rgba(239,68,68,.08)'
-                  },
-                  {
-                    label: 'Deployed',
-                    value: adminStats?.deployedCount ?? '—',
-                    Icon: Globe, color: '#10b981', bg: 'rgba(16,185,129,.08)'
-                  },
-                  {
-                    label: 'GitLab Pushes',
-                    value: adminStats?.gitlabCount ?? '—',
-                    Icon: GitBranch, color: '#fc6d26', bg: 'rgba(252,109,38,.08)'
-                  },
-                ] as { label: string; value: string | number; Icon: React.FC<{ size?: number; color?: string }>; color: string; bg: string }[]).map(stat => (
-                  <div key={stat.label} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 16, padding: '18px 16px' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: stat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                      <stat.Icon size={18} color={stat.color} />
-                    </div>
-                    <p style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>{String(stat.value)}</p>
-                    <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Inner tabs */}
-              <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#ffffff', borderRadius: 12, padding: 4, width: 'fit-content' }}>
-                {([
-                  { key: 'overview', label: 'Vue d\'ensemble', Icon: LayoutDashboard },
-                  { key: 'users', label: 'Utilisateurs', Icon: Users },
-                  { key: 'activity', label: 'Activité', Icon: Activity },
-                  { key: 'failed', label: 'Échoués', Icon: XCircle },
-                  { key: 'health', label: 'Santé', Icon: HeartPulse },
-                  { key: 'audit', label: 'Audit', Icon: FileText },
-                ] as { key: typeof adminActiveTab; label: string; Icon: React.FC<{ size?: number }> }[]).map(t => (
-                  <button key={t.key} onClick={() => setAdminActiveTab(t.key)}
-                    style={{ background: adminActiveTab === t.key ? 'rgba(1,156,218,.12)' : 'none', border: 'none', color: adminActiveTab === t.key ? '#5480ba' : '#64748b', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <t.Icon size={14} />
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              {adminError && <div style={{ padding: '16px 20px', color: '#e04580', fontSize: 14, background: 'rgba(248,113,113,.07)', border: '1px solid rgba(248,113,113,.15)', borderRadius: 12, marginBottom: 20 }}>{adminError}</div>}
-
-              {/* ── OVERVIEW TAB ── */}
-              {adminActiveTab === 'overview' && (() => {
-                const completed = adminStats?.completedProjects ?? 0
-                const processing = adminStats?.processingProjects ?? 0
-                const total = adminStats?.totalProjects ?? 0
-                const failed = Math.max(0, total - completed - processing)
-                const failedLast24h = adminFailed.filter(g => g.createdAt && (Date.now() - new Date(g.createdAt).getTime()) < 86400000).length
-                const topUsers = [...adminUsers].sort((a, b) => (b.projectCount ?? 0) - (a.projectCount ?? 0)).slice(0, 5)
-                const completedDeg = total > 0 ? (completed / total) * 360 : 0
-                const processingDeg = total > 0 ? (processing / total) * 360 : 0
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    {/* Row 1: Donut + Top Users */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                      {/* Status donut */}
-                      <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '24px 28px' }}>
-                        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 20px' }}>Distribution des statuts</h3>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
-                          {/* Donut */}
-                          <div style={{ position: 'relative', flexShrink: 0 }}>
-                            <div style={{
-                              width: 110, height: 110, borderRadius: '50%',
-                              background: total === 0
-                                ? '#f1f5f9'
-                                : `conic-gradient(#34d399 0deg ${completedDeg}deg, #fbbf24 ${completedDeg}deg ${completedDeg + processingDeg}deg, #f87171 ${completedDeg + processingDeg}deg 360deg)`,
-                            }} />
-                            <div style={{ position: 'absolute', inset: '22%', borderRadius: '50%', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                              <span style={{ fontSize: 18, fontWeight: 900, color: '#111827', lineHeight: 1 }}>{total}</span>
-                              <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 600 }}>total</span>
-                            </div>
-                          </div>
-                          {/* Legend */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-                            {[
-                              { label: 'Completed', value: completed, color: '#34d399' },
-                              { label: 'Processing', value: processing, color: '#fbbf24' },
-                              { label: 'Failed', value: failed, color: '#f87171' },
-                            ].map(s => (
-                              <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ width: 10, height: 10, borderRadius: 3, background: s.color, flexShrink: 0 }} />
-                                  <span style={{ fontSize: 13, color: '#475569' }}>{s.label}</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{s.value}</span>
-                                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{total > 0 ? Math.round((s.value / total) * 100) : 0}%</span>
-                                </div>
-                              </div>
-                            ))}
-                            {failedLast24h > 0 && (
-                              <div style={{ marginTop: 4, background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.2)', borderRadius: 8, padding: '5px 10px', fontSize: 12, color: '#e04580', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <AlertTriangle size={13} /> {failedLast24h} échec(s) dans les dernières 24h
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Top Users */}
-                      <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '24px 28px' }}>
-                        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Top utilisateurs</h3>
-                        {topUsers.length === 0
-                          ? <p style={{ fontSize: 13, color: '#94a3b8' }}>Aucun utilisateur</p>
-                          : topUsers.map((u, i) => {
-                            const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '?'
-                            const maxProjects = topUsers[0]?.projectCount ?? 1
-                            return (
-                              <div key={u.userId || i} style={{ marginBottom: 12 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? '#f59e0b' : '#94a3b8', minWidth: 16 }}>#{i + 1}</span>
-                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>{name}</span>
-                                    {u.roles?.includes('admin') && <span style={{ fontSize: 10, background: 'rgba(1,156,218,.1)', color: '#019cda', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
-                                  </div>
-                                  <span style={{ fontSize: 13, fontWeight: 800, color: '#5480ba' }}>{u.projectCount ?? 0}</span>
-                                </div>
-                                <div style={{ height: 4, borderRadius: 4, background: 'rgba(0,0,0,.05)', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', borderRadius: 4, background: i === 0 ? 'linear-gradient(to right,#019cda,#7dd3fc)' : '#cbd5e1', width: `${((u.projectCount ?? 0) / (maxProjects || 1)) * 100}%`, transition: 'width .5s' }} />
-                                </div>
-                              </div>
-                            )
-                          })
-                        }
-                      </div>
-                    </div>
-
-                    {/* Row 2: Bar chart */}
-                    <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, padding: '24px 28px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                        <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>Générations — {adminChartDays} derniers jours</h3>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          {([7, 30] as const).map(d => (
-                            <button key={d} onClick={() => {
-                              setAdminChartDays(d)
-                              void getAdminDailyChart(accessToken, d).then(setAdminDailyChart)
-                            }} style={{ background: adminChartDays === d ? '#019cda' : 'rgba(0,0,0,.05)', border: 'none', color: adminChartDays === d ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                              {d}j
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      {adminDailyChart.every(d => d.count === 0)
-                        ? <p style={{ color: '#94a3b8', fontSize: 14, textAlign: 'center', padding: '32px 0' }}>Aucune génération sur cette période</p>
-                        : (() => {
-                          const max = Math.max(...adminDailyChart.map(d => d.count), 1)
-                          const gap = adminChartDays === 30 ? 4 : 10
-                          return (
-                            <div style={{ display: 'flex', alignItems: 'flex-end', gap, height: 140 }}>
-                              {adminDailyChart.map((d, i) => {
-                                const showLabel = adminChartDays === 7 || i % 5 === 0 || i === adminDailyChart.length - 1
-                                return (
-                                  <div key={d.date} style={{ flex: 1, minWidth: adminChartDays === 30 ? 14 : 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={`${d.date}: ${d.count}`}>
-                                    <span style={{ fontSize: 10, fontWeight: 700, color: '#5480ba', minHeight: 14 }}>{d.count > 0 ? d.count : ''}</span>
-                                    <div style={{ width: '100%', background: d.count > 0 ? 'linear-gradient(to top,#019cda,#7dd3fc)' : 'rgba(0,0,0,.06)', borderRadius: '4px 4px 0 0', height: `${Math.max((d.count / max) * 110, d.count ? 4 : 2)}px`, transition: 'height .3s' }} />
-                                    <span style={{ fontSize: 9, color: '#94a3b8', whiteSpace: 'nowrap', opacity: showLabel ? 1 : 0 }}>{d.date.slice(5)}</span>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )
-                        })()
-                      }
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* ── USERS TAB ── */}
-              {adminActiveTab === 'users' && (() => {
-                const filtered = adminSearchQuery
-                  ? adminUsers.filter(u => {
-                      const q = adminSearchQuery.toLowerCase()
-                      const name = [u.firstName, u.lastName].filter(Boolean).join(' ').toLowerCase()
-                      return name.includes(q) || (u.email ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q)
-                    })
-                  : adminUsers
-                return (
-                  <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
-                    <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, flexShrink: 0 }}>Utilisateurs</h3>
-                      <input
-                        type="text"
-                        placeholder="Rechercher par nom, email…"
-                        value={adminSearchQuery}
-                        onChange={e => setAdminSearchQuery(e.target.value)}
-                        style={{ flex: 1, border: '1px solid rgba(0,0,0,.1)', borderRadius: 8, padding: '6px 12px', fontSize: 13, color: '#1f2937', outline: 'none', background: 'rgba(0,0,0,.02)' }}
-                      />
-                      <span style={{ fontSize: 13, color: '#64748b', background: 'rgba(0,0,0,.04)', padding: '4px 10px', borderRadius: 20, flexShrink: 0 }}>{filtered.length} / {adminUsers.length}</span>
-                    </div>
-                    {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading…</div>}
-                    {!adminLoading && filtered.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>{adminSearchQuery ? 'Aucun résultat' : 'No users found'}</div>}
-                    {!adminLoading && filtered.map((u, i) => {
-                      const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || 'Unknown'
-                      const initials = name.charAt(0).toUpperCase()
-                      const joinedDate = u.createdTimestamp ? new Date(u.createdTimestamp).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
-                      const lastLoginDate = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
-                      const lastProjectDate = u.lastProjectAt ? new Date(u.lastProjectAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
-                      const isUserAdmin = u.roles?.includes('admin') ?? false
-                      return (
-                        <div key={u.userId || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', borderBottom: i < filtered.length - 1 ? '1px solid rgba(0,0,0,.03)' : 'none', transition: 'background .15s', cursor: 'pointer' }}
-                          onClick={() => void openUserProjects(u)}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,.03)'}
-                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-                          {/* Avatar */}
-                          <div style={{ width: 38, height: 38, borderRadius: '50%', background: isUserAdmin ? '#019cda' : '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800, color: '#fff', flexShrink: 0 }}>{initials}</div>
-                          {/* Name + email */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                              <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: isUserAdmin ? 'rgba(1,156,218,.12)' : 'rgba(84,128,186,.1)', color: isUserAdmin ? '#019cda' : '#5480ba', flexShrink: 0 }}>
-                                {isUserAdmin ? 'Admin' : 'Developer'}
-                              </span>
-                            </div>
-                            <p style={{ fontSize: 12, color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
-                          </div>
-                          {/* Joined */}
-                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 80 }}>
-                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Inscrit</p>
-                            <p style={{ fontSize: 12, color: '#475569', margin: 0 }}>{joinedDate}</p>
-                          </div>
-                          {/* Projects count */}
-                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 50 }}>
-                            <p style={{ fontSize: 11, color: 'rgba(0,0,0,.35)', margin: '0 0 1px' }}>Projets</p>
-                            <p style={{ fontSize: 17, fontWeight: 800, color: '#5480ba', margin: 0 }}>{u.projectCount ?? 0}</p>
-                          </div>
-                          {/* Last login */}
-                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
-                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Dernière connexion</p>
-                            <p style={{ fontSize: 12, color: lastLoginDate === '—' ? '#cbd5e1' : '#475569', margin: 0, fontWeight: lastLoginDate === '—' ? 400 : 600 }}>{lastLoginDate}</p>
-                          </div>
-                          {/* Last project */}
-                          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 90 }}>
-                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 1px' }}>Dernier projet</p>
-                            <p style={{ fontSize: 12, color: lastProjectDate === '—' ? '#cbd5e1' : '#475569', margin: 0, fontWeight: lastProjectDate === '—' ? 400 : 600 }}>{lastProjectDate}</p>
-                          </div>
-                          {/* Email verified badge */}
-                          <div style={{ flexShrink: 0 }}>
-                            {u.emailVerified
-                              ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(52,211,153,.12)', color: '#10b981' }}>Vérifié</span>
-                              : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: 'rgba(251,191,36,.1)', color: '#f59e0b' }}>En attente</span>
-                            }
-                          </div>
-                          {/* Promote / Demote */}
-                          <button onClick={e => {
-                            e.stopPropagation()
-                            if (!u.userId) return
-                            const action = isUserAdmin ? 'retirer le rôle Admin de' : 'promouvoir'
-                            if (!window.confirm(`${action} "${u.username}" ?`)) return
-                            void setAdminUserRole(u.userId, 'admin', !isUserAdmin, accessToken).then(() => {
-                              setAdminUsers(prev => prev.map(x => x.userId === u.userId
-                                ? { ...x, roles: isUserAdmin ? (x.roles ?? []).filter(r => r !== 'admin') : [...(x.roles ?? []), 'admin'] }
-                                : x))
-                            })
-                          }} style={{ background: isUserAdmin ? 'rgba(248,113,113,.06)' : 'rgba(1,156,218,.08)', border: isUserAdmin ? '1px solid rgba(248,113,113,.15)' : '1px solid rgba(1,156,218,.15)', color: isUserAdmin ? '#f87171' : '#019cda', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-                            {isUserAdmin ? '↓ Rétrograder' : '↑ Promouvoir'}
-                          </button>
-                          {/* Enable/Disable */}
-                          <button onClick={e => {
-                            e.stopPropagation()
-                            if (!u.userId) return
-                            const next = u.enabled !== false
-                            void setAdminUserEnabled(u.userId, !next, accessToken).then(() => {
-                              setAdminUsers(prev => prev.map(x => x.userId === u.userId ? { ...x, enabled: !next } : x))
-                            })
-                          }} style={{ background: u.enabled === false ? 'rgba(52,211,153,.1)' : 'rgba(248,113,113,.08)', border: u.enabled === false ? '1px solid rgba(52,211,153,.2)' : '1px solid rgba(248,113,113,.15)', color: u.enabled === false ? '#34d399' : '#f87171', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-                            {u.enabled === false ? 'Activer' : 'Désactiver'}
-                          </button>
-                          {/* Delete */}
-                          <button onClick={e => {
-                            e.stopPropagation()
-                            if (!u.userId) return
-                            if (!window.confirm(`Supprimer "${u.username}" ? Action irréversible.`)) return
-                            void deleteAdminUser(u.userId, accessToken).then(() => {
-                              setAdminUsers(prev => prev.filter(x => x.userId !== u.userId))
-                            })
-                          }} style={{ background: 'rgba(248,113,113,.06)', border: '1px solid rgba(248,113,113,.12)', color: '#e04580', borderRadius: 8, padding: '4px 8px', fontSize: 13, cursor: 'pointer', flexShrink: 0 }} title="Supprimer">
-                            🗑
-                          </button>
-                          <div style={{ color: 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0 }}>›</div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })()}
-
-              {/* ── ACTIVITY TAB ── */}
-              {adminActiveTab === 'activity' && (() => {
-                const userMap = new Map(adminUsers.map(u => [u.userId, u]))
-                const filteredActivity = adminActivityFilter === 'all' ? adminActivity : adminActivity.filter(g => g.status === adminActivityFilter)
-                const statusColors: Record<string, { bg: string; text: string }> = {
-                  COMPLETED: { bg: 'rgba(52,211,153,.12)', text: '#34d399' },
-                  FAILED:    { bg: 'rgba(248,113,113,.1)',  text: '#f87171' },
-                  PROCESSING:{ bg: 'rgba(251,191,36,.1)',   text: '#fbbf24' },
-                }
-                return (
-                  <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
-                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, flex: 1 }}>Activité récente</h3>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {(['all', 'COMPLETED', 'PROCESSING', 'FAILED'] as const).map(f => (
-                          <button key={f} onClick={() => setAdminActivityFilter(f)}
-                            style={{ background: adminActivityFilter === f ? '#019cda' : 'rgba(0,0,0,.05)', border: 'none', color: adminActivityFilter === f ? '#fff' : '#64748b', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                            {f === 'all' ? 'Tous' : f}
-                          </button>
-                        ))}
-                      </div>
-                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{filteredActivity.length} résultat(s)</span>
-                    </div>
-                    {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Chargement…</div>}
-                    {!adminLoading && filteredActivity.length === 0 && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Aucune activité</div>}
-                    {!adminLoading && filteredActivity.map((g, i) => {
-                      const u = g.userId ? userMap.get(g.userId) : undefined
-                      const uName = u ? ([u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '—') : (g.userId?.slice(0, 8) ?? '—')
-                      const sc = statusColors[g.status ?? ''] ?? { bg: 'rgba(0,0,0,.06)', text: '#64748b' }
-                      return (
-                        <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 24px', borderBottom: i < filteredActivity.length - 1 ? '1px solid rgba(0,0,0,.04)' : 'none' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, flexShrink: 0, background: sc.bg, color: sc.text }}>{g.status}</span>
-                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#019cda', flexShrink: 0 }}>
-                            {uName.charAt(0).toUpperCase()}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: 13, color: '#1f2937', margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'Sans prompt'}</p>
-                            <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>{uName}</p>
-                          </div>
-                          <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
-                            {g.createdAt ? new Date(g.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })()}
-
-              {/* ── FAILED TAB ── */}
-              {adminActiveTab === 'failed' && (() => {
-                const userMap = new Map(adminUsers.map(u => [u.userId, u]))
-                return (
-                  <div style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.08)', borderRadius: 20, overflow: 'hidden' }}>
-                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Générations échouées</h3>
-                      <span style={{ fontSize: 13, background: 'rgba(248,113,113,.1)', color: '#e04580', padding: '4px 10px', borderRadius: 20 }}>{adminFailed.length} échec(s)</span>
-                    </div>
-                    {adminLoading && <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Chargement…</div>}
-                    {!adminLoading && adminFailed.length === 0 && (
-                      <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-                        <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>Aucune génération échouée</p>
-                      </div>
-                    )}
-                    {!adminLoading && adminFailed.map((g, i) => {
-                      const u = g.userId ? userMap.get(g.userId) : undefined
-                      const uName = u ? ([u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || '—') : '—'
-                      const isRetrying = retryingId === g.generationId
-                      return (
-                        <div key={g.generationId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 24px', borderBottom: i < adminFailed.length - 1 ? '1px solid rgba(0,0,0,.04)' : 'none' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                              <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>{g.generationId?.slice(0, 14)}…</span>
-                              <span style={{ fontSize: 11, color: '#94a3b8' }}>·</span>
-                              <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>{uName}</span>
-                            </div>
-                            <p style={{ fontSize: 13, color: '#e04580', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.prompt || 'Sans prompt'}</p>
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                              {g.createdAt ? new Date(g.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
-                            </span>
-                          </div>
-                          <button
-                            disabled={isRetrying}
-                            onClick={() => {
-                              if (!g.generationId) return
-                              setRetryingId(g.generationId)
-                              void retryAdminGeneration(g.generationId, accessToken)
-                                .then(() => setAdminFailed(prev => prev.filter(x => x.generationId !== g.generationId)))
-                                .catch(() => {/* échec silencieux */})
-                                .finally(() => setRetryingId(null))
-                            }}
-                            style={{ background: isRetrying ? 'rgba(0,0,0,.04)' : 'rgba(1,156,218,.08)', border: '1px solid rgba(1,156,218,.2)', color: isRetrying ? '#94a3b8' : '#019cda', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: isRetrying ? 'not-allowed' : 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <Activity size={13} />{isRetrying ? 'En cours…' : 'Relancer'}
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })()}
-
-              {/* ── HEALTH TAB ── */}
-              {adminActiveTab === 'health' && (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>Auto-refresh toutes les 30s</p>
-                    <button onClick={() => getAdminServiceHealth(accessToken).then(setAdminHealth).catch(() => {})}
-                      style={{ background: 'none', border: '1px solid rgba(0,0,0,.1)', color: '#64748b', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                      ↻ Rafraîchir
-                    </button>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-                    {adminHealth
-                      ? Object.entries(adminHealth).map(([svc, entry]) => {
-                          const isUp = entry.status === 'UP'
-                          const ms = entry.responseMs
-                          const msColor = ms < 100 ? '#10b981' : ms < 500 ? '#f59e0b' : '#ef4444'
-                          return (
-                            <div key={svc} style={{ background: '#ffffff', border: `1px solid ${isUp ? 'rgba(52,211,153,.15)' : 'rgba(239,68,68,.2)'}`, borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
-                              <div style={{ width: 14, height: 14, borderRadius: '50%', background: isUp ? '#34d399' : '#f87171', boxShadow: isUp ? '0 0 10px #34d399' : '0 0 10px #f87171', flexShrink: 0 }} />
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 3px', textTransform: 'capitalize' }}>{svc}</p>
-                                <p style={{ fontSize: 12, color: isUp ? '#34d399' : '#f87171', margin: 0, fontWeight: 600 }}>{entry.status}</p>
-                              </div>
-                              <div style={{ textAlign: 'right' }}>
-                                <p style={{ fontSize: 20, fontWeight: 800, color: msColor, margin: '0 0 1px' }}>{ms}<span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', marginLeft: 2 }}>ms</span></p>
-                                <p style={{ fontSize: 10, color: '#cbd5e1', margin: 0 }}>{ms < 100 ? 'Excellent' : ms < 500 ? 'Normal' : 'Lent'}</p>
-                              </div>
-                            </div>
-                          )
-                        })
-                      : <div style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading health status…</div>
-                    }
-                  </div>
-                </div>
-              )}
-
-              {/* ── AUDIT TAB ── */}
-              {adminActiveTab === 'audit' && (() => {
-                const eventTypeLabel: Record<string, string> = {
-                  GENERATION_STARTED: 'Génération démarrée',
-                  GENERATION_COMPLETED: 'Génération terminée',
-                  GENERATION_FAILED: 'Génération échouée',
-                  CODE_EDIT: 'Édition de code',
-                  REPAIR: 'Réparation IA',
-                  DEPLOY: 'Déploiement',
-                  ACCESSIBILITY_AUDIT: 'Audit accessibilité',
-                  DOCS_GENERATED: 'Documentation générée',
-                  ROLLBACK: 'Rollback version',
-                }
-                const eventTypeColor: Record<string, string> = {
-                  GENERATION_STARTED: '#019cda', GENERATION_COMPLETED: '#10b981', GENERATION_FAILED: '#ef4444',
-                  CODE_EDIT: '#f59e0b', REPAIR: '#ec4899', DEPLOY: '#06b6d4',
-                  ACCESSIBILITY_AUDIT: '#0284c7', DOCS_GENERATED: '#84cc16', ROLLBACK: '#f97316',
-                }
-                return (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                      <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>{adminAudit.length} événements récents</p>
-                      <button onClick={() => {
-                        const rows = [['EventId', 'Type', 'GenerationId', 'Timestamp', 'DurationMs'],
-                          ...adminAudit.map(e => [e.eventId ?? '', e.type ?? '', e.generationId ?? '', e.timestamp ?? '', String(e.durationMs ?? 0)])]
-                        const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-                        const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv); a.download = 'audit.csv'; a.click()
-                      }} style={{ background: 'rgba(1,156,218,.1)', border: '1px solid rgba(1,156,218,.2)', color: '#5480ba', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                        ↓ Export CSV
-                      </button>
-                    </div>
-                    {adminAudit.length === 0
-                      ? <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Aucun événement d'audit enregistré</div>
-                      : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          {adminAudit.map((e, i) => {
-                            const color = eventTypeColor[e.type ?? ''] ?? '#94a3b8'
-                            const label = eventTypeLabel[e.type ?? ''] ?? (e.type ?? 'Événement')
-                            const ts = e.timestamp ? new Date(e.timestamp).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
-                            const genShort = e.generationId ? e.generationId.slice(-8) : '—'
-                            return (
-                              <div key={e.eventId || i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', borderRadius: 10, background: '#ffffff', border: '1px solid rgba(0,0,0,.04)' }}>
-                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{label}</span>
-                                  {e.generationId && <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>#{genShort}</span>}
-                                </div>
-                                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{ts}</span>
-                                {(e.durationMs ?? 0) > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', flexShrink: 0, minWidth: 60, textAlign: 'right' }}>{e.durationMs}ms</span>}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )
-                    }
-                  </div>
-                )
-              })()}
-            </div>
-          )}
-
-          {/* ── USER PROJECTS SIDE PANEL ── */}
-          {selectedAdminUser && (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }} onClick={() => setSelectedAdminUser(null)}>
-              <div style={{ flex: 1, background: 'rgba(0,0,0,.5)' }} />
-              <div style={{ width: 480, height: '100%', background: '#0f1117', borderLeft: '1px solid rgba(0,0,0,.08)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}
-                onClick={e => e.stopPropagation()}>
-                {/* Header */}
-                <div style={{ padding: '28px 28px 20px', borderBottom: '1px solid rgba(0,0,0,.05)', display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#5480ba', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                    {([selectedAdminUser.firstName, selectedAdminUser.lastName].filter(Boolean).join(' ') || selectedAdminUser.username || '?').charAt(0).toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 2px' }}>
-                      {[selectedAdminUser.firstName, selectedAdminUser.lastName].filter(Boolean).join(' ') || selectedAdminUser.username}
-                    </p>
-                    <p style={{ fontSize: 12, color: 'rgba(0,0,0,.4)', margin: 0 }}>{selectedAdminUser.email}</p>
-                  </div>
-                  <button onClick={() => setSelectedAdminUser(null)}
-                    style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,.35)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
-                </div>
-
-                {/* Projects list */}
-                <div style={{ padding: '20px 28px' }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,.4)', margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: 1 }}>
-                    Projects ({selectedUserProjects.length})
-                  </p>
-
-                  {userProjectsLoading && (
-                    <div style={{ textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14, padding: '40px 0' }}>Loading…</div>
-                  )}
-
-                  {!userProjectsLoading && selectedUserProjects.length === 0 && (
-                    <div style={{ textAlign: 'center', color: 'rgba(0,0,0,.35)', fontSize: 14, padding: '40px 0' }}>No projects yet</div>
-                  )}
-
-                  {!userProjectsLoading && selectedUserProjects.map((p, i) => (
-                    <div key={p.generationId || i} style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,.05)', borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                          background: p.status === 'COMPLETED' ? 'rgba(52,211,153,.12)' : p.status === 'FAILED' ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
-                          color: p.status === 'COMPLETED' ? '#34d399' : p.status === 'FAILED' ? '#f87171' : '#fbbf24'
-                        }}>
-                          {p.status}
-                        </span>
-                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,.35)' }}>
-                          {p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: 13, color: '#1f2937', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.prompt || 'No prompt'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <AdminDashboard
+              onBackToWorkspace={() => setHomeTab('create')}
+              activeMenu={adminActiveMenu}
+              onMenuChange={setAdminActiveMenu}
+              accessToken={accessToken}
+            />
           )}
 
           {/* ── PROFILE ── */}
@@ -3100,7 +2498,7 @@ document.addEventListener('click', function(e) {
       <ToastProvider>
         <MultiAgentGenerator
           appName={_ideAppName}
-          onBackToDashboard={() => setIdeVisible(false)}
+          onBackToDashboard={() => { setIdeVisible(false); setHomeTab('projects') }}
           fileExplorer={<>{renderTreeNodes(effectiveTree, 0)}</>}
           fileCount={fileCount}
           onInspect={() => { setInspectMode(p => !p); setCenterTab('preview') }}
@@ -3330,7 +2728,7 @@ document.addEventListener('click', function(e) {
           >
             {/* Home button */}
             <button
-              onClick={() => setIdeVisible(false)}
+              onClick={() => { setIdeVisible(false); setHomeTab('projects') }}
               style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'linear-gradient(135deg, #fff 0%, #f8fafc 100%)', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .25s', boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(84,128,186,.12)'; e.currentTarget.style.borderColor = '#cbd5e1' }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.borderColor = '#e2e8f0' }}

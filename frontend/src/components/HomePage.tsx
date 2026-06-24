@@ -265,11 +265,6 @@ export const HomePage: React.FC<HomePageProps> = ({
               <div style={{ fontSize:9, color:'#94a3b8', fontFamily:'monospace', textTransform:'uppercase', fontWeight:600 }}>Selected Layout Target</div>
               <div style={{ fontSize:12, fontWeight:700, color:'#0f172a', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{latestProject}</div>
             </div>
-            <div style={{ width:1, height:28, background:'#e8edf5' }}/>
-            <button onClick={onCreateProject}
-              style={{ background:'#04081c', color:'#fff', fontSize:12, fontWeight:700, padding:'8px 16px', borderRadius:10, border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:6, boxShadow:'0 2px 8px rgba(4,8,28,.25)' }}>
-              <Zap size={12}/> Navigate to Generateur
-            </button>
           </div>
         </header>
 

@@ -19,7 +19,10 @@ interface LandingPageProps {
 
 export default function LandingPage({ onSignIn, onSignInWithCredentials, onRegister }: LandingPageProps) {
   const [toast, setToast] = useState<string | null>(null);
-  const [showAuth, setShowAuth] = useState(false);
+  const _urlParams = new URLSearchParams(window.location.search);
+  const [showAuth, setShowAuth] = useState(
+    _urlParams.has('login_hint') || _urlParams.get('auth') === 'login'
+  );
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
 
   const showToast = (msg: string) => {

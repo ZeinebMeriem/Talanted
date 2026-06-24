@@ -77,6 +77,44 @@ public class KeycloakAdminService {
             throw new RuntimeException("Keycloak error " + res.statusCode() + ": " + res.body());
     }
 
+    @Value("${app.frontend-url:http://localhost:5173}")
+    private String frontendUrl;
+
+    private void sendVerifyEmail(String token, String userId) {
+        try {
+            // No redirect_uri/client_id — standalone verification so Keycloak
+            // commits emailVerified=true without needing an active OIDC session.
+            String url = keycloakUrl + "/admin/realms/" + realm + "/users/" + userId
+                    + "/send-verify-email";
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString("{}"))
+                    .build();
+            http.send(req, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            // Non-blocking: log but don't fail registration if email send fails
+        }
+    }
+
+    public void resendVerificationEmail(String email) throws Exception {
+        String token = getAdminToken();
+        String encoded = URLEncoder.encode(email, StandardCharsets.UTF_8);
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users?email=" + encoded + "&exact=true"))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        List<Map<String, Object>> users = mapper.readValue(res.body(), new TypeReference<>() {});
+        if (users.isEmpty()) return;
+        String userId = (String) users.get(0).get("id");
+        Boolean emailVerified = (Boolean) users.get(0).getOrDefault("emailVerified", false);
+        if (Boolean.TRUE.equals(emailVerified)) return; // already verified, do nothing
+        sendVerifyEmail(token, userId);
+    }
+
     public void deleteUser(String userId) throws Exception {
         String token = getAdminToken();
         HttpRequest req = HttpRequest.newBuilder()
@@ -213,5 +251,28 @@ public class KeycloakAdminService {
                 .GET()
                 .build();
         return http.send(req, HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    public void forceVerifyEmail(String email) throws Exception {
+        String token = getAdminToken();
+        String encoded = URLEncoder.encode(email, StandardCharsets.UTF_8);
+        HttpRequest findReq = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users?email=" + encoded + "&exact=true"))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+        HttpResponse<String> findRes = http.send(findReq, HttpResponse.BodyHandlers.ofString());
+        List<Map<String, Object>> users = mapper.readValue(findRes.body(), new TypeReference<>() {});
+        if (users.isEmpty()) return;
+        String userId = (String) users.get(0).get("id");
+
+        String patch = "{\"emailVerified\":true,\"requiredActions\":[]}";
+        HttpRequest patchReq = HttpRequest.newBuilder()
+                .uri(URI.create(keycloakUrl + "/admin/realms/" + realm + "/users/" + userId))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(patch))
+                .build();
+        http.send(patchReq, HttpResponse.BodyHandlers.ofString());
     }
 }

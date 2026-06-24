@@ -72,6 +72,8 @@ management:
       environment: production
 
 app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  bff-url: ${BFF_URL:http://localhost:8081}
   security:
     # dev-mode: true  = mock "dev-user", no OAuth2 validation
     # dev-mode: false = require real Keycloak OAuth2 JWT tokens

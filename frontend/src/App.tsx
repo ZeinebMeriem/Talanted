@@ -72,7 +72,11 @@ function AuthenticatedApp() {
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({})) as Record<string, string>
-          return err.error_description || 'Invalid email or password.'
+          const desc = err.error_description || ''
+          if (desc.toLowerCase().includes('not fully set up') || desc.toLowerCase().includes('verify')) {
+            return 'EMAIL_NOT_VERIFIED:' + identifier
+          }
+          return desc || 'Invalid email or password.'
         }
         const tokens = await res.json() as Record<string, string | number>
         // Decode JWT payload to get profile
@@ -108,8 +112,7 @@ function AuthenticatedApp() {
         })
         const data = await res.json() as Record<string, string>
         if (!res.ok) return data.error || 'Registration failed.'
-        // Auto-login with ROPC after successful registration
-        return signinWithCredentials(email, password)
+        return 'SUCCESS:Account created! Please check your email to verify your account before signing in.'
       } catch {
         return 'Network error. Please try again.'
       }

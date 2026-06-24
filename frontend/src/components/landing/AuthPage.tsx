@@ -643,11 +643,16 @@ export default function AuthPage({ initialMode = 'login', onSignIn, onSignInWith
   const [showPw, setShowPw] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const [loginForm, setLoginForm] = useState<LoginForm>({ email: '', password: '' });
+  const [loginForm, setLoginForm] = useState<LoginForm>({
+    email: new URLSearchParams(window.location.search).get('login_hint') || '',
+    password: '',
+  });
   const [signupForm, setSignupForm] = useState<SignupForm>({ firstName: '', lastName: '', email: '', username: '', password: '', confirm: '', agreeTerms: false });
   const [forgotForm, setForgotForm] = useState<ForgotPasswordForm>({ email: '' });
   const [keepMeSigned, setKeepMeSigned] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendDone, setResendDone] = useState(false);
 
   function switchMode(m: Mode) {
     setMode(m);
@@ -693,11 +698,13 @@ export default function AuthPage({ initialMode = 'login', onSignIn, onSignInWith
       setLoading(true);
       const err = await onSignInWithCredentials(loginForm.email, loginForm.password);
       setLoading(false);
+      if (err?.startsWith('EMAIL_NOT_VERIFIED:')) { setErrors({ _global: err }); return; }
       if (err) { setErrors({ _global: err }); return; }
     } else if (mode === 'signup' && onRegister) {
       setLoading(true);
       const err = await onRegister(signupForm.firstName, signupForm.lastName, signupForm.email, signupForm.username, signupForm.password);
       setLoading(false);
+      if (err?.startsWith('SUCCESS:')) { setErrors({ _global: err.slice(8) + '__SUCCESS' }); return; }
       if (err) { setErrors({ _global: err }); return; }
     } else if (mode === 'forgot') {
       setLoading(true);
@@ -766,11 +773,45 @@ export default function AuthPage({ initialMode = 'login', onSignIn, onSignInWith
 
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }} noValidate>
 
-                  {/* Global error */}
+                  {/* Global error / email-not-verified banner */}
                   {errors._global && (
-                    <div style={{ padding: '12px 16px', background: 'rgba(120,53,15,0.2)', border: '1px solid #92400e', color: '#fde68a', fontSize: 12, borderRadius: 2, fontWeight: 600 }}>
-                      {errors._global}
-                    </div>
+                    errors._global.startsWith('EMAIL_NOT_VERIFIED:') ? (
+                      <div style={{ padding: '14px 16px', background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <p style={{ color: '#fde68a', fontSize: 13, fontWeight: 600, margin: 0 }}>
+                          Your email is not verified yet.
+                        </p>
+                        <p style={{ color: '#94a3b8', fontSize: 12, margin: 0 }}>
+                          Please check your inbox and click the verification link we sent you.
+                        </p>
+                        {resendDone ? (
+                          <p style={{ color: '#6ee7b7', fontSize: 12, margin: 0 }}>Verification email resent — check your inbox.</p>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={resendLoading}
+                            onClick={async () => {
+                              setResendLoading(true);
+                              const email = errors._global!.slice('EMAIL_NOT_VERIFIED:'.length);
+                              const bff = import.meta.env.VITE_BFF_BASE_URL as string || 'http://localhost:8081';
+                              await fetch(`${bff}/api/users/public/resend-verification`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email }),
+                              });
+                              setResendLoading(false);
+                              setResendDone(true);
+                            }}
+                            style={{ alignSelf: 'flex-start', background: 'none', border: '1px solid rgba(234,179,8,0.5)', color: '#fde68a', borderRadius: 4, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                          >
+                            {resendLoading ? 'Sending…' : 'Resend verification email'}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ padding: '12px 16px', background: 'rgba(120,53,15,0.2)', border: '1px solid #92400e', color: '#fde68a', fontSize: 12, borderRadius: 2, fontWeight: 600 }}>
+                        {errors._global}
+                      </div>
+                    )
                   )}
 
                   {/* Email */}
@@ -1061,12 +1102,16 @@ export default function AuthPage({ initialMode = 'login', onSignIn, onSignInWith
                 {errors.agreeTerms && <p className="ap-err">{errors.agreeTerms}</p>}
 
                 {errors._global && (
-                  <p style={{ fontSize: 13, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', margin: 0 }}>
-                    {errors._global}
-                  </p>
+                  errors._global.endsWith('__SUCCESS')
+                    ? <p style={{ fontSize: 13, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 14px', margin: 0 }}>
+                        ✅ {errors._global.replace('__SUCCESS', '')}
+                      </p>
+                    : <p style={{ fontSize: 13, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', margin: 0 }}>
+                        {errors._global}
+                      </p>
                 )}
 
-                <button className="su-submit-btn" type="submit" disabled={loading}>
+                <button className="su-submit-btn" type="submit" disabled={loading || !!errors._global?.endsWith('__SUCCESS')}>
                   {loading ? <><div className="auth-spinner" /> Creating account…</> : 'Create account'}
                 </button>
               </form>
