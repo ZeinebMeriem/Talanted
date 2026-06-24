@@ -7,12 +7,14 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import reactor.core.publisher.Mono;
 
@@ -43,7 +45,7 @@ public class FigmaController {
     @PostMapping("/validate")
     public Mono<ResponseEntity<FigmaImportResponse>> validate(
             @RequestBody FigmaImportRequest body,
-            JwtAuthenticationToken auth) {
+            @AuthenticationPrincipal Jwt jwt) {
 
         if (body.figmaUrl() == null || body.figmaUrl().isBlank()) {
             return Mono.just(ResponseEntity.badRequest()
@@ -62,11 +64,13 @@ public class FigmaController {
         Matcher m = FILE_KEY_PATTERN.matcher(body.figmaUrl());
         if (!m.find()) {
             return Mono.just(ResponseEntity.badRequest()
-                .body(new FigmaImportResponse(false, null, null, "Invalid Figma URL format")));
+                .body(new FigmaImportResponse(false, null, null,
+                    "Invalid Figma URL — expected figma.com/design/<key> or figma.com/file/<key>")));
         }
 
-        String fileKey = m.group(1);
+        String fileKey   = m.group(1);
         String finalToken = token;
+        String userId    = jwt != null ? jwt.getSubject() : "anonymous";
 
         return webClient.get()
             .uri("/files/{key}?depth=1", fileKey)
@@ -75,14 +79,25 @@ public class FigmaController {
             .bodyToMono(Map.class)
             .map(data -> {
                 String name = (String) data.getOrDefault("name", "Figma File");
-                log.info("Figma validate: key={} name=\"{}\" user={}", fileKey, name, auth.getName());
+                log.info("Figma validate OK: key={} name=\"{}\" user={}", fileKey, name, userId);
                 return ResponseEntity.ok(new FigmaImportResponse(true, fileKey, name, "OK"));
             })
+            .onErrorResume(WebClientResponseException.class, ex -> {
+                String msg = switch (ex.getStatusCode().value()) {
+                    case 401, 403 -> "Invalid or expired Figma token. Check your personal access token.";
+                    case 404      -> "Figma file not found. Make sure the file is shared or the URL is correct.";
+                    case 429      -> "Figma rate limit hit. Please wait a moment and try again.";
+                    default       -> "Figma API error " + ex.getStatusCode().value() + ": " + ex.getMessage();
+                };
+                log.warn("Figma validate failed: key={} status={} user={}", fileKey, ex.getStatusCode(), userId);
+                return Mono.just(ResponseEntity.badRequest()
+                    .body(new FigmaImportResponse(false, fileKey, null, msg)));
+            })
             .onErrorResume(ex -> {
-                log.warn("Figma validate error for key={}: {}", fileKey, ex.getMessage());
+                log.warn("Figma validate error: key={} error={} user={}", fileKey, ex.getMessage(), userId);
                 return Mono.just(ResponseEntity.badRequest()
                     .body(new FigmaImportResponse(false, fileKey, null,
-                        "Figma API error: " + ex.getMessage())));
+                        "Could not reach Figma API: " + ex.getMessage())));
             });
     }
 }

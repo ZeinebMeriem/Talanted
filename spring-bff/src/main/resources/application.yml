@@ -58,6 +58,9 @@ management:
     web:
       exposure:
         include: health,info,prometheus,metrics
+  health:
+    mail:
+      enabled: false   # mail health fails when SMTP creds not configured
   endpoint:
     health:
       show-details: when-authorized

@@ -2448,6 +2448,7 @@ document.addEventListener('click', function(e) {
         <FigmaImportModal
           isOpen={isFigmaModalOpen}
           onClose={() => setIsFigmaModalOpen(false)}
+          accessToken={accessToken}
           onImport={(url, token, fileName) => {
             setFigmaUrl(url)
             setFigmaToken(token)

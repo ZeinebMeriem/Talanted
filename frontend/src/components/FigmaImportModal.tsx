@@ -4,6 +4,7 @@ interface FigmaImportModalProps {
   isOpen: boolean
   onClose: () => void
   onImport: (figmaUrl: string, figmaToken: string, fileName: string) => void
+  accessToken?: string
 }
 
 interface ValidationResult {
@@ -13,7 +14,8 @@ interface ValidationResult {
   message: string
 }
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8081'
+// Use relative URL so both Vite dev proxy and nginx handle /api/* routing
+const API_BASE = ''
 
 /* Figma logo mark (the F node icon) */
 const FigmaIcon = () => (
@@ -38,7 +40,7 @@ const EyeIcon = ({ open }: { open: boolean }) => open ? (
   </svg>
 )
 
-export const FigmaImportModal: React.FC<FigmaImportModalProps> = ({ isOpen, onClose, onImport }) => {
+export const FigmaImportModal: React.FC<FigmaImportModalProps> = ({ isOpen, onClose, onImport, accessToken }) => {
   const [figmaUrl,   setFigmaUrl]   = useState('')
   const [figmaToken, setFigmaToken] = useState('')
   const [validating, setValidating] = useState(false)
@@ -62,16 +64,29 @@ export const FigmaImportModal: React.FC<FigmaImportModalProps> = ({ isOpen, onCl
     if (!figmaToken.trim()) { setError('Your Figma personal access token is required.'); return }
     setValidating(true)
     try {
-      const res  = await fetch(`${API_BASE}/api/figma/validate`, {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+
+      const res = await fetch(`${API_BASE}/api/figma/validate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers,
         body: JSON.stringify({ figmaUrl: figmaUrl.trim(), figmaToken: figmaToken.trim() }),
       })
+
+      if (res.status === 401) {
+        setError('Session expired — please log out and log back in.')
+        return
+      }
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        setError(`Server error (${res.status})${text ? ': ' + text.slice(0, 120) : ''}`)
+        return
+      }
+
       const data: ValidationResult = await res.json()
       if (data.valid) { setValidated(data) }
       else            { setError(data.message ?? 'Invalid URL or token.') }
-    } catch {
+    } catch (err) {
       setError('Cannot reach the server. Check your connection.')
     } finally {
       setValidating(false)
