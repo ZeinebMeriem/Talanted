@@ -58,8 +58,9 @@ public class SimpleGitLabService {
 
             // 5. Push to GitLab — PAT embedded in URL, never logged
             String normalizedUrl = normalizeUrl(gitlabUrl);
-            String domain = normalizedUrl.replaceAll("^https?://", "");
-            String remoteUrl = "https://oauth2:" + personalAccessToken + "@" + domain + "/" + projectPath + ".git";
+            String host = normalizedUrl.replaceAll("^https?://", "").replaceAll("/.*", ""); // e.g. gitlab.com
+            String cleanPath = extractProjectPath(projectPath, normalizedUrl);              // e.g. user/repo
+            String remoteUrl = "https://oauth2:" + personalAccessToken + "@" + host + "/" + cleanPath + ".git";
 
             runGit(tempDir, "git", "remote", "add", "origin", remoteUrl);
             runGit(tempDir, "git", "branch", "-M", branch);
@@ -69,7 +70,7 @@ public class SimpleGitLabService {
                 runGit(tempDir, "git", "push", "-u", "origin", branch);
             }
 
-            String projectUrl = normalizedUrl + "/" + projectPath;
+            String projectUrl = "https://" + host + "/" + cleanPath;
             log.info("Successfully pushed to {}", projectUrl);
 
             return GitLabPushDto.PushResponse.success(projectUrl);
@@ -129,5 +130,29 @@ public class SimpleGitLabService {
 
     private String normalizeUrl(String url) {
         return url.replaceAll("/$", "");
+    }
+
+    /**
+     * Accepts either a bare path ("user/repo") or a full URL
+     * ("https://gitlab.com/user/repo") and always returns just the path part.
+     * Strips the base URL so callers can paste the full project URL without doubling.
+     */
+    private String extractProjectPath(String rawPath, String baseUrl) {
+        if (rawPath == null) return "";
+        String p = rawPath.trim().replaceAll("/$", "");
+        // If the user pasted a full URL, strip the host prefix
+        if (p.startsWith("http://") || p.startsWith("https://")) {
+            // Remove scheme + host (e.g. "https://gitlab.com")
+            String host = p.replaceAll("^https?://", "").replaceAll("/.*", "");
+            p = p.replaceAll("^https?://" + java.util.regex.Pattern.quote(host), "").replaceAll("^/", "");
+        }
+        // Also strip the base URL's host in case it was embedded
+        String baseHost = baseUrl.replaceAll("^https?://", "").replaceAll("/.*", "");
+        if (p.startsWith(baseHost)) {
+            p = p.substring(baseHost.length()).replaceAll("^/", "");
+        }
+        // Remove trailing .git if already present
+        if (p.endsWith(".git")) p = p.substring(0, p.length() - 4);
+        return p;
     }
 }

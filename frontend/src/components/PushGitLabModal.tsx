@@ -108,12 +108,20 @@ export const PushGitLabModal: React.FC<PushGitLabModalProps> = ({
               <label className="text-sm font-bold text-stone-900 flex items-center gap-1 mb-1.5">
                 Project path <span className="text-stone-400 font-normal">•</span>
               </label>
-              <input value={projectPath} onChange={e => { setProjectPath(e.target.value); clearErr('projectPath') }}
+              <input value={projectPath}
+                onChange={e => {
+                  let v = e.target.value
+                  // Auto-extract path if user pastes a full URL (e.g. https://gitlab.com/user/repo)
+                  const m = v.match(/^https?:\/\/[^/]+\/(.+?)(?:\.git)?$/)
+                  if (m) v = m[1]
+                  setProjectPath(v)
+                  clearErr('projectPath')
+                }}
                 className={`w-full px-4 py-2.5 rounded-xl border text-sm text-stone-800 bg-white outline-none transition-colors ${errors.projectPath ? 'border-red-300' : 'border-stone-200 focus:border-stone-400'}`}
-                placeholder="username/project"/>
+                placeholder="username/project  (or paste the full repo URL)"/>
               {errors.projectPath
                 ? <p className="mt-1 text-xs text-red-500">{errors.projectPath}</p>
-                : <p className="mt-1 text-xs text-blue-400 font-medium">The path to your GitLab project</p>}
+                : <p className="mt-1 text-xs text-blue-400 font-medium">e.g. MeryemBoukraa/zaineb — or paste the full GitLab URL</p>}
             </div>
 
             {/* Personal Access Token */}

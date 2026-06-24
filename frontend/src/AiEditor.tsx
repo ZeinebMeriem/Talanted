@@ -2461,7 +2461,7 @@ document.addEventListener('click', function(e) {
             const autoName = fileName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 28) || 'figma-ui'
             setCustomPrompt(autoPrompt)
             setProjectName(autoName)
-            setShowCreateForm(true)   // show the build progress UI
+            setShowCreateForm(false)  // stay on HomePage so the Scoping Dashboard is shown
             setHomeTab('create')
             void startBuild(autoPrompt, autoName, url, token)
           }}
