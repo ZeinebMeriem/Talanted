@@ -750,8 +750,12 @@ def internal_repair_project(generation_id: str) -> dict:
 
 @app.post("/internal/projects/{generation_id}/deploy/netlify")
 def internal_deploy_netlify(generation_id: str, body: dict) -> dict:
-    """Deploy the built dist/ folder to Netlify and return the public URL."""
-    import re as _re, io, zipfile, requests as _req
+    """Deploy the generated project to Netlify.
+
+    If dist/ already exists it is used directly. Otherwise the stored code files
+    (passed by the BFF in body['files']) are written + vite-built first.
+    """
+    import re as _re, io, zipfile, requests as _req, subprocess as _sp, shutil as _sh
     token = (body.get("token") or "").strip()
     if not token:
         from fastapi import HTTPException
@@ -759,17 +763,59 @@ def internal_deploy_netlify(generation_id: str, body: dict) -> dict:
 
     projects_dir = os.environ.get("PROJECTS_DIR", "/app/projects")
     safe_id = _re.sub(r"[^a-zA-Z0-9_-]", "_", generation_id)
-    dist_path = os.path.join(projects_dir, safe_id, "dist")
-    if not os.path.isdir(dist_path):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="No built dist/ folder found — generate the project first")
+    project_path = os.path.join(projects_dir, safe_id)
+    dist_path = os.path.join(project_path, "dist")
 
-    # Zip the dist/ contents (index.html at zip root, not nested in dist/)
+    # ── Rebuild from stored files if dist/ is missing ────────────────────────
+    if not os.path.isdir(dist_path) or not any(True for _ in os.scandir(dist_path) if not _.name.startswith(".")):
+        files_payload = body.get("files") or []
+        if not files_payload:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=404,
+                detail="No built dist/ folder found — open and regenerate the project, then deploy again",
+            )
+
+        logger.info("deploy/netlify: rebuilding project %s from %d stored files", safe_id, len(files_payload))
+        template_dir = "/app/vite-template"
+
+        # Write project from stored source files
+        if os.path.exists(project_path):
+            _sh.rmtree(project_path)
+        _sh.copytree(template_dir, project_path, ignore=_sh.ignore_patterns("node_modules", "dist"))
+
+        node_modules_link = os.path.join(project_path, "node_modules")
+        node_modules_src  = os.path.join(template_dir, "node_modules")
+        if os.path.exists(node_modules_src) and not os.path.lexists(node_modules_link):
+            os.symlink(node_modules_src, node_modules_link)
+
+        src_dir = os.path.join(project_path, "src")
+        os.makedirs(src_dir, exist_ok=True)
+        for f in files_payload:
+            rel_path = (f.get("path") or "").lstrip("/")
+            content  = f.get("content") or ""
+            if rel_path.startswith("src/"):
+                dest = os.path.join(src_dir, rel_path[len("src/"):])
+            else:
+                dest = os.path.join(project_path, os.path.basename(rel_path))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "w", encoding="utf-8") as fh:
+                fh.write(content)
+
+        vite_bin = os.path.join(node_modules_src, ".bin", "vite")
+        result = _sp.run([vite_bin, "build"], cwd=project_path, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            logger.error("vite build failed during deploy:\n%s", result.stdout[-2000:] + result.stderr[-2000:])
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail=f"Build failed: {(result.stderr or result.stdout)[-500:]}")
+        logger.info("deploy/netlify: vite rebuild succeeded for %s", safe_id)
+
+    # ── Zip dist/ and upload to Netlify ─────────────────────────────────────
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, _, files in os.walk(dist_path):
-            for fname in files:
-                full = os.path.join(root, fname)
+        for root, _, fnames in os.walk(dist_path):
+            for fname in fnames:
+                full    = os.path.join(root, fname)
                 arcname = os.path.relpath(full, dist_path).replace("\\", "/")
                 zf.write(full, arcname)
     buf.seek(0)
@@ -795,8 +841,10 @@ def internal_deploy_netlify(generation_id: str, body: dict) -> dict:
             detail = e.response.json().get("message", "")
         except Exception:
             pass
+        from fastapi import HTTPException
         raise HTTPException(status_code=502, detail=f"Netlify API error: {detail or str(e)}")
     except Exception as exc:
+        from fastapi import HTTPException
         raise HTTPException(status_code=502, detail=f"Deploy failed: {exc}")
 
 

@@ -2159,9 +2159,29 @@ public class GenerationService {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setConnectTimeout(15_000);
-            conn.setReadTimeout(90_000);
+            conn.setReadTimeout(180_000);   // 3 min — vite build can be slow
             conn.setDoOutput(true);
-            String body = "{\"token\":\"" + token.replace("\"", "\\\"") + "\"}";
+
+            // Attach stored code files so FastAPI can rebuild if dist/ is missing
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.List<java.util.Map<String, String>> filesPayload = new java.util.ArrayList<>();
+            codeRepo.findByGenerationId(generationId, org.springframework.data.domain.Sort.by("version").descending())
+                .stream().findFirst()
+                .ifPresent(cv -> {
+                    if (cv.getFiles() != null) {
+                        for (FileEntry fe : cv.getFiles()) {
+                            java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
+                            m.put("path", fe.path());
+                            m.put("content", fe.content());
+                            filesPayload.add(m);
+                        }
+                    }
+                });
+
+            java.util.Map<String, Object> bodyMap = new java.util.LinkedHashMap<>();
+            bodyMap.put("token", token);
+            if (!filesPayload.isEmpty()) bodyMap.put("files", filesPayload);
+            String body = mapper.writeValueAsString(bodyMap);
             conn.getOutputStream().write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
             int status = conn.getResponseCode();
