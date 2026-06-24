@@ -766,49 +766,60 @@ def internal_deploy_netlify(generation_id: str, body: dict) -> dict:
     project_path = os.path.join(projects_dir, safe_id)
     dist_path = os.path.join(project_path, "dist")
 
-    # ── Rebuild from stored files if dist/ is missing ────────────────────────
-    if not os.path.isdir(dist_path) or not any(True for _ in os.scandir(dist_path) if not _.name.startswith(".")):
-        files_payload = body.get("files") or []
-        if not files_payload:
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=404,
-                detail="No built dist/ folder found — open and regenerate the project, then deploy again",
-            )
+    # ── Rebuild if dist/ is missing ──────────────────────────────────────────
+    dist_is_empty = not os.path.isdir(dist_path) or not any(
+        True for _ in os.scandir(dist_path) if not _.name.startswith(".")
+    ) if os.path.isdir(dist_path) else True
 
-        logger.info("deploy/netlify: rebuilding project %s from %d stored files", safe_id, len(files_payload))
-        template_dir = "/app/vite-template"
+    if dist_is_empty:
+        template_dir  = "/app/vite-template"
+        node_modules_src = os.path.join(template_dir, "node_modules")
+        vite_bin      = os.path.join(node_modules_src, ".bin", "vite")
 
-        # Write project from stored source files
-        if os.path.exists(project_path):
-            _sh.rmtree(project_path)
-        _sh.copytree(template_dir, project_path, ignore=_sh.ignore_patterns("node_modules", "dist"))
+        # Case A: project exists on disk with src/ → just run vite build
+        src_path = os.path.join(project_path, "src")
+        if os.path.isdir(src_path) and any(os.scandir(src_path)):
+            logger.info("deploy/netlify: dist/ missing but src/ exists — rebuilding %s", safe_id)
+            node_modules_link = os.path.join(project_path, "node_modules")
+            if os.path.exists(node_modules_src) and not os.path.lexists(node_modules_link):
+                os.symlink(node_modules_src, node_modules_link)
+            result = _sp.run([vite_bin, "build"], cwd=project_path, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=422, detail=f"Rebuild failed: {(result.stderr or result.stdout)[-400:]}")
+            logger.info("deploy/netlify: rebuild from src/ succeeded for %s", safe_id)
 
-        node_modules_link = os.path.join(project_path, "node_modules")
-        node_modules_src  = os.path.join(template_dir, "node_modules")
-        if os.path.exists(node_modules_src) and not os.path.lexists(node_modules_link):
-            os.symlink(node_modules_src, node_modules_link)
-
-        src_dir = os.path.join(project_path, "src")
-        os.makedirs(src_dir, exist_ok=True)
-        for f in files_payload:
-            rel_path = (f.get("path") or "").lstrip("/")
-            content  = f.get("content") or ""
-            if rel_path.startswith("src/"):
-                dest = os.path.join(src_dir, rel_path[len("src/"):])
-            else:
-                dest = os.path.join(project_path, os.path.basename(rel_path))
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-            with open(dest, "w", encoding="utf-8") as fh:
-                fh.write(content)
-
-        vite_bin = os.path.join(node_modules_src, ".bin", "vite")
-        result = _sp.run([vite_bin, "build"], cwd=project_path, capture_output=True, text=True, timeout=120)
-        if result.returncode != 0:
-            logger.error("vite build failed during deploy:\n%s", result.stdout[-2000:] + result.stderr[-2000:])
-            from fastapi import HTTPException
-            raise HTTPException(status_code=422, detail=f"Build failed: {(result.stderr or result.stdout)[-500:]}")
-        logger.info("deploy/netlify: vite rebuild succeeded for %s", safe_id)
+        # Case B: project not on disk — use code files sent by BFF from MongoDB
+        else:
+            files_payload = body.get("files") or []
+            if not files_payload:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=404,
+                    detail="Project files not found — open and regenerate the project, then deploy again",
+                )
+            logger.info("deploy/netlify: rebuilding %s from %d BFF-supplied files", safe_id, len(files_payload))
+            if os.path.exists(project_path):
+                _sh.rmtree(project_path)
+            _sh.copytree(template_dir, project_path, ignore=_sh.ignore_patterns("node_modules", "dist"))
+            node_modules_link = os.path.join(project_path, "node_modules")
+            if os.path.exists(node_modules_src) and not os.path.lexists(node_modules_link):
+                os.symlink(node_modules_src, node_modules_link)
+            src_dir = os.path.join(project_path, "src")
+            os.makedirs(src_dir, exist_ok=True)
+            for f in files_payload:
+                rel_path = (f.get("path") or "").lstrip("/")
+                content  = f.get("content") or ""
+                dest = os.path.join(src_dir, rel_path[len("src/"):]) if rel_path.startswith("src/") \
+                       else os.path.join(project_path, os.path.basename(rel_path))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "w", encoding="utf-8") as fh:
+                    fh.write(content)
+            result = _sp.run([vite_bin, "build"], cwd=project_path, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=422, detail=f"Build failed: {(result.stderr or result.stdout)[-400:]}")
+            logger.info("deploy/netlify: build from BFF files succeeded for %s", safe_id)
 
     # ── Zip dist/ and upload to Netlify ─────────────────────────────────────
     buf = io.BytesIO()

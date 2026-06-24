@@ -541,7 +541,7 @@ public class GenerationService {
                     audit.recordEvent("GENERATION_COMPLETED", gId, sId, durationMs,
                             Map.of("durationMs", durationMs, "filesCount", fileRefs.size(), "streaming", true));
                 } catch (Exception parseEx) {
-                    // Log but don't fail — the client already got the complete event
+                    log.error("Failed to persist generation result for generationId={}: {}", gId, parseEx.getMessage(), parseEx);
                 }
             }
 
