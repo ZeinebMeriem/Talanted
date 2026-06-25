@@ -223,7 +223,7 @@ public class UserProfileService {
      */
     public UserProfileResponse updatePlan(String userId, UpdatePlanRequest req) {
         UserProfile profile = userProfileRepo.findByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+                .orElseGet(() -> createNewProfile(userId, java.util.Map.of()));
 
         if (req.planId != null)           profile.setPlanId(req.planId);
         if (req.stripeCustomerId != null) profile.setStripeCustomerId(req.stripeCustomerId);

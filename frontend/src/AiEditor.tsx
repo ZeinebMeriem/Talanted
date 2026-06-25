@@ -242,6 +242,18 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [userStats, setUserStats] = useState<UserStats | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
+  const [pendingStripeSession, setPendingStripeSession] = useState<string | null>(() => {
+    // Capture session_id from URL at construction time (before any render clears it)
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('upgrade') === 'success') {
+      const id = params.get('session_id')
+      if (id) {
+        window.history.replaceState({}, '', window.location.pathname)
+        return id
+      }
+    }
+    return null
+  })
 
   // Admin dashboard
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
@@ -513,24 +525,22 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   }, [initialGenerationId, apiResult, loadGeneration])
 
   // ── Handle Stripe success redirect: ?upgrade=success&session_id=cs_xxx ──────
+  // session_id is captured in state at construction time; we wait for accessToken
+  // before calling verify-session so that loadProfile() has auth.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('upgrade') !== 'success') return
-    const sessionId = params.get('session_id')
-    if (!sessionId) return
+    if (!pendingStripeSession || !accessToken) return
+    const sessionId = pendingStripeSession
+    setPendingStripeSession(null)
 
-    // Remove query params immediately so refresh doesn't re-trigger
-    window.history.replaceState({}, '', window.location.pathname)
-
-    verifyStripeSession(sessionId, accessToken).then(result => {
-      if (result.success && result.planId) {
-        setUserPlan(result.planId as import('./lib/plans').PlanId)
-        // Reload profile to get fresh plan data
-        void loadProfile()
-      }
-    }).catch(() => { /* ignore */ })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    verifyStripeSession(sessionId, accessToken)
+      .then(result => {
+        if (result.success && result.planId) {
+          setUserPlan(result.planId as import('./lib/plans').PlanId)
+          void loadProfile()
+        }
+      })
+      .catch(() => { /* ignore network errors */ })
+  }, [pendingStripeSession, accessToken, loadProfile])
 
   const doRollback = useCallback(
     async (generationId: string, version: number) => {
