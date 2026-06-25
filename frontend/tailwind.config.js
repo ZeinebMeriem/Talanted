@@ -306,7 +306,6 @@ export default {
       },
       // Enhanced animation for UI components
       animation: {
-        ...require('tailwindcss/defaultConfig').theme.animation,
         'toast-in': 'toastIn 0.3s cubic-bezier(0.4,0,0.2,1)',
         'toast-out': 'toastOut 0.3s cubic-bezier(0.4,0,0.2,1)',
         'modal-fade': 'modalFade 0.25s cubic-bezier(0.4,0,0.2,1)',
