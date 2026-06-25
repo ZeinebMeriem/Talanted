@@ -5,9 +5,10 @@ import { PLAN_ORDER, getPlan, type PlanId } from '../../lib/plans';
 interface LandingPricingProps {
   onRegister?: () => void;
   showToast: (msg: string) => void;
+  accessToken?: string;
 }
 
-async function handleStripeCheckout(priceId: string | null, planId: PlanId, yearly: boolean) {
+async function handleStripeCheckout(priceId: string | null, planId: PlanId, yearly: boolean, accessToken?: string) {
   if (planId === 'custom') {
     window.location.href = 'mailto:sales@talented.ai?subject=Custom Plan Inquiry';
     return;
@@ -15,9 +16,11 @@ async function handleStripeCheckout(priceId: string | null, planId: PlanId, year
   if (planId === 'free') { return; }
   if (!priceId) { alert('Price configuration missing. Please contact support.'); return; }
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
     const res = await fetch('/api/stripe/create-checkout-session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         priceId,
         successUrl: `${window.location.origin}/?upgrade=success`,
@@ -78,7 +81,7 @@ const CTA_STYLES: Record<PlanId, React.CSSProperties> = {
   custom:     { background: '#0f172a', color: '#fff' },
 };
 
-export default function LandingPricing({ onRegister, showToast }: LandingPricingProps) {
+export default function LandingPricing({ onRegister, showToast, accessToken }: LandingPricingProps) {
   const [yearly, setYearly] = useState(false);
   const [loading, setLoading] = useState<PlanId | null>(null);
 
@@ -87,7 +90,7 @@ export default function LandingPricing({ onRegister, showToast }: LandingPricing
     const plan = getPlan(planId);
     const priceId = yearly ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
     setLoading(planId);
-    await handleStripeCheckout(priceId, planId, yearly);
+    await handleStripeCheckout(priceId, planId, yearly, accessToken);
     setLoading(null);
   };
 

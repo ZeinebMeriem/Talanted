@@ -40,6 +40,7 @@ import com.aiuigenerator.bff.service.AuditService;
 import com.aiuigenerator.bff.service.GenerationService;
 import com.aiuigenerator.bff.service.KeycloakAdminService;
 import com.aiuigenerator.bff.service.SimpleGitLabService;
+import com.aiuigenerator.bff.service.UserProfileService;
 
 @RestController
 @RequestMapping("/api/generations")
@@ -50,15 +51,19 @@ public class GenerationController {
     private final AuditService audit;
     private final SimpleGitLabService gitLabService;
     private final KeycloakAdminService keycloakAdmin;
+    private final UserProfileService userProfileService;
 
     @Value("${app.security.dev-mode:false}")
     private boolean devMode;
 
-    public GenerationController(GenerationService service, AuditService audit, SimpleGitLabService gitLabService, KeycloakAdminService keycloakAdmin) {
+    public GenerationController(GenerationService service, AuditService audit,
+                                SimpleGitLabService gitLabService, KeycloakAdminService keycloakAdmin,
+                                UserProfileService userProfileService) {
         this.service = service;
         this.audit = audit;
         this.gitLabService = gitLabService;
         this.keycloakAdmin = keycloakAdmin;
+        this.userProfileService = userProfileService;
     }
 
     private boolean hasAccess(Generation g, JwtAuthenticationToken token) {
@@ -113,6 +118,14 @@ public class GenerationController {
             Object sub = token.getToken().getClaims().get("sub");
             if (sub != null)
                 userId = String.valueOf(sub);
+        }
+
+        // ── Plan limit: check monthly generation quota ────────────────────
+        if (!"dev-user".equals(userId) && !userProfileService.incrementAndCheckGeneration(userId)) {
+            response.setStatus(429);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":\"generation_limit_exceeded\",\"message\":\"Monthly generation limit reached. Upgrade your plan to continue.\"}");
+            return;
         }
 
         String safePrompt = prompt == null ? "" : prompt;

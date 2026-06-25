@@ -45,42 +45,23 @@ public class UserProfileDto {
         public Instant updatedAt;
         public long projectCount;
         public long completedProjects;
+        // Plan / subscription fields
+        public String planId;
+        public String stripeCustomerId;
+        public String subscriptionId;
+        public Instant currentPeriodEnd;
+        public int generationsThisMonth;
 
-        public UserProfileResponse() {
-        }
+        public UserProfileResponse() {}
+    }
 
-        public UserProfileResponse(
-                String userId,
-                String username,
-                String email,
-                String firstName,
-                String lastName,
-                boolean emailVerified,
-                String avatarUrl,
-                String bio,
-                String timezone,
-                String preferredLanguage,
-                Map<String, Boolean> notifications,
-                Instant createdAt,
-                Instant updatedAt,
-                long projectCount,
-                long completedProjects) {
-            this.userId = userId;
-            this.username = username;
-            this.email = email;
-            this.firstName = firstName;
-            this.lastName = lastName;
-            this.emailVerified = emailVerified;
-            this.avatarUrl = avatarUrl;
-            this.bio = bio;
-            this.timezone = timezone;
-            this.preferredLanguage = preferredLanguage;
-            this.notifications = notifications;
-            this.createdAt = createdAt;
-            this.updatedAt = updatedAt;
-            this.projectCount = projectCount;
-            this.completedProjects = completedProjects;
-        }
+    /** Used by the verify-session and admin endpoints to update a user's plan */
+    public static class UpdatePlanRequest {
+        public String planId;
+        public String stripeCustomerId;
+        public String subscriptionId;
+        public Instant currentPeriodEnd;
+        public UpdatePlanRequest() {}
     }
 
     public static class AvatarUploadResponse {

@@ -6,7 +6,7 @@ import {
 } from '../api'
 import { Camera, Check, ChevronDown, Mail, Bell, Globe, Clock, Save, X, Zap, Layers, Star, Shield, Lock, AlertCircle, ArrowRight } from 'lucide-react'
 import { getPlan, formatLimit, PLAN_ORDER, type PlanId } from '../lib/plans'
-import { getUserPlan } from '../hooks/usePlanLimits'
+import { getUserPlan, syncPlanFromProfile } from '../hooks/usePlanLimits'
 import UpgradeModal from './UpgradeModal'
 
 const TIMEZONES = [
@@ -30,23 +30,28 @@ const LANGUAGES = [
 const AVATAR_KEY = 'talanted_avatar_url'
 
 /* ── Plan Badge — extracted sub-component so hooks are valid ───────── */
-function PlanBadge({ totalGen, accessToken }: { totalGen: number; accessToken?: string }) {
-  const planId   = getUserPlan()
+function PlanBadge({ totalGen, generationsThisMonth, projectCount, profile, accessToken }:
+  { totalGen: number; generationsThisMonth: number; projectCount: number; profile: import('../api').UserProfileResponse | null; accessToken?: string }) {
+  // Prefer plan from profile (authoritative) then localStorage fallback
+  const planId   = profile ? (syncPlanFromProfile(profile) as PlanId) : getUserPlan()
   const plan     = getPlan(planId)
   const limits   = plan.limits
   const nextId   = PLAN_ORDER[PLAN_ORDER.indexOf(planId as PlanId) + 1] as PlanId | undefined
   const nextPlan = nextId ? getPlan(nextId) : null
   const [upgradeOpen, setUpgradeOpen] = useState(false)
 
+  const usedGen  = generationsThisMonth ?? totalGen
+  const usedProj = projectCount ?? 0
+
   const rows = [
-    { label:'Projects',    value:`3 used / ${formatLimit(limits.maxProjects)}`,  locked: false },
-    { label:'Generations', value:`${totalGen} used / ${formatLimit(limits.maxGenerationsMonth,'/mo')}`, locked: false },
+    { label:'Projects',    value:`${usedProj} used / ${formatLimit(limits.maxProjects)}`,  locked: false },
+    { label:'Generations this month', value:`${usedGen} / ${formatLimit(limits.maxGenerationsMonth,'/mo')}`, locked: false },
     { label:'Team seats',  value:formatLimit(limits.maxTeamSeats), locked: false },
     { label:'GitLab export', value: limits.canExportGitLab ? 'Enabled' : '🔒 Locked', locked: !limits.canExportGitLab },
     { label:'Meeting mode',  value: limits.canUseMeetingMode ? 'Enabled' : '🔒 Locked', locked: !limits.canUseMeetingMode },
   ]
-  const usedProjects = 3
-  const projectPct   = limits.maxProjects === -1 ? 40 : Math.min(100, (usedProjects / limits.maxProjects) * 100)
+  const projectPct   = limits.maxProjects === -1 ? Math.min(100, (usedProj / 20) * 100)
+                     : Math.min(100, (usedProj / limits.maxProjects) * 100)
 
   return (
     <>
@@ -452,7 +457,13 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
           </div>
 
           {/* Plan badge */}
-          <PlanBadge totalGen={totalGen} accessToken={accessToken}/>
+          <PlanBadge
+            totalGen={totalGen}
+            generationsThisMonth={profile?.generationsThisMonth ?? 0}
+            projectCount={profile?.projectCount ?? 0}
+            profile={profile}
+            accessToken={accessToken}
+          />
 
           {/* Security */}
           <div style={{ background:'#fff', border:'1px solid #e8edf5', borderRadius:16, padding:'18px 20px', boxShadow:'0 1px 4px rgba(0,0,0,.04)' }}>

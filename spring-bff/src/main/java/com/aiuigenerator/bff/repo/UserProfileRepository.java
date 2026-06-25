@@ -13,4 +13,8 @@ public interface UserProfileRepository extends MongoRepository<UserProfile, Stri
     Optional<UserProfile> findByEmail(String email);
 
     Optional<UserProfile> findByUsername(String username);
+
+    Optional<UserProfile> findByStripeCustomerId(String stripeCustomerId);
+
+    Optional<UserProfile> findBySubscriptionId(String subscriptionId);
 }

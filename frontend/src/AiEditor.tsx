@@ -43,6 +43,7 @@ import {
   getChatHistory,
   shareProject,
   unshareProject,
+  verifyStripeSession,
   type AdminStats,
   type AdminUser,
   type AuditEventListItem,
@@ -55,6 +56,9 @@ import {
   type UserProfile,
   type UserStats,
 } from './api'
+import UpgradeModal from './components/UpgradeModal'
+import { usePlanLimits, syncPlanFromProfile, setUserPlan } from './hooks/usePlanLimits'
+import type { LimitContext } from './hooks/usePlanLimits'
 import { ChatPanel, CodeViewer, Preview, VersionHistory, PushGitLabModal, QualityScores, TedChatBot, HomePage, ToastProvider, ErrorBoundary, DeployModal, AccessibilityReport, AccountSettings, MeetingRecorder, MyProjectsGridHub, type ChatMsg, type FileNode, type ElementInfo, type StyleChange, type ProjectItem } from './components'
 import MultiAgentGenerator from './components/MultiAgentGenerator'
 import { FigmaImportModal } from './components/FigmaImportModal'
@@ -171,6 +175,11 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [isRepairing, setIsRepairing] = useState(false)
   const [isGeneratingDocs, setIsGeneratingDocs] = useState(false)
   const [docsGenerated, setDocsGenerated] = useState(false)
+
+  // Plan limits
+  const planLimits = usePlanLimits()
+  const [upgradeCtx, setUpgradeCtx] = useState<LimitContext | null>(null)
+  const [profileForPlan, setProfileForPlan] = useState<import('./api').UserProfileResponse | null>(null)
 
   // Figma import state
   const [isFigmaModalOpen, setIsFigmaModalOpen] = useState(false)
@@ -503,6 +512,26 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     }
   }, [initialGenerationId, apiResult, loadGeneration])
 
+  // ── Handle Stripe success redirect: ?upgrade=success&session_id=cs_xxx ──────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('upgrade') !== 'success') return
+    const sessionId = params.get('session_id')
+    if (!sessionId) return
+
+    // Remove query params immediately so refresh doesn't re-trigger
+    window.history.replaceState({}, '', window.location.pathname)
+
+    verifyStripeSession(sessionId, accessToken).then(result => {
+      if (result.success && result.planId) {
+        setUserPlan(result.planId as import('./lib/plans').PlanId)
+        // Reload profile to get fresh plan data
+        void loadProfile()
+      }
+    }).catch(() => { /* ignore */ })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const doRollback = useCallback(
     async (generationId: string, version: number) => {
       try {
@@ -538,9 +567,17 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const loadProfile = useCallback(async () => {
     try {
       setProfileLoading(true)
-      const [profile, stats] = await Promise.all([getMe(accessToken), getUserStats(accessToken)])
+      const [profile, stats, fullProfile] = await Promise.all([
+        getMe(accessToken),
+        getUserStats(accessToken),
+        getUserProfile(accessToken).catch(() => null),
+      ])
       setUserProfile(profile)
       setUserStats(stats)
+      if (fullProfile) {
+        setProfileForPlan(fullProfile)
+        syncPlanFromProfile(fullProfile) // persist to localStorage
+      }
     } catch {
       // non-critical — profile enrichment only
     } finally {
@@ -1143,6 +1180,14 @@ document.addEventListener('click', function(e) {
   }
 
   const startBuild = async (promptOverride?: string, nameOverride?: string, figmaUrlOverride?: string | null, figmaTokenOverride?: string | null) => {
+    // ── Plan gate: project count ──────────────────────────────────────────
+    const currentProjectCount = profileForPlan?.projectCount ?? 0
+    if (!planLimits.checkProject(currentProjectCount)) return
+
+    // ── Plan gate: monthly generation count ──────────────────────────────
+    const usedGen = profileForPlan?.generationsThisMonth ?? 0
+    if (!planLimits.checkGeneration(usedGen)) return
+
     setIsBuilding(true)
     setBuildError(null)
     setBuildPct(0)
@@ -1201,8 +1246,16 @@ document.addEventListener('click', function(e) {
       }
     } catch (e: any) {
       setIsBuilding(false)
-      setBuildError(e?.message ?? 'Build failed')
-      void loadHistory().then(() => setHomeTab('projects'))
+      const msg = e?.message ?? 'Build failed'
+      // 429 from backend = monthly generation limit exceeded
+      if (msg.includes('generation_limit_exceeded') || msg.includes('429')) {
+        const usedGen = profileForPlan?.generationsThisMonth ?? 0
+        const maxGen  = planLimits.plan.limits.maxGenerationsMonth
+        setUpgradeCtx({ type: 'generations', current: usedGen, max: maxGen })
+      } else {
+        setBuildError(msg)
+        void loadHistory().then(() => setHomeTab('projects'))
+      }
     }
   }
 
@@ -2689,9 +2742,19 @@ document.addEventListener('click', function(e) {
             try { await unshareProject(apiResult.generationId, accessToken); setShareToken(null) } catch { /**/ }
           }}
           onZip={(!isAdmin && !!apiResult?.generationId) ? () => downloadGenerationZip(apiResult!.generationId!, accessToken) : undefined}
-          onGitlab={(!isAdmin && !!apiResult?.generationId) ? () => setIsPushGitLabModalOpen(true) : undefined}
+          onGitlab={(!isAdmin && !!apiResult?.generationId) ? () => {
+            if (!planLimits.checkFeature('canExportGitLab')) {
+              setUpgradeCtx({ type: 'feature', current: 0, max: 0, feature: 'GitLab export (Team plan)' }); return
+            }
+            setIsPushGitLabModalOpen(true)
+          } : undefined}
           onDeploy={(!isAdmin && !!apiResult?.generationId) ? () => setIsDeployModalOpen(true) : undefined}
-          onMeeting={(!isAdmin && !!apiResult?.generationId) ? () => setIsMeetingRecorderOpen(true) : undefined}
+          onMeeting={(!isAdmin && !!apiResult?.generationId) ? () => {
+            if (!planLimits.checkFeature('canUseMeetingMode')) {
+              setUpgradeCtx({ type: 'feature', current: 0, max: 0, feature: 'Meeting mode (Team plan)' }); return
+            }
+            setIsMeetingRecorderOpen(true)
+          } : undefined}
           isAdmin={isAdmin}
           modals={(
             <>
@@ -3585,6 +3648,16 @@ document.addEventListener('click', function(e) {
           )}
 
         </div>
+
+        {/* ── Plan Upgrade Modal (shown when any limit is hit) ── */}
+        {(upgradeCtx || planLimits.upgradeContext) && (
+          <UpgradeModal
+            context={(upgradeCtx || planLimits.upgradeContext)!}
+            onClose={() => { setUpgradeCtx(null); planLimits.clearUpgrade() }}
+            accessToken={accessToken}
+          />
+        )}
+
       </ToastProvider>
     </ErrorBoundary>
   )

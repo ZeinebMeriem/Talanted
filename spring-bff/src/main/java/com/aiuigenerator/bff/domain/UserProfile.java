@@ -35,6 +35,16 @@ public class UserProfile {
     private long projectCount;
     private long completedProjects;
 
+    // ── Subscription / Plan ──────────────────────────────────────────────────
+    private String planId = "free";          // free | team | enterprise | custom
+    private String stripeCustomerId;
+    private String subscriptionId;
+    private Instant currentPeriodEnd;        // when the current billing period ends
+
+    // Monthly generation counter (reset on new billing month)
+    private int    generationsThisMonth = 0;
+    private String generationResetMonth;     // "YYYY-MM" — reset when month changes
+
     // Getters and Setters
     public String getUserId() {
         return userId;
@@ -155,4 +165,22 @@ public class UserProfile {
     public void setCompletedProjects(long completedProjects) {
         this.completedProjects = completedProjects;
     }
+
+    public String getPlanId() { return planId == null ? "free" : planId; }
+    public void setPlanId(String planId) { this.planId = planId; }
+
+    public String getStripeCustomerId() { return stripeCustomerId; }
+    public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
+
+    public String getSubscriptionId() { return subscriptionId; }
+    public void setSubscriptionId(String subscriptionId) { this.subscriptionId = subscriptionId; }
+
+    public Instant getCurrentPeriodEnd() { return currentPeriodEnd; }
+    public void setCurrentPeriodEnd(Instant currentPeriodEnd) { this.currentPeriodEnd = currentPeriodEnd; }
+
+    public int getGenerationsThisMonth() { return generationsThisMonth; }
+    public void setGenerationsThisMonth(int generationsThisMonth) { this.generationsThisMonth = generationsThisMonth; }
+
+    public String getGenerationResetMonth() { return generationResetMonth; }
+    public void setGenerationResetMonth(String generationResetMonth) { this.generationResetMonth = generationResetMonth; }
 }

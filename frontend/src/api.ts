@@ -54,6 +54,12 @@ export type UserProfileResponse = {
   updatedAt?: string
   projectCount?: number
   completedProjects?: number
+  // Plan / subscription
+  planId?: string
+  stripeCustomerId?: string
+  subscriptionId?: string
+  currentPeriodEnd?: string
+  generationsThisMonth?: number
 }
 
 export type UpdateProfileRequest = {
@@ -1153,5 +1159,39 @@ export async function tedGetSuggestions(
   }
 
   return Array.isArray(data) ? (data as TedSuggestion[]) : []
+}
+
+// ── Stripe ────────────────────────────────────────────────────────────────────
+
+export async function createStripeCheckoutSession(
+  priceId: string,
+  accessToken?: string,
+): Promise<{ url?: string; error?: string }> {
+  const res = await fetch(`${BFF_BASE_URL}/api/stripe/create-checkout-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders(accessToken) },
+    body: JSON.stringify({
+      priceId,
+      successUrl: `${window.location.origin}/?upgrade=success`,
+      cancelUrl:  `${window.location.origin}/#pricing`,
+    }),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) return { error: extractErrorMessage(data) ?? `HTTP ${res.status}` }
+  return data as { url: string }
+}
+
+export async function verifyStripeSession(
+  sessionId: string,
+  accessToken?: string,
+): Promise<{ success: boolean; planId?: string; error?: string }> {
+  const res = await fetch(`${BFF_BASE_URL}/api/stripe/verify-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders(accessToken) },
+    body: JSON.stringify({ sessionId }),
+  })
+  const data: unknown = await readJsonOrNull(res)
+  if (!res.ok) return { success: false, error: extractErrorMessage(data) ?? `HTTP ${res.status}` }
+  return data as { success: boolean; planId?: string }
 }
 

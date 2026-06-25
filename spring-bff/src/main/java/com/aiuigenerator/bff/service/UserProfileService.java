@@ -1,6 +1,7 @@
 package com.aiuigenerator.bff.service;
 
 import java.time.Instant;
+import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import com.aiuigenerator.bff.domain.UserProfile;
 import com.aiuigenerator.bff.dto.UserProfileDto.AvatarUploadResponse;
+import com.aiuigenerator.bff.dto.UserProfileDto.UpdatePlanRequest;
 import com.aiuigenerator.bff.dto.UserProfileDto.UpdateProfileRequest;
 import com.aiuigenerator.bff.dto.UserProfileDto.UserProfileResponse;
 import com.aiuigenerator.bff.repo.GenerationRepository;
@@ -214,23 +216,99 @@ public class UserProfileService {
         }
     }
 
+    // ── Plan management ──────────────────────────────────────────────────────
+
+    /**
+     * Update plan after Stripe checkout or webhook.
+     */
+    public UserProfileResponse updatePlan(String userId, UpdatePlanRequest req) {
+        UserProfile profile = userProfileRepo.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        if (req.planId != null)           profile.setPlanId(req.planId);
+        if (req.stripeCustomerId != null) profile.setStripeCustomerId(req.stripeCustomerId);
+        if (req.subscriptionId != null)   profile.setSubscriptionId(req.subscriptionId);
+        if (req.currentPeriodEnd != null) profile.setCurrentPeriodEnd(req.currentPeriodEnd);
+
+        profile.setUpdatedAt(Instant.now());
+        profile = userProfileRepo.save(profile);
+        log.info("Plan updated for user={} plan={}", userId, req.planId);
+        return toResponse(profile);
+    }
+
+    /**
+     * Update plan found by Stripe customer ID (used from webhook).
+     */
+    public void updatePlanByCustomerId(String stripeCustomerId, String planId,
+                                       String subscriptionId, Instant currentPeriodEnd) {
+        userProfileRepo.findByStripeCustomerId(stripeCustomerId).ifPresent(profile -> {
+            profile.setPlanId(planId);
+            profile.setSubscriptionId(subscriptionId);
+            if (currentPeriodEnd != null) profile.setCurrentPeriodEnd(currentPeriodEnd);
+            profile.setUpdatedAt(Instant.now());
+            userProfileRepo.save(profile);
+            log.info("Plan updated via webhook: customerId={} plan={}", stripeCustomerId, planId);
+        });
+    }
+
+    /**
+     * Increment monthly generation counter. Returns false if user has exceeded their plan limit.
+     * Limits: free=10, team=100, enterprise=-1 (unlimited).
+     */
+    public boolean incrementAndCheckGeneration(String userId) {
+        UserProfile profile = userProfileRepo.findByUserId(userId).orElse(null);
+        if (profile == null) return true; // guest / dev-user — allow
+
+        String currentMonth = YearMonth.now().toString(); // "2026-06"
+        // Reset counter if month changed
+        if (!currentMonth.equals(profile.getGenerationResetMonth())) {
+            profile.setGenerationsThisMonth(0);
+            profile.setGenerationResetMonth(currentMonth);
+        }
+
+        int limit = planGenerationLimit(profile.getPlanId());
+        if (limit != -1 && profile.getGenerationsThisMonth() >= limit) {
+            return false; // limit exceeded
+        }
+
+        profile.setGenerationsThisMonth(profile.getGenerationsThisMonth() + 1);
+        userProfileRepo.save(profile);
+        return true;
+    }
+
+    private int planGenerationLimit(String planId) {
+        return switch (planId == null ? "free" : planId) {
+            case "team"       -> 100;
+            case "enterprise" -> -1;
+            case "custom"     -> -1;
+            default           -> 10;  // free
+        };
+    }
+
     private UserProfileResponse toResponse(UserProfile profile) {
-        return new UserProfileResponse(
-                profile.getUserId(),
-                profile.getUsername(),
-                profile.getEmail(),
-                profile.getFirstName(),
-                profile.getLastName(),
-                profile.isEmailVerified(),
-                profile.getAvatarUrl(),
-                profile.getBio(),
-                profile.getTimezone(),
-                profile.getPreferredLanguage(),
-                profile.getNotifications(),
-                profile.getCreatedAt(),
-                profile.getUpdatedAt(),
-                profile.getProjectCount(),
-                profile.getCompletedProjects());
+        UserProfileResponse r = new UserProfileResponse();
+        r.userId              = profile.getUserId();
+        r.username            = profile.getUsername();
+        r.email               = profile.getEmail();
+        r.firstName           = profile.getFirstName();
+        r.lastName            = profile.getLastName();
+        r.emailVerified       = profile.isEmailVerified();
+        r.avatarUrl           = profile.getAvatarUrl();
+        r.bio                 = profile.getBio();
+        r.timezone            = profile.getTimezone();
+        r.preferredLanguage   = profile.getPreferredLanguage();
+        r.notifications       = profile.getNotifications();
+        r.createdAt           = profile.getCreatedAt();
+        r.updatedAt           = profile.getUpdatedAt();
+        r.projectCount        = profile.getProjectCount();
+        r.completedProjects   = profile.getCompletedProjects();
+        // Plan fields
+        r.planId              = profile.getPlanId();
+        r.stripeCustomerId    = profile.getStripeCustomerId();
+        r.subscriptionId      = profile.getSubscriptionId();
+        r.currentPeriodEnd    = profile.getCurrentPeriodEnd();
+        r.generationsThisMonth = profile.getGenerationsThisMonth();
+        return r;
     }
 
     private boolean isValidImageType(String mimeType) {
