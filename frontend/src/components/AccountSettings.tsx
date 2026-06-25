@@ -88,7 +88,7 @@ function PlanBadge({ totalGen, generationsThisMonth, projectCount, profile, acce
         <div style={{ margin:'14px 0 0' }}>
           <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'rgba(255,255,255,.3)', fontWeight:600, marginBottom:5 }}>
             <span>Projects usage</span>
-            <span>{usedProjects} / {formatLimit(limits.maxProjects)}</span>
+            <span>{usedProj} / {formatLimit(limits.maxProjects)}</span>
           </div>
           <div style={{ height:5, background:'rgba(255,255,255,.08)', borderRadius:99, overflow:'hidden' }}>
             <div style={{ height:'100%', borderRadius:99, background:'linear-gradient(90deg,#7c3aed,#a855f7)', width:`${projectPct}%`, transition:'width .5s' }}/>
