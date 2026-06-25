@@ -116,6 +116,7 @@ export const useTed = ({ accessToken, enabled = true, generationId }: UseTedOpti
           .map((m) => ({
             type: m.type as 'user' | 'bot',
             text: m.text,
+            mode: (m as TedMessage).mode,
           }))
 
         // Get response from TED

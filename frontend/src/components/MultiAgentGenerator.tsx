@@ -654,21 +654,18 @@ export default function MultiAgentGenerator({
                 {rightHeader && <div style={{ padding:'6px 12px', borderTop:'1px solid #f1f5f9', background:'#fafafa' }}>{rightHeader}</div>}
                 {/* Agent cards */}
                 {rightTab==='chat' && (
-                  <div style={{ padding:'10px 12px', borderTop:'1px solid #f1f5f9' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-                      <span style={{ width:6, height:6, borderRadius:'50%', background:'#10b981', flexShrink:0 }}/>
-                      <span style={{ fontSize:9, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.12em', color:'#64748b', fontFamily:'monospace' }}>Active Cohort Agents</span>
+                  <div style={{ padding:'8px 10px', borderTop:'1px solid #f1f5f9' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:6 }}>
+                      <span style={{ width:5, height:5, borderRadius:'50%', background:'#10b981', flexShrink:0 }}/>
+                      <span style={{ fontSize:8, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.12em', color:'#94a3b8', fontFamily:'monospace' }}>Active Cohort Agents</span>
                     </div>
-                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                       {COHORT_AGENTS.map(agent=>(
-                        <div key={agent.name} style={{ background:agent.bg, border:`1px solid ${agent.border}`, borderRadius:10, padding:'8px 10px', display:'flex', alignItems:'center', gap:9 }}>
-                          <div style={{ width:8, height:8, borderRadius:'50%', background:agent.color, flexShrink:0, '--ac':`${agent.color}44`, animation:agent.status==='running'?'agentPulse 2s ease-in-out infinite':'none' } as React.CSSProperties}/>
-                          <div style={{ minWidth:0, flex:1 }}>
-                            <div style={{ fontSize:11, fontWeight:700, color:'#1e293b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{agent.name}</div>
-                            <div style={{ fontSize:9, color:'#64748b', marginTop:1, fontFamily:'monospace' }}>{agent.task}</div>
-                          </div>
-                          <span style={{ fontSize:8, fontWeight:700, color:agent.status==='running'?agent.color:'#94a3b8', background:agent.status==='running'?`${agent.color}15`:'#f1f5f9', padding:'2px 7px', borderRadius:8, flexShrink:0, border:`1px solid ${agent.status==='running'?`${agent.color}30`:'#e2e8f0'}` }}>
-                            {agent.status==='running'?'Running':'Idle'}
+                        <div key={agent.name} style={{ display:'flex', alignItems:'center', gap:5, background:agent.bg, border:`1px solid ${agent.border}`, borderRadius:8, padding:'4px 8px' }}>
+                          <div style={{ width:6, height:6, borderRadius:'50%', background:agent.color, flexShrink:0, animation:agent.status==='running'?'agentPulse 2s ease-in-out infinite':'none' } as React.CSSProperties}/>
+                          <span style={{ fontSize:9, fontWeight:700, color:'#1e293b', whiteSpace:'nowrap' }}>{agent.name.replace(' Agent','').replace(' Synth','')}</span>
+                          <span style={{ fontSize:8, fontWeight:700, color:agent.status==='running'?agent.color:'#94a3b8', background:agent.status==='running'?`${agent.color}15`:'transparent', padding:'1px 5px', borderRadius:6, border:`1px solid ${agent.status==='running'?`${agent.color}30`:'transparent'}` }}>
+                            {agent.status==='running'?'●':'○'}
                           </span>
                         </div>
                       ))}

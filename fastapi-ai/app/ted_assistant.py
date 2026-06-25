@@ -185,15 +185,20 @@ STRICT RULES:
 - 1 sentence: what changed
 - Show ONLY the changed lines""",
 
-    "improve": """You are TED in IMPROVE mode. You apply improvements and style changes directly.
+    "improve": """You are TED in IMPROVE mode. You apply improvements and style changes IMMEDIATELY — no questions ever.
 RULES:
 - ALWAYS respond in ENGLISH
-- ALWAYS start with exactly this format: 📁 **File: `src/App.tsx`** (replace src/App.tsx with the actual path)
-- For style/color changes: find the exact Tailwind class in the code and replace it — no questions
-- For color requests: use the closest Tailwind class (dark green = bg-green-900, dark red = bg-red-900, etc.)
+- ALWAYS start with exactly this format: 📁 **File: `src/App.tsx`** (replace with actual file path)
+- MAKE THE CHANGE IMMEDIATELY. Do not ask ANY question, ever. Not even "which shade?".
+- For color requests: pick the most obvious interpretation and apply it right away
+  • "yellow" → bg-yellow-400 text-yellow-400 border-yellow-400
+  • "light yellow" → bg-yellow-200
+  • "dark yellow" → bg-yellow-600
+  • "red" → bg-red-500, "blue" → bg-blue-500, "green" → bg-green-500, "purple" → bg-purple-600
+- Find the relevant code in the context, replace the class/color in-place
 - Show ONLY the changed lines in a ```tsx block
-- 1 sentence after: what changed
-- NEVER ask clarifying questions for simple color/style changes — just do it""",
+- 1 sentence after: what changed and where
+- If the user gives a follow-up like "light" or "dark" after a previous color request: apply the refined shade IMMEDIATELY""",
 
     "generate": """You are TED in GENERATE mode. You generate working code.
 RULES:
@@ -207,18 +212,29 @@ RULES:
 }
 
 
-def detect_mode(message: str) -> str:
-    """Detect mode from message. Returns 'chat' for greetings/short messages."""
+def detect_mode(message: str, conversation_history: list = None) -> str:
+    """Detect mode from message, using history to handle follow-up messages."""
     msg = message.strip().lower()
+    words = msg.split()
+
+    # Check if previous TED response was in a technical mode — short follow-ups should continue it
+    if conversation_history and len(words) <= 6:
+        for item in reversed(conversation_history[-6:]):
+            if item.get("type") == "bot" and item.get("mode") in ("improve", "fix", "generate", "explain"):
+                prev_mode = item["mode"]
+                # If the current message is a short clarification/color/value → continue previous mode
+                has_chat_phrase = any(phrase in msg for phrase in _CHAT_ONLY_PHRASES)
+                if not has_chat_phrase:
+                    return prev_mode
+                break
+
+    # Explicit chat phrases → chat
+    for phrase in _CHAT_ONLY_PHRASES:
+        if phrase in msg:
+            return "chat"
 
     # Short messages (≤ 4 words) without technical keywords → chat
-    words = msg.split()
     if len(words) <= 4:
-        # Check if any word is a chat phrase
-        for phrase in _CHAT_ONLY_PHRASES:
-            if phrase in msg:
-                return "chat"
-        # Short message with no technical keywords → chat
         has_tech = any(
             kw in msg
             for keywords in _MODE_KEYWORDS.values()
@@ -340,7 +356,7 @@ class TedAssistant:
         file_count = context.get("fileCount", 0)
         generation_id = context.get("generationId", "")
 
-        mode = detect_mode(message)
+        mode = detect_mode(message, conversation_history)
 
         # For chat mode: no need to load all files → faster response
         if mode == "chat":
