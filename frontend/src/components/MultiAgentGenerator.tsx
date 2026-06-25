@@ -170,6 +170,7 @@ export default function MultiAgentGenerator({
   };
 
   const [leftOpen,  setLeftOpen]  = useState(true);
+  const [fullPreview, setFullPreview] = useState(false);
   const [rightOpen, setRightOpen] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [gaugeValue,    setGaugeValue]    = useState(72);
@@ -550,6 +551,17 @@ export default function MultiAgentGenerator({
             <span style={{ fontSize:10, fontFamily:'monospace', fontWeight:700, color:'#475569', width:38, textAlign:'center' }}>{zoomLevel}%</span>
             <button onClick={()=>setZoomLevel(p=>Math.min(150,p+10))} style={{ color:'#64748b', background:'none', border:'none', cursor:'pointer', padding:'2px 5px', fontWeight:700, fontSize:14, lineHeight:1 }}>+</button>
           </div>
+          {/* full preview expand — only visible when preview tab is active */}
+          {centerTab==='preview' && (
+            <button onClick={()=>setFullPreview(true)}
+              title="Expand to full screen"
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:8, border:'1px solid #e2e8f0', background:'#f8fafc', color:'#475569', fontSize:11, fontWeight:700, cursor:'pointer', transition:'all .15s' }}
+              onMouseEnter={e=>{e.currentTarget.style.background='rgba(124,58,237,.08)';e.currentTarget.style.borderColor='rgba(124,58,237,.3)';e.currentTarget.style.color='#7c3aed'}}
+              onMouseLeave={e=>{e.currentTarget.style.background='#f8fafc';e.currentTarget.style.borderColor='#e2e8f0';e.currentTarget.style.color='#475569'}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+              Full Preview
+            </button>
+          )}
           {/* Files / Chat toggles */}
           {[
             { label: leftOpen?'Files In':'Files Out',   active:leftOpen,  icon:<Folder style={{ width:11, height:11 }}/>,  onClick:()=>setLeftOpen(p=>!p) },
@@ -829,6 +841,42 @@ export default function MultiAgentGenerator({
                 style={{ width:'100%', padding:'10px 0', background:'#04081c', color:'#fff', fontWeight:800, fontSize:13, borderRadius:12, border:'none', cursor:inviteEmail.includes('@')?'pointer':'not-allowed', opacity:inviteEmail.includes('@')?1:.5 }}>
                 Send Invitation
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ FULL PREVIEW OVERLAY ══ */}
+      {fullPreview && (
+        <div style={{ position:'fixed', inset:0, zIndex:9999, background:'#0f172a', display:'flex', flexDirection:'column' }}>
+          {/* toolbar */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 16px', background:'#1e293b', borderBottom:'1px solid #334155', flexShrink:0 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:'#7c3aed' }}/>
+              <span style={{ fontSize:12, fontWeight:800, color:'#f1f5f9' }}>{appName}</span>
+              <span style={{ fontSize:10, color:'#64748b', fontFamily:'monospace' }}>Full Preview</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {/* zoom in full preview */}
+              <div style={{ display:'flex', alignItems:'center', gap:1, border:'1px solid #334155', background:'#0f172a', borderRadius:8, padding:'2px 4px' }}>
+                <button onClick={()=>setZoomLevel(p=>Math.max(50,p-10))} style={{ color:'#94a3b8', background:'none', border:'none', cursor:'pointer', padding:'2px 6px', fontWeight:700, fontSize:14, lineHeight:1 }}>-</button>
+                <span style={{ fontSize:10, fontFamily:'monospace', fontWeight:700, color:'#94a3b8', width:38, textAlign:'center' }}>{zoomLevel}%</span>
+                <button onClick={()=>setZoomLevel(p=>Math.min(200,p+10))} style={{ color:'#94a3b8', background:'none', border:'none', cursor:'pointer', padding:'2px 6px', fontWeight:700, fontSize:14, lineHeight:1 }}>+</button>
+              </div>
+              <button onClick={()=>setFullPreview(false)}
+                title="Exit full preview"
+                style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:9, border:'1px solid #475569', background:'#334155', color:'#f1f5f9', fontSize:11, fontWeight:700, cursor:'pointer', transition:'all .15s' }}
+                onMouseEnter={e=>{e.currentTarget.style.background='#475569'}}
+                onMouseLeave={e=>{e.currentTarget.style.background='#334155'}}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                Exit Full Preview
+              </button>
+            </div>
+          </div>
+          {/* content */}
+          <div style={{ flexGrow:1, overflow:'auto', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:24 }}>
+            <div style={{ transform:`scale(${zoomLevel/100})`, transformOrigin:'top center', background:'#fff', borderRadius:16, boxShadow:'0 25px 80px rgba(0,0,0,.6)', overflow:'hidden', width:'100%', maxWidth:1280 }}>
+              {previewPanel}
             </div>
           </div>
         </div>
