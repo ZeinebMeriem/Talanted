@@ -102,6 +102,20 @@ export default function MultiAgentGenerator({
   const [tedDiagTab,    setTedDiagTab]    = useState<'chat' | 'diag'>('chat');
   const [codeCopied,    setCodeCopied]    = useState(false);
   const [prettyPrint,   setPrettyPrint]   = useState(false);
+  const [applyingBlock, setApplyingBlock] = useState<string | null>(null);
+
+  // Sync project context into TED whenever TED opens or current file changes
+  useEffect(() => {
+    if (!tedOpen) return;
+    ted.updateContext({
+      generationId: tedGenerationId,
+      currentFile: tedCurrentFile,
+      fileContent: tedFileContent,
+      allFiles: tedAllFiles,
+      action: 'previewing',
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tedOpen, tedGenerationId, tedCurrentFile]);
 
   useEffect(() => { if (tedOpen) setTimeout(() => tedInputRef.current?.focus(), 100) }, [tedOpen]);
   useEffect(() => { tedScrollRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [ted.messages]);
@@ -110,6 +124,37 @@ export default function MultiAgentGenerator({
     if (!tedTypedInput.trim() || ted.isLoading) return;
     ted.sendMessage(tedTypedInput);
     setTedTypedInput('');
+  };
+
+  /** Parse a TED message into text and code-block segments */
+  function parseTedSegments(text: string): Array<{ type: 'text' | 'code'; content: string; lang?: string }> {
+    const out: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = [];
+    const re = /```(\w*)\n?([\s\S]*?)```/g;
+    let last = 0; let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push({ type: 'text', content: text.slice(last, m.index) });
+      out.push({ type: 'code', lang: m[1] || 'code', content: m[2].trim() });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push({ type: 'text', content: text.slice(last) });
+    return out;
+  }
+
+  function extractTedFilePath(text: string): string | null {
+    const m = text.match(/(?:File|Fichier)\s*:\s*[`']?([\w./\-]+\.(?:tsx?|py|jsx?|css|json))[`']?/i);
+    return m ? m[1] : null;
+  }
+
+  const handleTedApply = async (code: string, filePath: string, blockKey: string) => {
+    if (!tedGenerationId || !tedAccessToken) return;
+    setApplyingBlock(blockKey);
+    await ted.applyToCode(
+      { id: blockKey, title: 'Apply code', description: '', icon: '⚡', action: '', file: filePath,
+        instruction: `Apply this exact code to the file:\n\n\`\`\`\n${code}\n\`\`\`` },
+      tedGenerationId,
+      onTedFileApplied,
+    );
+    setApplyingBlock(null);
   };
 
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -649,13 +694,47 @@ export default function MultiAgentGenerator({
                 <div style={{ flexGrow:1, overflowY:'auto', padding:12, display:'flex', flexDirection:'column', gap:10, minHeight:0 }}>
                   {ted.messages.map((msg,i)=>{
                     const isBot = msg.type==='bot';
+                    const segments = parseTedSegments(msg.text);
+                    const filePath = isBot ? extractTedFilePath(msg.text) : null;
                     return (
                       <div key={i} style={{ display:'flex', justifyContent:isBot?'flex-start':'flex-end' }}>
-                        {isBot && <div style={{ width:24, height:24, borderRadius:'50%', background:'rgba(124,58,237,.1)', border:'1px solid rgba(124,58,237,.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginRight:8, marginTop:2 }}>
+                        {isBot && <div style={{ width:24, height:24, borderRadius:'50%', background:'rgba(124,58,237,.1)', border:'1px solid rgba(124,58,237,.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginRight:8, marginTop:2, flexShrink:0 }}>
                           <Bot style={{ width:13, height:13, color:'#7c3aed' }}/>
                         </div>}
-                        <div style={{ maxWidth:'88%', padding:'8px 12px', borderRadius:isBot?'14px 14px 14px 4px':'14px 14px 4px 14px', fontSize:12, lineHeight:1.55, background:isBot?'#f8fafc':'#7c3aed', color:isBot?'#374151':'#fff', border:isBot?'1px solid #e2e8f0':'none' }}>
-                          <p style={{ margin:'0 0 2px', whiteSpace:'pre-wrap' }}>{msg.text}</p>
+                        <div style={{ maxWidth:'90%', borderRadius:isBot?'14px 14px 14px 4px':'14px 14px 4px 14px', fontSize:12, lineHeight:1.55, background:isBot?'#f8fafc':'#7c3aed', color:isBot?'#374151':'#fff', border:isBot?'1px solid #e2e8f0':'none', overflow:'hidden' }}>
+                          {segments.map((seg, si) => seg.type === 'code' ? (
+                            <div key={si} style={{ background:'#0f172a', borderTop:'1px solid #1e293b', borderBottom:'1px solid #1e293b' }}>
+                              {/* code header */}
+                              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 10px', background:'#1e293b' }}>
+                                <span style={{ fontSize:10, color:'#94a3b8', fontFamily:'monospace' }}>{seg.lang}{filePath ? ` · ${filePath.split('/').pop()}` : ''}</span>
+                                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                                  {filePath && tedAccessToken && tedGenerationId && (
+                                    <button
+                                      onClick={() => handleTedApply(seg.content, filePath, `${i}-${si}`)}
+                                      disabled={applyingBlock === `${i}-${si}`}
+                                      style={{ fontSize:10, color:'#34d399', background:'none', border:'none', cursor:'pointer', fontWeight:700, opacity:applyingBlock === `${i}-${si}` ? 0.6 : 1 }}>
+                                      {applyingBlock === `${i}-${si}` ? '…applying' : '⚡ Apply'}
+                                    </button>
+                                  )}
+                                  <button onClick={() => { navigator.clipboard.writeText(seg.content) }}
+                                    style={{ fontSize:10, color:'#94a3b8', background:'none', border:'none', cursor:'pointer' }}>⎘ Copy</button>
+                                </div>
+                              </div>
+                              <pre style={{ margin:0, padding:'8px 10px', fontSize:11, color:'#86efac', overflowX:'auto', fontFamily:'monospace', lineHeight:1.5 }}><code>{seg.content}</code></pre>
+                            </div>
+                          ) : (
+                            <p key={si} style={{ margin:0, padding:'8px 12px', whiteSpace:'pre-wrap' }}>{seg.content}</p>
+                          ))}
+                          {/* Action steps */}
+                          {isBot && msg.actionSteps && msg.actionSteps.length > 0 && (
+                            <div style={{ padding:'6px 12px 10px', borderTop:'1px solid rgba(124,58,237,.1)' }}>
+                              {msg.actionSteps.map((step, si) => (
+                                <div key={si} style={{ display:'flex', gap:6, fontSize:11, color:'#7c3aed', marginTop:4 }}>
+                                  <span style={{ fontWeight:700 }}>→</span><span>{step}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

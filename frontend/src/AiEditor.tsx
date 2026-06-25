@@ -2670,7 +2670,12 @@ document.addEventListener('click', function(e) {
           tedCurrentFile={currentEditingFile || undefined}
           tedFileContent={effectiveFileContents.get(currentEditingFile || '')?.content || ''}
           tedAllFiles={Array.from(effectiveFileContents.entries()).map(([path, file]) => ({ path, content: file.content || '' }))}
-          onTedFileApplied={() => { if (selectedGenerationId) loadGeneration(selectedGenerationId) }}
+          onTedFileApplied={() => {
+            if (selectedGenerationId) {
+              void loadGeneration(selectedGenerationId)
+              setPreviewReloadCount(c => c + 1)   // force iframe reload
+            }
+          }}
           shareToken={shareToken}
           shareLink={shareToken ? `${window.location.origin}/share/${shareToken}` : undefined}
           isSharing={isSharing}
