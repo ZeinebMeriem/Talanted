@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { getPlan, PLANS, type PlanId } from '../lib/plans';
 import type { UserProfileResponse } from '../api';
 
@@ -31,6 +31,7 @@ export const getUserPlan = (): PlanId => {
 
 export const setUserPlan = (planId: PlanId) => {
   localStorage.setItem('talented_plan', planId)
+  window.dispatchEvent(new CustomEvent('talented_plan_changed', { detail: planId }))
 }
 
 /** Sync plan from a freshly-loaded profile — sets localStorage and returns the planId */
@@ -45,9 +46,15 @@ export const syncPlanFromProfile = (profile: UserProfileResponse | null): PlanId
 }
 
 export function usePlanLimits(): UsePlanLimitsReturn {
-  const planId = getUserPlan()
+  const [planId, setPlanId] = useState<PlanId>(getUserPlan)
   const plan   = getPlan(planId)
   const [upgradeContext, setUpgradeContext] = useState<LimitContext | null>(null)
+
+  useEffect(() => {
+    const handler = (e: Event) => setPlanId((e as CustomEvent<PlanId>).detail)
+    window.addEventListener('talented_plan_changed', handler)
+    return () => window.removeEventListener('talented_plan_changed', handler)
+  }, [])
 
   const showUpgrade  = useCallback((ctx: LimitContext) => setUpgradeContext(ctx), [])
   const clearUpgrade = useCallback(() => setUpgradeContext(null), [])

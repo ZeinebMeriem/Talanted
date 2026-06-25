@@ -951,10 +951,20 @@ Source code:
         # Extract JSON from response
         import re
         json_match = re.search(r'\{[\s\S]*\}', raw)
-        if json_match:
-            result = _json.loads(json_match.group())
-        else:
-            result = _json.loads(raw)
+        json_str = json_match.group() if json_match else raw
+        try:
+            result = _json.loads(json_str)
+        except _json.JSONDecodeError:
+            # Truncated JSON — repair by closing open structures
+            depth_brace = json_str.count('{') - json_str.count('}')
+            depth_bracket = json_str.count('[') - json_str.count(']')
+            # Close any unclosed string: drop trailing incomplete value
+            json_str = _re.sub(r',?\s*"[^"]*$', '', json_str)
+            json_str += ']' * max(0, depth_bracket) + '}' * max(0, depth_brace)
+            try:
+                result = _json.loads(json_str)
+            except _json.JSONDecodeError:
+                result = {"score": 0, "issues": [], "passed": [], "summary": "Audit response was truncated — increase PLANNER_MAX_TOKENS."}
         result["generated"] = True
         result["filesAnalyzed"] = len(src_files)
         result["codeSnapshot"] = code_snapshot  # Include the code snapshot in response

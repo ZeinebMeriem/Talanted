@@ -732,6 +732,7 @@ class FallbackProvider(LlmProvider):
                     "Access denied", "invalid subscription", "invalid key",
                     "peer closed", "incomplete chunked", "RemoteProtocol",
                     "connection", "timeout", "timed out", "reset",
+                    "Name or service", "Errno", "getaddrinfo", "nodename",
                 ))
                 if is_retriable:
                     logger.warning("FallbackProvider: %s failed (%s) — trying next provider", provider.model, err_str[:80])

@@ -2264,7 +2264,8 @@ public class GenerationService {
             String body = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))
                     .lines().collect(Collectors.joining());
             final ObjectMapper mapper = new ObjectMapper();
-            java.util.Map<String, Object> result = mapper.readValue(body, java.util.Map.class);
+            java.util.Map<String, Object> result = new java.util.HashMap<>(mapper.readValue(body, java.util.Map.class));
+            result.put("generated", true);
 
             // Persist full accessibility audit to new AccessibilityAudit document
             generationRepo.findById(generationId).ifPresent(g -> {

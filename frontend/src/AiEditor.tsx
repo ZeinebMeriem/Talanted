@@ -3262,8 +3262,7 @@ document.addEventListener('click', function(e) {
                   />
                 ) : null}
 
-                {centerTab === 'quality' ? (
-                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+                <div style={{ height: '100%', display: centerTab === 'quality' ? 'flex' : 'none', flexDirection: 'column', background: '#f8fafc' }}>
                     {/* Quality action bar */}
                     {apiResult?.generationId && (
                       <div style={{ padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -3303,7 +3302,6 @@ document.addEventListener('click', function(e) {
                       />
                     </div>
                   </div>
-                ) : null}
 
                 <div style={{ height: '100%', display: centerTab === 'accessibility' ? 'flex' : 'none', flexDirection: 'column', background: '#f8fafc' }}>
                     {(apiResult?.generationId || selectedGenerationId) && (

@@ -138,10 +138,14 @@ public class StripeController {
 
             // Identify user: prefer clientReferenceId from session, fall back to JWT sub
             String userId = session.getClientReferenceId();
+            log.info("verify-session debug: clientReferenceId={} token={} priceId={} planId={} status={}",
+                    userId, token != null ? "present" : "NULL", priceId, planId, session.getStatus());
             if ((userId == null || userId.isBlank() || "anonymous".equals(userId)) && token != null) {
                 Object sub = token.getToken().getClaims().get("sub");
+                log.info("verify-session fallback to JWT sub={}", sub);
                 if (sub != null) userId = sub.toString();
             }
+            log.info("verify-session final userId={}", userId);
 
             if (userId != null && !userId.isBlank() && !"anonymous".equals(userId)) {
                 UpdatePlanRequest req = new UpdatePlanRequest();
