@@ -242,18 +242,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [userStats, setUserStats] = useState<UserStats | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
-  const [pendingStripeSession, setPendingStripeSession] = useState<string | null>(() => {
-    // Capture session_id from URL at construction time (before any render clears it)
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('upgrade') === 'success') {
-      const id = params.get('session_id')
-      if (id) {
-        window.history.replaceState({}, '', window.location.pathname)
-        return id
-      }
-    }
-    return null
-  })
+  const [pendingStripeSession, setPendingStripeSession] = useState<string | null>(null)
 
   // Admin dashboard
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
@@ -525,22 +514,15 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   }, [initialGenerationId, apiResult, loadGeneration])
 
   // ── Handle Stripe success redirect: ?upgrade=success&session_id=cs_xxx ──────
-  // session_id is captured in state at construction time; we wait for accessToken
-  // before calling verify-session so that loadProfile() has auth.
+  // Step 1: detect URL params on mount and store session_id in state
   useEffect(() => {
-    if (!pendingStripeSession || !accessToken) return
-    const sessionId = pendingStripeSession
-    setPendingStripeSession(null)
-
-    verifyStripeSession(sessionId, accessToken)
-      .then(result => {
-        if (result.success && result.planId) {
-          setUserPlan(result.planId as import('./lib/plans').PlanId)
-          void loadProfile()
-        }
-      })
-      .catch(() => { /* ignore network errors */ })
-  }, [pendingStripeSession, accessToken, loadProfile])
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('upgrade') !== 'success') return
+    const id = params.get('session_id')
+    if (!id) return
+    window.history.replaceState({}, '', window.location.pathname)
+    setPendingStripeSession(id)
+  }, [])
 
   const doRollback = useCallback(
     async (generationId: string, version: number) => {
@@ -594,6 +576,21 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
       setProfileLoading(false)
     }
   }, [accessToken])
+
+  // Step 2: once auth is ready AND we have a pending Stripe session, verify it
+  useEffect(() => {
+    if (!pendingStripeSession || !accessToken) return
+    const sessionId = pendingStripeSession
+    setPendingStripeSession(null)
+    verifyStripeSession(sessionId, accessToken)
+      .then(result => {
+        if (result.success && result.planId) {
+          setUserPlan(result.planId as import('./lib/plans').PlanId)
+          void loadProfile()
+        }
+      })
+      .catch(() => {})
+  }, [pendingStripeSession, accessToken, loadProfile])
 
   const loadAdminDashboard = useCallback(async () => {
     try {

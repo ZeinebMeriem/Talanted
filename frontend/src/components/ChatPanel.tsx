@@ -881,10 +881,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       {/* Input — Lovable-style floating dark prompt bar */}
       <div style={{
         padding: '12px 14px 14px',
-        borderTop: '1px solid rgba(1,156,218,.08)',
+        borderTop: '1px solid #e2e8f0',
         background: '#fff',
         flexShrink: 0,
-        borderTop: '1px solid #e2e8f0',
       }}>
         {selectedZone && (
           <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>

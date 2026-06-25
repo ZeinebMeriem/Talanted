@@ -694,7 +694,7 @@ export default function MultiAgentGenerator({
                   <div style={{ display:'flex', gap:14, marginTop:10, borderBottom:'1px solid #e2e8f0', paddingBottom:0, marginLeft:-14, paddingLeft:14 }}>
                     {(['chat','diag'] as const).map(t=>(
                       <button key={t} onClick={()=>setTedDiagTab(t)}
-                        style={{ paddingBottom:8, fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:`2px solid ${tedDiagTab===t?'#7c3aed':'transparent'}`, color:tedDiagTab===t?'#7c3aed':'#94a3b8', background:'none', border:'none', borderBottom:`2px solid ${tedDiagTab===t?'#7c3aed':'transparent'}`, cursor:'pointer' }}>
+                        style={{ paddingBottom:8, fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:`2px solid ${tedDiagTab===t?'#7c3aed':'transparent'}`, color:tedDiagTab===t?'#7c3aed':'#94a3b8', background:'none', border:'none', cursor:'pointer' }}>
                         {t==='chat'?'Chat':'System Diagnostics'}
                       </button>
                     ))}
@@ -707,7 +707,7 @@ export default function MultiAgentGenerator({
                     const filePath = isBot ? extractTedFilePath(msg.text) : null;
                     return (
                       <div key={i} style={{ display:'flex', justifyContent:isBot?'flex-start':'flex-end' }}>
-                        {isBot && <div style={{ width:24, height:24, borderRadius:'50%', background:'rgba(124,58,237,.1)', border:'1px solid rgba(124,58,237,.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginRight:8, marginTop:2, flexShrink:0 }}>
+                        {isBot && <div style={{ width:24, height:24, borderRadius:'50%', background:'rgba(124,58,237,.1)', border:'1px solid rgba(124,58,237,.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginRight:8, marginTop:2 }}>
                           <Bot style={{ width:13, height:13, color:'#7c3aed' }}/>
                         </div>}
                         <div style={{ maxWidth:'90%', borderRadius:isBot?'14px 14px 14px 4px':'14px 14px 4px 14px', fontSize:12, lineHeight:1.55, background:isBot?'#f8fafc':'#7c3aed', color:isBot?'#374151':'#fff', border:isBot?'1px solid #e2e8f0':'none', overflow:'hidden' }}>
