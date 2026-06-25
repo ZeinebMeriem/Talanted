@@ -21,6 +21,8 @@ export interface HomePageProps {
   onImportFigma?: () => void
   onImportMeeting?: () => void
   onImportJira?: () => void
+  canUseMeeting?: boolean
+  canUseJira?: boolean
 }
 
 const CHIPS = [
@@ -89,6 +91,8 @@ export const HomePage: React.FC<HomePageProps> = ({
   onImportFigma,
   onImportMeeting,
   onImportJira,
+  canUseMeeting = true,
+  canUseJira = true,
 }) => {
   const [activeSidebarTab, setActiveSidebarTab] = useState<'home' | 'projects' | 'profile'>('home')
   const [promptInput, setPromptInput] = useState('')
@@ -452,25 +456,32 @@ export const HomePage: React.FC<HomePageProps> = ({
 
             {/* Import cards — tall vertical */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
-              {[
-                { label:'Import from Figma',   sub:'Compile Figma vectors',      onClick:onImportFigma??onCreateProject,   accent:'#f97316', bg:'#fff7ed',
+              {([
+                { label:'Import from Figma',   sub:'Compile Figma vectors',      onClick:onImportFigma??onCreateProject,   accent:'#f97316', bg:'#fff7ed', locked:false,
                   icon:<svg style={{width:28,height:28}} viewBox="0 0 38 57" fill="none"><path d="M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z" fill="#1ABCFE"/><path d="M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 0 1-19 0z" fill="#0ACF83"/><path d="M19 0v19h9.5a9.5 9.5 0 0 0 0-19H19z" fill="#FF7262"/><path d="M0 9.5A9.5 9.5 0 0 1 9.5 0H19v19H9.5A9.5 9.5 0 0 1 0 9.5z" fill="#F24E1E"/><path d="M0 28.5A9.5 9.5 0 0 1 9.5 19H19v19H9.5A9.5 9.5 0 0 1 0 28.5z" fill="#A259FF"/></svg> },
-                { label:'Import from Meeting', sub:'Speech requirements scribe', onClick:onImportMeeting??onCreateProject, accent:'#7c3aed', bg:'#f5f3ff',
+                { label:'Import from Meeting', sub:'Speech requirements scribe', onClick:onImportMeeting??onCreateProject, accent:'#7c3aed', bg:'#f5f3ff', locked:!canUseMeeting,
                   icon:<Volume2 size={24} color="#7c3aed"/> },
-                { label:'Import from Jira',    sub:'Translate Jira issues',       onClick:onImportJira??onCreateProject,    accent:'#2563eb', bg:'#eff6ff',
+                { label:'Import from Jira',    sub:'Translate Jira issues',       onClick:onImportJira??onCreateProject,    accent:'#2563eb', bg:'#eff6ff', locked:!canUseJira,
                   icon:<svg style={{width:24,height:24}} viewBox="0 0 24 24" fill="none"><path d="M11.571 11.429L6.857 6.714A5.143 5.143 0 0 0 6.857 14l4.714-2.571z" fill="#2684FF"/><path d="M11.571 11.429l4.715 4.714A5.143 5.143 0 0 0 16.286 9l-4.715 2.429z" fill="#0052CC"/><path d="M11.571 11.429L6.857 14a5.143 5.143 0 0 0 9.429 1.143L11.57 11.43z" fill="#2684FF"/></svg> },
-              ].map(c=>(
+              ] as const).map(c=>(
                 <button key={c.label} onClick={c.onClick}
-                  style={{ background:'#fff', border:'1px solid #e8edf5', borderRadius:18, padding:'20px 20px 18px', textAlign:'left', cursor:'pointer', transition:'all .2s', display:'flex', flexDirection:'column', gap:0, minHeight:140 }}
-                  onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=c.accent+'88';(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 16px ${c.accent}18`}}
-                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor='#e8edf5';(e.currentTarget as HTMLButtonElement).style.boxShadow='none'}}>
+                  style={{ background: c.locked?'#f8f9fc':'#fff', border:`1px solid ${c.locked?'#e2e8f0':'#e8edf5'}`, borderRadius:18, padding:'20px 20px 18px', textAlign:'left', cursor:'pointer', transition:'all .2s', display:'flex', flexDirection:'column', gap:0, minHeight:140, position:'relative', overflow:'hidden' }}
+                  onMouseEnter={e=>{ if(!c.locked){(e.currentTarget as HTMLButtonElement).style.borderColor=c.accent+'88';(e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 16px ${c.accent}18`} }}
+                  onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=c.locked?'#e2e8f0':'#e8edf5';(e.currentTarget as HTMLButtonElement).style.boxShadow='none'}}>
+                  {/* Lock overlay for gated features */}
+                  {c.locked && (
+                    <div style={{ position:'absolute', top:10, right:10, display:'flex', alignItems:'center', gap:4, background:'rgba(124,58,237,.1)', border:'1px solid rgba(124,58,237,.2)', borderRadius:20, padding:'3px 8px' }}>
+                      <Lock size={9} color="#7c3aed"/>
+                      <span style={{ fontSize:9, fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'0.06em' }}>Team plan</span>
+                    </div>
+                  )}
                   <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'auto' }}>
-                    <div style={{ width:44, height:44, borderRadius:12, background:c.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{c.icon}</div>
-                    <span style={{ fontSize:20, color:'#cbd5e1', lineHeight:1, fontWeight:300, marginTop:2 }}>+</span>
+                    <div style={{ width:44, height:44, borderRadius:12, background:c.locked?'#f1f5f9':c.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, opacity:c.locked?.55:1 }}>{c.icon}</div>
+                    {!c.locked && <span style={{ fontSize:20, color:'#cbd5e1', lineHeight:1, fontWeight:300, marginTop:2 }}>+</span>}
                   </div>
                   <div style={{ marginTop:18 }}>
-                    <div style={{ fontSize:13, fontWeight:800, color:'#0f172a', lineHeight:1.3 }}>{c.label}</div>
-                    <div style={{ fontSize:11, color:'#94a3b8', fontWeight:500, marginTop:3 }}>{c.sub}</div>
+                    <div style={{ fontSize:13, fontWeight:800, color:c.locked?'#94a3b8':'#0f172a', lineHeight:1.3 }}>{c.label}</div>
+                    <div style={{ fontSize:11, color:'#94a3b8', fontWeight:500, marginTop:3 }}>{c.locked ? 'Upgrade to Team to unlock' : c.sub}</div>
                   </div>
                 </button>
               ))}

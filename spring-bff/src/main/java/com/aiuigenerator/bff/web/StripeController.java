@@ -79,6 +79,12 @@ public class StripeController {
             Object sub = token.getToken().getClaims().get("sub");
             if (sub != null) userId = sub.toString();
         }
+        // Fallback: accept userId from request body (frontend sends userSub)
+        // Only used when JWT is unavailable (dev mode). verify-session always re-checks via JWT.
+        if ("anonymous".equals(userId)) {
+            String bodyUserId = body.get("userId");
+            if (bodyUserId != null && !bodyUserId.isBlank()) userId = bodyUserId;
+        }
 
         try {
             SessionCreateParams params = SessionCreateParams.builder()

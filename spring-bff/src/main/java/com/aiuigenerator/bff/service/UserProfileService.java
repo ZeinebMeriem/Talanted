@@ -252,6 +252,30 @@ public class UserProfileService {
     }
 
     /**
+     * Check if user can create a new project based on their plan limits.
+     * Free=3, Team=20, Enterprise/Custom=unlimited.
+     */
+    public boolean checkProjectLimit(String userId) {
+        UserProfile profile = userProfileRepo.findByUserId(userId).orElse(null);
+        if (profile == null) return true;
+
+        int limit = planProjectLimit(profile.getPlanId());
+        if (limit == -1) return true;
+
+        long count = generationRepo.countByUserId(userId);
+        return count < limit;
+    }
+
+    private int planProjectLimit(String planId) {
+        return switch (planId == null ? "free" : planId) {
+            case "team"       -> 20;
+            case "enterprise" -> -1;
+            case "custom"     -> -1;
+            default           -> 3;
+        };
+    }
+
+    /**
      * Increment monthly generation counter. Returns false if user has exceeded their plan limit.
      * Limits: free=10, team=100, enterprise=-1 (unlimited).
      */

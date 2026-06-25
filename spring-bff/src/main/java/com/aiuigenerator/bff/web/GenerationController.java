@@ -120,6 +120,14 @@ public class GenerationController {
                 userId = String.valueOf(sub);
         }
 
+        // ── Plan limit: check project count quota ─────────────────────────
+        if (!"dev-user".equals(userId) && !userProfileService.checkProjectLimit(userId)) {
+            response.setStatus(403);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":\"project_limit_exceeded\",\"message\":\"Project limit reached for your plan. Upgrade to create more projects.\"}");
+            return;
+        }
+
         // ── Plan limit: check monthly generation quota ────────────────────
         if (!"dev-user".equals(userId) && !userProfileService.incrementAndCheckGeneration(userId)) {
             response.setStatus(429);
@@ -179,6 +187,11 @@ public class GenerationController {
             Object sub = token.getToken().getClaims().get("sub");
             if (sub != null)
                 userId = String.valueOf(sub);
+        }
+
+        // ── Plan limit: check project count quota ─────────────────────────
+        if (!"dev-user".equals(userId) && !userProfileService.checkProjectLimit(userId)) {
+            return ResponseEntity.status(403).body(null);
         }
 
         String safePrompt = prompt == null ? "" : prompt;

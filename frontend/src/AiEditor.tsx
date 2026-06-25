@@ -514,14 +514,21 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
   }, [initialGenerationId, apiResult, loadGeneration])
 
   // ── Handle Stripe success redirect: ?upgrade=success&session_id=cs_xxx ──────
-  // Step 1: detect URL params on mount and store session_id in state
+  // Step 1: detect URL params OR localStorage (handles page-reload edge case)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('upgrade') !== 'success') return
-    const id = params.get('session_id')
-    if (!id) return
-    window.history.replaceState({}, '', window.location.pathname)
-    setPendingStripeSession(id)
+    if (params.get('upgrade') === 'success') {
+      const id = params.get('session_id')
+      if (id) {
+        window.history.replaceState({}, '', window.location.pathname)
+        localStorage.setItem('talented_pending_session', id)
+        setPendingStripeSession(id)
+        return
+      }
+    }
+    // Pick up any session that survived a page reload
+    const stored = localStorage.getItem('talented_pending_session')
+    if (stored) setPendingStripeSession(stored)
   }, [])
 
   const doRollback = useCallback(
@@ -582,6 +589,7 @@ export function AiEditor({ accessToken, username = 'there', email, firstName, la
     if (!pendingStripeSession || !accessToken) return
     const sessionId = pendingStripeSession
     setPendingStripeSession(null)
+    localStorage.removeItem('talented_pending_session')
     verifyStripeSession(sessionId, accessToken)
       .then(result => {
         if (result.success && result.planId) {
@@ -1254,8 +1262,13 @@ document.addEventListener('click', function(e) {
     } catch (e: any) {
       setIsBuilding(false)
       const msg = e?.message ?? 'Build failed'
+      // 403 from backend = project limit exceeded
+      if (msg.includes('project_limit_exceeded') || msg.includes('403')) {
+        const usedProj = profileForPlan?.projectCount ?? 0
+        const maxProj  = planLimits.plan.limits.maxProjects
+        setUpgradeCtx({ type: 'projects', current: usedProj, max: maxProj })
       // 429 from backend = monthly generation limit exceeded
-      if (msg.includes('generation_limit_exceeded') || msg.includes('429')) {
+      } else if (msg.includes('generation_limit_exceeded') || msg.includes('429')) {
         const usedGen = profileForPlan?.generationsThisMonth ?? 0
         const maxGen  = planLimits.plan.limits.maxGenerationsMonth
         setUpgradeCtx({ type: 'generations', current: usedGen, max: maxGen })
@@ -1913,9 +1926,21 @@ document.addEventListener('click', function(e) {
                 createdAt: item.createdAt || new Date().toISOString()
               }))}
               onCreateProject={() => setShowCreateForm(true)}
-              onImportJira={() => setIsJiraModalOpen(true)}
-              onImportMeeting={() => setIsMeetingRecorderOpen(true)}
+              onImportJira={() => {
+                if (!planLimits.checkFeature('canUseJiraMode')) {
+                  setUpgradeCtx({ type: 'feature', current: 0, max: 0, feature: 'Jira mode (Team plan)' }); return
+                }
+                setIsJiraModalOpen(true)
+              }}
+              onImportMeeting={() => {
+                if (!planLimits.checkFeature('canUseMeetingMode')) {
+                  setUpgradeCtx({ type: 'feature', current: 0, max: 0, feature: 'Meeting mode (Team plan)' }); return
+                }
+                setIsMeetingRecorderOpen(true)
+              }}
               onImportFigma={() => setIsFigmaModalOpen(true)}
+              canUseMeeting={planLimits.plan.limits.canUseMeetingMode}
+              canUseJira={planLimits.plan.limits.canUseJiraMode}
               onSubmitWithPrompt={(prompt) => {
                 const autoName = prompt.trim().split(/\s+/).slice(0, 3).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24) || 'my-app'
                 setCustomPrompt(prompt)
@@ -1982,9 +2007,17 @@ document.addEventListener('click', function(e) {
                   <select
                     defaultValue=""
                     onChange={e => {
-                      if (e.target.value === 'meeting') setIsMeetingRecorderOpen(true)
-                      else if (e.target.value === 'jira') setIsJiraModalOpen(true)
-                      else if (e.target.value === 'figma') setIsFigmaModalOpen(true)
+                      if (e.target.value === 'meeting') {
+                        if (!planLimits.checkFeature('canUseMeetingMode')) {
+                          setUpgradeCtx({ type: 'feature', current: 0, max: 0, feature: 'Meeting mode (Team plan)' }); e.target.value = ''; return
+                        }
+                        setIsMeetingRecorderOpen(true)
+                      } else if (e.target.value === 'jira') {
+                        if (!planLimits.checkFeature('canUseJiraMode')) {
+                          setUpgradeCtx({ type: 'feature', current: 0, max: 0, feature: 'Jira mode (Team plan)' }); e.target.value = ''; return
+                        }
+                        setIsJiraModalOpen(true)
+                      } else if (e.target.value === 'figma') setIsFigmaModalOpen(true)
                       e.target.value = ''
                     }}
                     style={{ padding: '7px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: '1.5px solid rgba(255,255,255,.7)', background: 'rgba(255,255,255,.6)', color: '#6b7280', backdropFilter: 'blur(8px)', outline: 'none', transition: 'all .25s', appearance: 'none', WebkitAppearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
@@ -2372,7 +2405,7 @@ document.addEventListener('click', function(e) {
           {homeTab === 'profile' && (
             <>
               <div style={{ padding: '40px 0 80px' }}>
-                <AccountSettings accessToken={accessToken} />
+                <AccountSettings accessToken={accessToken} userSub={userSub} />
               </div>
             </>
           )}
@@ -3660,6 +3693,7 @@ document.addEventListener('click', function(e) {
             context={(upgradeCtx || planLimits.upgradeContext)!}
             onClose={() => { setUpgradeCtx(null); planLimits.clearUpgrade() }}
             accessToken={accessToken}
+            userSub={userSub}
           />
         )}
 

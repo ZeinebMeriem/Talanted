@@ -4,34 +4,16 @@ import {
   uploadAvatar, deleteAvatar, getUserStats,
   type UserProfileResponse, type UpdateProfileRequest,
 } from '../api'
-import { Camera, Check, ChevronDown, Mail, Bell, Globe, Clock, Save, X, Zap, Layers, Star, Shield, Lock, AlertCircle, ArrowRight } from 'lucide-react'
+import { Camera, Check, Mail, Bell, Save, X, Zap, Layers, Star, Shield, Lock, ArrowRight } from 'lucide-react'
 import { getPlan, formatLimit, PLAN_ORDER, type PlanId } from '../lib/plans'
 import { getUserPlan, syncPlanFromProfile } from '../hooks/usePlanLimits'
 import UpgradeModal from './UpgradeModal'
 
-const TIMEZONES = [
-  { label: 'UTC', value: 'UTC' },
-  { label: 'Eastern Time (ET)', value: 'America/New_York' },
-  { label: 'Central Time (CT)', value: 'America/Chicago' },
-  { label: 'Pacific Time (PT)', value: 'America/Los_Angeles' },
-  { label: 'Europe/Paris', value: 'Europe/Paris' },
-  { label: 'Europe/London', value: 'Europe/London' },
-  { label: 'Asia/Dubai', value: 'Asia/Dubai' },
-  { label: 'Asia/Tokyo', value: 'Asia/Tokyo' },
-]
-
-const LANGUAGES = [
-  { label: 'English', value: 'en' },
-  { label: 'French (Français)', value: 'fr' },
-  { label: 'Spanish (Español)', value: 'es' },
-  { label: 'German (Deutsch)', value: 'de' },
-]
-
 const AVATAR_KEY = 'talanted_avatar_url'
 
 /* ── Plan Badge — extracted sub-component so hooks are valid ───────── */
-function PlanBadge({ totalGen, generationsThisMonth, projectCount, profile, accessToken }:
-  { totalGen: number; generationsThisMonth: number; projectCount: number; profile: import('../api').UserProfileResponse | null; accessToken?: string }) {
+function PlanBadge({ totalGen, generationsThisMonth, projectCount, profile, accessToken, userSub }:
+  { totalGen: number; generationsThisMonth: number; projectCount: number; profile: import('../api').UserProfileResponse | null; accessToken?: string; userSub?: string }) {
   // Prefer plan from profile (authoritative) then localStorage fallback
   const planId   = profile ? (syncPlanFromProfile(profile) as PlanId) : getUserPlan()
   const plan     = getPlan(planId)
@@ -44,11 +26,16 @@ function PlanBadge({ totalGen, generationsThisMonth, projectCount, profile, acce
   const usedProj = projectCount ?? 0
 
   const rows = [
-    { label:'Projects',    value:`${usedProj} used / ${formatLimit(limits.maxProjects)}`,  locked: false },
-    { label:'Generations this month', value:`${usedGen} / ${formatLimit(limits.maxGenerationsMonth,'/mo')}`, locked: false },
-    { label:'Team seats',  value:formatLimit(limits.maxTeamSeats), locked: false },
-    { label:'GitLab export', value: limits.canExportGitLab ? 'Enabled' : '🔒 Locked', locked: !limits.canExportGitLab },
-    { label:'Meeting mode',  value: limits.canUseMeetingMode ? 'Enabled' : '🔒 Locked', locked: !limits.canUseMeetingMode },
+    { label:'Projects',              value:`${usedProj} / ${formatLimit(limits.maxProjects)}`,                  locked: false },
+    { label:'AI generations / month',value:`${usedGen} / ${formatLimit(limits.maxGenerationsMonth)}`,           locked: false },
+    { label:'Team seats',            value:formatLimit(limits.maxTeamSeats),                                     locked: false },
+    { label:'Custom agents / project',value:limits.maxAgentsPerProject === 0 ? '🔒 None' : formatLimit(limits.maxAgentsPerProject), locked: limits.maxAgentsPerProject === 0 },
+    { label:'Version history',       value:limits.versionHistoryDays === -1 ? 'Unlimited' : `${limits.versionHistoryDays} days`,  locked: false },
+    { label:'Meeting + Jira modes',  value: limits.canUseMeetingMode ? 'Enabled' : '🔒 Locked',                locked: !limits.canUseMeetingMode },
+    { label:'GitLab / GitHub export',value: limits.canExportGitLab   ? 'Enabled' : '🔒 Locked',                locked: !limits.canExportGitLab },
+    { label:'WCAG audit',            value: limits.wcagLevel === 'full' ? 'Full AA' : limits.wcagLevel === 'basic' ? 'Basic' : '🔒 None', locked: limits.wcagLevel === 'none' },
+    { label:'SSO / SAML',            value: limits.canUseSSO  ? 'Enabled' : '🔒 Locked',                       locked: !limits.canUseSSO },
+    { label:'REST API',              value: limits.canUseAPI  ? 'Enabled' : '🔒 Locked',                       locked: !limits.canUseAPI },
   ]
   const projectPct   = limits.maxProjects === -1 ? Math.min(100, (usedProj / 20) * 100)
                      : Math.min(100, (usedProj / limits.maxProjects) * 100)
@@ -115,25 +102,26 @@ function PlanBadge({ totalGen, generationsThisMonth, projectCount, profile, acce
           context={{ type:'feature', current:0, max:0 }}
           onClose={() => setUpgradeOpen(false)}
           accessToken={accessToken}
+          userSub={userSub}
         />
       )}
     </>
   )
 }
 
-interface Toggle { label: string; desc: string; key: 'emailNotifications' | 'projectUpdates' | 'weeklyDigest' }
+interface Toggle { label: string; desc: string; key: 'emailNotifications' | 'projectUpdates' }
 const TOGGLES: Toggle[] = [
   { key: 'emailNotifications', label: 'Email Notifications', desc: 'Receive updates and alerts via email' },
   { key: 'projectUpdates',     label: 'Project Updates',     desc: 'Notify when a generation completes' },
-  { key: 'weeklyDigest',       label: 'Weekly Digest',       desc: 'Summary of your activity every week' },
 ]
 
 interface AccountSettingsProps {
   accessToken?: string
+  userSub?    : string
   onClose?: () => void
 }
 
-export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) {
+export function AccountSettings({ accessToken, userSub, onClose }: AccountSettingsProps) {
   const [profile, setProfile] = useState<UserProfileResponse | null>(null)
   const [stats, setStats]     = useState<{ totalGenerations?: number; completedGenerations?: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -251,11 +239,9 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
 
   // Profile completeness score
   const checks = [
-    { label: 'Email verified',  done: !!profile?.emailVerified },
-    { label: 'Photo uploaded',  done: !!avatarPreview },
-    { label: 'Bio written',     done: bio.trim().length > 0 },
-    { label: 'Timezone set',    done: timezone !== 'UTC' },
-    { label: 'Language set',    done: language !== 'en' },
+    { label: 'Email verified', done: !!profile?.emailVerified },
+    { label: 'Photo uploaded', done: !!avatarPreview },
+    { label: 'Bio written',    done: bio.trim().length > 0 },
   ]
   const completePct = Math.round((checks.filter(c => c.done).length / checks.length) * 100)
   // SVG ring params
@@ -335,10 +321,10 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
         </div>
       </div>
 
-      {/* ── BODY: 3-column grid ── */}
-      <div style={{ padding:'22px 32px', display:'grid', gridTemplateColumns:'1fr 1fr 260px', gap:16, alignItems:'start' }}>
+      {/* ── BODY: 2-column grid ── */}
+      <div style={{ padding:'22px 32px', display:'grid', gridTemplateColumns:'1fr 290px', gap:18, alignItems:'start' }}>
 
-        {/* ── COL 1 ── */}
+        {/* ── COL 1 — Editable content ── */}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
 
           {/* Email alert */}
@@ -371,28 +357,11 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
               value={bio}
               onChange={e=>setBio(e.target.value)}
               placeholder="A few words about yourself..."
-              rows={5}
+              rows={4}
               style={{ width:'100%', padding:'10px 12px', border:'1.5px solid #dde3ef', borderRadius:10, fontSize:13, fontFamily:'inherit', resize:'vertical', boxSizing:'border-box', outline:'none', color:'#1e293b', background:'#fafbff', transition:'border-color .2s' }}
               onFocus={e=>e.target.style.borderColor='#7c3aed'}
               onBlur={e=>e.target.style.borderColor='#dde3ef'}
             />
-          </SectionCard>
-        </div>
-
-        {/* ── COL 2 ── */}
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-
-          <SectionCard title="Preferences" icon={<Globe size={13}/>}>
-            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#64748b', display:'flex', alignItems:'center', gap:4, marginBottom:6 }}><Clock size={11} color="#7c3aed"/> Timezone</label>
-                <StyledSelect value={timezone} onChange={setTimezone} options={TIMEZONES}/>
-              </div>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#64748b', display:'flex', alignItems:'center', gap:4, marginBottom:6 }}><Globe size={11} color="#7c3aed"/> Language</label>
-                <StyledSelect value={language} onChange={setLanguage} options={LANGUAGES}/>
-              </div>
-            </div>
           </SectionCard>
 
           <SectionCard title="Notifications" icon={<Bell size={13}/>}>
@@ -421,13 +390,12 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
           </div>
         </div>
 
-        {/* ── COL 3 — Account health sidebar ── */}
+        {/* ── COL 2 — Sidebar: health + plan + security ── */}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
 
           {/* Completeness ring */}
           <div style={{ background:'#fff', border:'1px solid #e8edf5', borderRadius:16, padding:'22px 20px', boxShadow:'0 1px 4px rgba(0,0,0,.04)', textAlign:'center' }}>
             <p style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', margin:'0 0 16px' }}>Profile Health</p>
-            {/* SVG donut ring */}
             <div style={{ position:'relative', display:'inline-block', marginBottom:14 }}>
               <svg width={96} height={96} viewBox="0 0 96 96" style={{ transform:'rotate(-90deg)' }}>
                 <circle cx={48} cy={48} r={R} fill="none" stroke="#f1f5f9" strokeWidth={10}/>
@@ -443,7 +411,6 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
                 <span style={{ fontSize:20, fontWeight:900, color:'#0f172a', lineHeight:1 }}>{completePct}<span style={{ fontSize:12, fontWeight:600, color:'#94a3b8' }}>%</span></span>
               </div>
             </div>
-            {/* Checklist */}
             <div style={{ display:'flex', flexDirection:'column', gap:7, textAlign:'left' }}>
               {checks.map(c=>(
                 <div key={c.label} style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -463,6 +430,7 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
             projectCount={profile?.projectCount ?? 0}
             profile={profile}
             accessToken={accessToken}
+            userSub={userSub}
           />
 
           {/* Security */}
@@ -472,9 +440,8 @@ export function AccountSettings({ accessToken, onClose }: AccountSettingsProps) 
               <h3 style={{ fontSize:13, fontWeight:700, color:'#1e293b', margin:0 }}>Security</h3>
             </div>
             {[
-              { label:'Email',    status: profile?.emailVerified ? 'Verified' : 'Pending',  style: profile?.emailVerified ? { background:'#dcfce7', color:'#166534' } : { background:'#f1f5f9', color:'#64748b' } },
-              { label:'Session',  status: 'Active',   style: { background:'#dcfce7', color:'#166534' } },
-              { label:'2FA',      status: 'Not set',  style: { background:'#f1f5f9', color:'#94a3b8' } },
+              { label:'Email',   status: profile?.emailVerified ? 'Verified' : 'Pending', style: profile?.emailVerified ? { background:'#dcfce7', color:'#166534' } : { background:'#f1f5f9', color:'#64748b' } },
+              { label:'Session', status: 'Active', style: { background:'#dcfce7', color:'#166534' } },
             ].map(s=>(
               <div key={s.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderBottom:'1px solid #f8f9fc' }}>
                 <span style={{ fontSize:12, color:'#64748b', fontWeight:500 }}>{s.label}</span>
@@ -503,17 +470,6 @@ function SectionCard({ title, icon, children }: { title: string; icon: React.Rea
   )
 }
 
-function StyledSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { label: string; value: string }[] }) {
-  return (
-    <div style={{ position:'relative' }}>
-      <select value={value} onChange={e=>onChange(e.target.value)}
-        style={{ width:'100%', padding:'9px 32px 9px 12px', border:'1.5px solid #dde3ef', borderRadius:9, fontSize:13, fontFamily:'inherit', background:'#fafbff', color:'#1e293b', appearance:'none', boxSizing:'border-box', outline:'none', cursor:'pointer' }}>
-        {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      <ChevronDown size={13} color="#94a3b8" style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
-    </div>
-  )
-}
 
 function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (

@@ -8,6 +8,7 @@ interface UpgradeModalProps {
   context    : LimitContext | null;
   onClose    : () => void;
   accessToken?: string;
+  userSub?   : string;
 }
 
 const LIMIT_COPY: Record<LimitContext['type'], (ctx: LimitContext) => { title: string; body: string }> = {
@@ -17,7 +18,7 @@ const LIMIT_COPY: Record<LimitContext['type'], (ctx: LimitContext) => { title: s
   feature:     _c => ({ title: 'This feature requires an upgrade', body: 'Unlock this capability by upgrading your plan.' }),
 };
 
-async function createCheckoutSession(priceId: string, accessToken?: string, yearly = false): Promise<void> {
+async function createCheckoutSession(priceId: string, accessToken?: string, yearly = false, userSub?: string): Promise<void> {
   try {
     const res = await fetch('/api/stripe/create-checkout-session', {
       method: 'POST',
@@ -29,6 +30,7 @@ async function createCheckoutSession(priceId: string, accessToken?: string, year
         priceId,
         successUrl: `${window.location.origin}/?upgrade=success`,
         cancelUrl: window.location.href,
+        ...(userSub ? { userId: userSub } : {}),
       }),
     });
     if (!res.ok) throw new Error('Failed to create session');
@@ -40,7 +42,7 @@ async function createCheckoutSession(priceId: string, accessToken?: string, year
   }
 }
 
-export default function UpgradeModal({ context, onClose, accessToken }: UpgradeModalProps) {
+export default function UpgradeModal({ context, onClose, accessToken, userSub }: UpgradeModalProps) {
   if (!context) return null;
 
   const currentPlanId = getUserPlan();
@@ -60,11 +62,14 @@ export default function UpgradeModal({ context, onClose, accessToken }: UpgradeM
     const priceId = yearly ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
     if (!priceId) return;
     setLoading(true);
-    await createCheckoutSession(priceId, accessToken, yearly);
+    await createCheckoutSession(priceId, accessToken, yearly, userSub);
     setLoading(false);
   };
 
-  const paidPlans = PLAN_ORDER.filter(id => id !== 'free' && id !== 'custom') as PlanId[];
+  const paidPlans = PLAN_ORDER.filter(id => {
+    if (id === 'free' || id === 'custom') return false;
+    return PLAN_ORDER.indexOf(id) > currentRank;
+  }) as PlanId[];
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(4,8,28,.65)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
