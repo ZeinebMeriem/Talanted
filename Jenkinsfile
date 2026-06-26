@@ -209,8 +209,8 @@ pipeline {
                 dir('fastapi-ai') {
                     sh '''
                         python3 --version
-                        pip install -r requirements.txt --quiet --break-system-packages
-                        pip install ruff pytest pytest-cov --quiet --break-system-packages
+                        pip install -r requirements.txt --quiet --break-system-packages --ignore-installed
+                        pip install ruff pytest pytest-cov --quiet --break-system-packages --ignore-installed
                         python3 -m ruff check app/ || echo "Ruff warnings found"
                         python3 -m pytest tests/ -v --cov=app --cov-report=xml || true
                         echo "FastAPI build OK"
