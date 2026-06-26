@@ -44,6 +44,74 @@ credentials:
               username: "${DOCKER_REGISTRY_USER:-}"
               password: "${DOCKER_REGISTRY_PASS:-}"
               description: "Docker Hub credentials (set DOCKER_REGISTRY_USER / DOCKER_REGISTRY_PASS in jenkins/.env)"
+          - usernamePassword:
+              id: "azure-acr-credentials"
+              scope: GLOBAL
+              username: "${ACR_USERNAME:-talantedacr2026}"
+              password: "${ACR_PASSWORD:-changeme}"
+              description: "Azure Container Registry credentials"
+          - string:
+              id: "groq-api-key"
+              scope: GLOBAL
+              secret: "${GROQ_API_KEY:-changeme}"
+              description: "Groq API Key for FastAPI AI"
+          - basicSSHUserPrivateKey:
+              id: "azure-vm-ssh-ke"
+              scope: GLOBAL
+              username: "azureuser"
+              description: "Azure VM SSH private key"
+              privateKeySource:
+                directEntry:
+                  privateKey: |
+                    -----BEGIN OPENSSH PRIVATE KEY-----
+                    b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAACFwAAAAdzc2gtcn
+                    NhAAAAAwEAAQAAAgEAqP7Z5qEZHboBtwrQBie885qbG6cRs9/Ky3Kmh4KAbUYkJ/Pvm7iL
+                    HpRKCM9cUpO3KonC9cj6cWP0DqoGFxeZMgmyXTS41VGxnNnOuVeED8VYyh4+DS+pQ6i/QX
+                    XcnteZuMuOqs+fHUAKbZ2/6lD7lVt1NTwrjjsVAWUXNMOaGNAZg71/mprvC7GqBGvukkrI
+                    Kzz+L3Dfj8WE6njpeYJe91rt0oUnrH6UpAP7R5StiYgihqTGuK4MXpAmRpnrP4lG+lF6Vr
+                    qR4DA9/N9yF91wQdH7G2wCtUtI2YKCBD9YrL33Pk61XigeZegeLQ8uxA1yFaIXoCJ9Z/Sm
+                    8dfzlcjUw2Rs3/zch1yScfC+r7SUTVsPeeaaI/Z8RUAPgzaiIEV/qU/AgcU3hvGzPefVqb
+                    xBoUWKZFXvS8kKzAl1YO42lH9DIf+1yrrpYXm8HS2OuAPbwinTqn4dsrVx01Xgs6eBFjFA
+                    ubS3V1qyXBdwDf4/lqNgfmdS1bi4bp7vJ5qHmHoH7b3pAwkaynfQ+3Q/J1an1B+Tso3c0X
+                    NiMRtOo9BlVrQFcjOxXvB2ndfI3r/y0YnOFC88VBiw+N42OhZM/d0E4xCBwM3RI+bOwcbt
+                    qGqoa7bau9GXjcPpri9kkcSUvOzKSWE+D2f/jD3dmSPA/eXJhP/L4XqRhvoqJD8GKEGYRd
+                    UAAAdIBdwPqwXcD6sAAAAHc3NoLXJzYQAAAgEAqP7Z5qEZHboBtwrQBie885qbG6cRs9/K
+                    y3Kmh4KAbUYkJ/Pvm7iLHpRKCM9cUpO3KonC9cj6cWP0DqoGFxeZMgmyXTS41VGxnNnOuV
+                    eED8VYyh4+DS+pQ6i/QXXcnteZuMuOqs+fHUAKbZ2/6lD7lVt1NTwrjjsVAWUXNMOaGNAZ
+                    g71/mprvC7GqBGvukkrIKzz+L3Dfj8WE6njpeYJe91rt0oUnrH6UpAP7R5StiYgihqTGuK
+                    4MXpAmRpnrP4lG+lF6VrqR4DA9/N9yF91wQdH7G2wCtUtI2YKCBD9YrL33Pk61XigeZege
+                    LQ8uxA1yFaIXoCJ9Z/Sm8dfzlcjUw2Rs3/zch1yScfC+r7SUTVsPeeaaI/Z8RUAPgzaiIE
+                    V/qU/AgcU3hvGzPefVqbxBoUWKZFXvS8kKzAl1YO42lH9DIf+1yrrpYXm8HS2OuAPbwinT
+                    qn4dsrVx01Xgs6eBFjFAubS3V1qyXBdwDf4/lqNgfmdS1bi4bp7vJ5qHmHoH7b3pAwkayn
+                    fQ+3Q/J1an1B+Tso3c0XNiMRtOo9BlVrQFcjOxXvB2ndfI3r/y0YnOFC88VBiw+N42OhZM
+                    /d0E4xCBwM3RI+bOwcbtqGqoa7bau9GXjcPpri9kkcSUvOzKSWE+D2f/jD3dmSPA/eXJhP
+                    /L4XqRhvoqJD8GKEGYRdUAAAADAQABAAACACNL10cMLqq+xszsPTaL5jMa/3pvEot3GmwT
+                    riRvZVNtau/NSyZDDQt9/ViJtsaog4Em9MlRCL3WGotVh6AbFawVymMdN92WCnqwIzUiyj
+                    phBYJxfpRSeA/hltCdRU8HyNuH6GxUoO8DCSqL4CGYeHNhfsF3p8E1JdX8vzQOBolYLXwO
+                    gDBSW8sdeF0kDdgQNm6RdqWB9a+ZmYE/b8QpLpyLKVDm7rpgVbtL+Zehvf0TqeJlV/wKnh
+                    rCELx+OVwz19dAXUTwArfIW6oNIU9KuL+Gk+POU2J6LuT/FRi+Ak9R/enNlqPrzS2LpYHT
+                    wfjAtis+h6Cyk2668oNgj0ehgo5VyF+V7K9ZLZnuQhVU8Yi5NNYR++0KfSbM+8fMOgPGzg
+                    I0LNjjTjq1SuM9sOBRCK4Lx8rK473WGGcu7kaltHSeBaSHOR4iblylRzGEkfCa225/nHXr
+                    2IP3PP3njrO7kFZET9bwpsMQPhBvks9v3NVJmLC9zPxBc3E1pO/mvH7RrZrvPKuQ7hUxd4
+                    7dm9prDdQ1U5MQoB3kctV6Tx36EDWpurIonZVaUVs1lq/+36v6Zu1mNz04KBNh8AVkoKEf
+                    ysjCGRFmRceyDnejxHU+fBj2liAeDDJgx3o183MApwKZbs056m5kG0KWBaH08Sl6F8yP11
+                    NSO56F+jHdCPz7GpcBAAABAHatZk7UZ9D5HREy7XoAwLO99AlQm1NJfVAAehucFkpv2Gd0
+                    11a3UPde0xwKUjLdG5lH3f0YPQtalpNl6L65zPkiTjasiA+Ivea82i4B7HuoKNKcYUTSjK
+                    T1Zh98UFnNOAQ1XyMNqf2kcmyuB2JPF5i47ZFIQGsFjqrk7Z3qAflGdYuxvBuILzwsAmNC
+                    11SYfdbFuSxGkXhQUnHHWQNfNvMmpGPIwteK12yCd8vicuiSSfcNkTtQBFSaJGLsXLMnJP
+                    /mA9WlAj97Q9YtcN4A3+OhJ9qZAefkzkt1Uv6cInwvSiHtAftU8huCrk2+J4livPEIn67W
+                    L8fMa/TSUgC2pZMAAAEBANziYyr5Twv1nd/Dq/wqMKrvGZkNPC7oV8fJQkgQs20npzdGKb
+                    enxsRXOMhd8VlsLeQPnE9YQGB8a+zYPaNlrhXO5vmtsJtNmf6GS0DkfknAHuZmWDnHD9Bc
+                    7Didwe+ssvbhFxR6uWYlP9IZMSl+GctsMZUT00otMCS0gIGTEYsh/DRPOMbPsG5MiV6dvQ
+                    RAJqIxUkOOlPny+iER0UWp6FNSSJmeu4puH12krGoQMYjyia/wGu2ng3fio1v+5lpMXTOd
+                    Tof+2AFwP48cPSRw+p/AGR4uJDTxs+y++ZNAyUTbdelZHCP2IC4tc/09QZwEhXNh56Tu2k
+                    mBe4NC5dKvWH0AAAEBAMPcraC7eNdT5752+4JsQBjBriCghht5RWgRMt4Tceq2sufefqbw
+                    SvVyTa2HngRnpZHY60kyyRelBNsgswCyLzsHjwTg83SCNiHQswhHrb4SfE4k8407jv/+z/
+                    zbfsR4ouEV9hrRkbR+Ir+q97Zz41za0ik3yg3lHbC5ueGDdcLTwNIGNlRd1t29S4kWHlXX
+                    dSxxoUvkVTnVEezV4OIk6x/oWsPSVvHNcLtXHNX3Xm5TPaVdNzv+nqg+zdnDIwYDnzT8BV
+                    yUPfv/BPG4HURlYq0wp2kemCWZ9dHghujfySfU94Nr5t/o+qARP7wTjMw24mEZ3rlgh0FT
+                    +iQk7HmKejkAAAATbXNpQERFU0tUT1AtSEFLQTJPNA==
+                    -----END OPENSSH PRIVATE KEY-----
 
 unclassified:
   location:

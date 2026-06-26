@@ -11,8 +11,8 @@ pipeline {
         SONAR_HOST_URL  = 'http://ai-ui-sonarqube:9000'
         MAVEN_OPTS      = '-Dmaven.repo.local=/var/jenkins_home/.m2/repository'
         // Azure Container Registry
-        ACR_NAME        = 'aiuigeneratoracr'
-        ACR_LOGIN_SERVER = 'aiuigeneratoracr.azurecr.io'
+        ACR_NAME        = 'talantedacr2026'
+        ACR_LOGIN_SERVER = 'talantedacr2026.azurecr.io'
         // Terraform working directory
         TF_DIR          = 'terraform'
         // Ansible working directory
@@ -57,7 +57,7 @@ pipeline {
         )
         string(
             name: 'VM_PUBLIC_IP',
-            defaultValue: '20.86.174.233',
+            defaultValue: '20.73.80.248',
             description: 'Azure VM public IP — required when SKIP_TERRAFORM=true'
         )
         booleanParam(
