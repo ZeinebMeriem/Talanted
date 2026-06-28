@@ -25,10 +25,9 @@ RUN apt-get \
     apt-get \
         -o APT::Get::AllowUnauthenticated=true \
         install -y --no-install-recommends docker-ce-cli docker-buildx-plugin && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get -o APT::Get::AllowUnauthenticated=true install -y nodejs && \
-    node --version && npm --version && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    curl -fsSL https://nodejs.org/dist/v20.19.2/node-v20.19.2-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
+    node --version && npm --version
 
 USER jenkins
 
