@@ -264,12 +264,13 @@ pipeline {
 
                         echo "=== Building images (build #${BUILD_NUMBER}) ==="
                         # Frontend needs build-time VITE_ args so Vite bakes the correct public URLs
+                        BASE_URL="http://talanted.westeurope.cloudapp.azure.com"
                         docker build \
-                          --build-arg VITE_OIDC_AUTHORITY=http://${VM_PUBLIC_IP}/realms/ai-ui \
+                          --build-arg VITE_OIDC_AUTHORITY=${BASE_URL}/realms/ai-ui \
                           --build-arg VITE_OIDC_CLIENT_ID=ai-ui-frontend \
-                          --build-arg VITE_OIDC_REDIRECT_URI=http://${VM_PUBLIC_IP}/auth/callback \
-                          --build-arg VITE_BFF_BASE_URL="" \
-                          --build-arg VITE_API_BASE_URL="" \
+                          --build-arg VITE_OIDC_REDIRECT_URI=${BASE_URL}/auth/callback \
+                          --build-arg VITE_BFF_BASE_URL=${BASE_URL} \
+                          --build-arg VITE_API_URL=${BASE_URL} \
                           -t ${ACR_LOGIN_SERVER}/frontend:${BUILD_NUMBER} \
                           -t ${ACR_LOGIN_SERVER}/frontend:latest \
                           ./frontend
@@ -434,13 +435,15 @@ EOF
             }
             steps {
                 sh '''
-                    sleep 15
-                    curl -f http://${VM_PUBLIC_IP}:8000/health  || exit 1
-                    curl -f http://${VM_PUBLIC_IP}:8081/actuator/health || exit 1
-                    curl -f http://${VM_PUBLIC_IP}/realms/ai-ui/.well-known/openid-configuration || exit 1
+                    DOMAIN="talanted.westeurope.cloudapp.azure.com"
+                    echo "Waiting 60s for containers to be ready..."
+                    sleep 60
+                    curl -f --retry 5 --retry-delay 10 http://${VM_PUBLIC_IP}:8000/health  || exit 1
+                    curl -f --retry 5 --retry-delay 10 http://${VM_PUBLIC_IP}:8081/actuator/health || exit 1
+                    curl -f --retry 5 --retry-delay 10 http://${DOMAIN}/realms/ai-ui/.well-known/openid-configuration || exit 1
+                    curl -f --retry 3 --retry-delay 5  http://${DOMAIN}/ || exit 1
                     echo "✅ Smoke tests passed"
-                    echo "   App      : http://${VM_PUBLIC_IP}  (nginx — main entry point)"
-                    echo "   Frontend : http://${VM_PUBLIC_IP}:5173  (direct)"
+                    echo "   App      : http://${DOMAIN}  (nginx — main entry point)"
                     echo "   API      : http://${VM_PUBLIC_IP}:8081  (direct)"
                     echo "   Keycloak : http://${VM_PUBLIC_IP}:8083  (direct)"
                     echo "   Grafana  : http://${VM_PUBLIC_IP}:3000"
