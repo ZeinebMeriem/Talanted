@@ -1442,165 +1442,19 @@ document.addEventListener('click', function(e) {
       return `${Math.floor(h / 24)}d ago`
     }
 
-    const CardThumbnail = ({ prompt }: { prompt?: string }) => {
-      const p = (prompt || '').toLowerCase()
-      if (p.includes('dashboard') || p.includes('analytics') || p.includes('admin')) return (
-        <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc" />
-          <rect x="0" y="0" width="56" height="180" fill="#ffffff" />
-          <rect x="8" y="16" width="40" height="6" rx="3" fill="#e2e8f0" />
-          <rect x="8" y="30" width="40" height="6" rx="3" fill="#019cda" opacity="0.8" />
-          <rect x="8" y="44" width="40" height="6" rx="3" fill="#e2e8f0" />
-          <rect x="8" y="58" width="40" height="6" rx="3" fill="#e2e8f0" />
-          <rect x="8" y="72" width="40" height="6" rx="3" fill="#e2e8f0" />
-          <rect x="64" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="70" y="16" width="24" height="4" rx="2" fill="#019cda" opacity="0.7" />
-          <rect x="70" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
-          <rect x="132" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="138" y="16" width="24" height="4" rx="2" fill="#10b981" opacity="0.7" />
-          <rect x="138" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
-          <rect x="200" y="10" width="60" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="206" y="16" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.7" />
-          <rect x="206" y="24" width="16" height="8" rx="2" fill="#1f2937" opacity="0.8" />
-          <rect x="268" y="10" width="44" height="32" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="274" y="16" width="20" height="4" rx="2" fill="#0284c7" opacity="0.7" />
-          <rect x="274" y="24" width="12" height="8" rx="2" fill="#1f2937" opacity="0.8" />
-          <rect x="64" y="52" width="168" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="72" y="60" width="50" height="4" rx="2" fill="#e2e8f0" />
-          <rect x="72" y="115" width="10" height="14" rx="2" fill="#019cda" opacity="0.5" />
-          <rect x="86" y="105" width="10" height="24" rx="2" fill="#019cda" opacity="0.6" />
-          <rect x="100" y="95" width="10" height="34" rx="2" fill="#019cda" opacity="0.7" />
-          <rect x="114" y="100" width="10" height="29" rx="2" fill="#019cda" opacity="0.65" />
-          <rect x="128" y="85" width="10" height="44" rx="2" fill="#019cda" opacity="0.9" />
-          <rect x="142" y="92" width="10" height="37" rx="2" fill="#019cda" opacity="0.75" />
-          <rect x="156" y="78" width="10" height="51" rx="2" fill="#019cda" />
-          <rect x="170" y="88" width="10" height="41" rx="2" fill="#019cda" opacity="0.8" />
-          <rect x="184" y="97" width="10" height="32" rx="2" fill="#019cda" opacity="0.7" />
-          <rect x="198" y="82" width="10" height="47" rx="2" fill="#019cda" opacity="0.85" />
-          <rect x="240" y="52" width="72" height="80" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <circle cx="276" cy="90" r="22" fill="none" stroke="#019cda" strokeWidth="8" strokeDasharray="69 30" opacity="0.7" />
-          <circle cx="276" cy="90" r="22" fill="none" stroke="#10b981" strokeWidth="8" strokeDasharray="20 79" strokeDashoffset="-69" opacity="0.7" />
-          <rect x="64" y="142" width="248" height="30" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="72" y="149" width="40" height="4" rx="2" fill="#e2e8f0" />
-          <rect x="72" y="158" width="30" height="4" rx="2" fill="#e2e8f0" />
-          <rect x="140" y="149" width="30" height="4" rx="2" fill="#e2e8f0" />
-          <rect x="140" y="158" width="24" height="4" rx="2" fill="#e2e8f0" />
-          <rect x="220" y="149" width="20" height="4" rx="2" fill="#10b981" opacity="0.6" />
+    const CardThumbnail = (_: { prompt?: string }) => (
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M3 9h18M9 21V9" />
         </svg>
-      )
-      if (p.includes('landing') || p.includes('saas') || p.includes('marketing')) return (
-        <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc" />
-          <rect x="0" y="0" width="320" height="28" fill="#ffffff" />
-          <rect x="16" y="10" width="40" height="8" rx="4" fill="#019cda" opacity="0.8" />
-          <rect x="120" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
-          <rect x="152" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
-          <rect x="184" y="12" width="24" height="5" rx="2" fill="#94a3b8" />
-          <rect x="264" y="9" width="40" height="10" rx="5" fill="#019cda" opacity="0.8" />
-          <rect x="80" y="42" width="160" height="10" rx="5" fill="#1f2937" opacity="0.9" />
-          <rect x="96" y="58" width="128" height="6" rx="3" fill="#64748b" opacity="0.5" />
-          <rect x="108" y="68" width="104" height="5" rx="2" fill="#94a3b8" opacity="0.3" />
-          <rect x="120" y="82" width="36" height="12" rx="6" fill="#019cda" opacity="0.9" />
-          <rect x="164" y="82" width="36" height="12" rx="6" fill="#e2e8f0" />
-          <rect x="32" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="40" y="116" width="24" height="4" rx="2" fill="#019cda" opacity="0.6" />
-          <rect x="40" y="124" width="48" height="3" rx="1" fill="#cbd5e1" />
-          <rect x="40" y="130" width="40" height="3" rx="1" fill="#cbd5e1" />
-          <rect x="124" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="132" y="116" width="24" height="4" rx="2" fill="#10b981" opacity="0.6" />
-          <rect x="132" y="124" width="48" height="3" rx="1" fill="#cbd5e1" />
-          <rect x="132" y="130" width="40" height="3" rx="1" fill="#cbd5e1" />
-          <rect x="216" y="108" width="72" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="224" y="116" width="24" height="4" rx="2" fill="#f59e0b" opacity="0.6" />
-          <rect x="224" y="124" width="48" height="3" rx="1" fill="#cbd5e1" />
-          <rect x="224" y="130" width="40" height="3" rx="1" fill="#cbd5e1" />
-        </svg>
-      )
-      if (p.includes('ecommerce') || p.includes('shop') || p.includes('store') || p.includes('product')) return (
-        <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc" />
-          <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
-          <rect x="12" y="8" width="32" height="8" rx="4" fill="#019cda" opacity="0.8" />
-          <rect x="260" y="8" width="20" height="8" rx="4" fill="#e2e8f0" />
-          <rect x="286" y="8" width="20" height="8" rx="4" fill="#e2e8f0" />
-          <rect x="0" y="24" width="70" height="156" fill="#ffffff" />
-          <rect x="8" y="32" width="54" height="5" rx="2" fill="#e2e8f0" />
-          <rect x="8" y="44" width="40" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="8" y="52" width="44" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="8" y="60" width="36" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="8" y="76" width="54" height="5" rx="2" fill="#e2e8f0" />
-          <rect x="8" y="88" width="40" height="4" rx="2" fill="#019cda" opacity="0.6" />
-          <rect x="8" y="96" width="44" height="4" rx="2" fill="#cbd5e1" />
-          {[0, 1, 2].map(col => [0, 1].map(row => (
-            <g key={`${col}-${row}`}>
-              <rect x={78 + col * 84} y={30 + row * 74} width="76" height="64" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-              <rect x={82 + col * 84} y={34 + row * 74} width="68" height="38" rx="4" fill="#f1f5f9" />
-              <rect x={86 + col * 84} y={76 + row * 74} width="40" height="4" rx="2" fill="#cbd5e1" />
-              <rect x={86 + col * 84} y={83 + row * 74} width="28" height="4" rx="2" fill="#019cda" opacity="0.7" />
-            </g>
-          )))}
-        </svg>
-      )
-      if (p.includes('portfolio') || p.includes('resume') || p.includes('personal')) return (
-        <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc" />
-          <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
-          <rect x="16" y="8" width="40" height="8" rx="4" fill="#1f2937" opacity="0.8" />
-          <rect x="220" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
-          <rect x="248" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
-          <rect x="276" y="10" width="20" height="5" rx="2" fill="#cbd5e1" />
-          <circle cx="160" cy="64" r="22" fill="#f1f5f9" stroke="#019cda" strokeWidth="2" opacity="0.8" />
-          <rect x="124" y="92" width="72" height="8" rx="4" fill="#1f2937" opacity="0.8" />
-          <rect x="136" y="105" width="48" height="5" rx="2" fill="#019cda" opacity="0.6" />
-          <rect x="86" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="92" y="131" width="32" height="18" rx="4" fill="#f1f5f9" />
-          <rect x="92" y="152" width="24" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="138" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="144" y="131" width="32" height="18" rx="4" fill="#f1f5f9" />
-          <rect x="144" y="152" width="24" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="190" y="125" width="44" height="36" rx="6" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="196" y="131" width="32" height="18" rx="4" fill="#f1f5f9" />
-          <rect x="196" y="152" width="24" height="4" rx="2" fill="#cbd5e1" />
-        </svg>
-      )
-      return (
-        <svg viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-          <rect width="320" height="180" fill="#f8fafc" />
-          <rect x="0" y="0" width="320" height="24" fill="#ffffff" />
-          <rect x="16" y="8" width="48" height="8" rx="4" fill="#019cda" opacity="0.8" />
-          <rect x="246" y="9" width="58" height="7" rx="3" fill="#019cda" opacity="0.5" />
-          <rect x="20" y="36" width="130" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="30" y="46" width="60" height="6" rx="3" fill="#1f2937" opacity="0.8" />
-          <rect x="30" y="58" width="100" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="30" y="66" width="80" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="30" y="74" width="90" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="30" y="85" width="36" height="10" rx="5" fill="#019cda" opacity="0.8" />
-          <rect x="164" y="36" width="136" height="60" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="174" y="52" width="10" height="28" rx="2" fill="#019cda" opacity="0.5" />
-          <rect x="190" y="44" width="10" height="36" rx="2" fill="#019cda" opacity="0.6" />
-          <rect x="206" y="50" width="10" height="30" rx="2" fill="#019cda" opacity="0.7" />
-          <rect x="222" y="40" width="10" height="40" rx="2" fill="#019cda" opacity="0.8" />
-          <rect x="238" y="46" width="10" height="34" rx="2" fill="#019cda" opacity="0.65" />
-          <rect x="254" y="36" width="10" height="44" rx="2" fill="#019cda" />
-          <rect x="20" y="108" width="280" height="52" rx="8" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
-          <rect x="30" y="118" width="50" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="30" y="127" width="60" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="30" y="136" width="40" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="120" y="118" width="50" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="120" y="127" width="40" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="120" y="136" width="55" height="4" rx="2" fill="#cbd5e1" />
-          <rect x="260" y="122" width="28" height="10" rx="5" fill="#019cda" opacity="0.6" />
-        </svg>
-      )
+      </div>
+    )
     }
 
     const ProjectThumbnail = ({ generationId, prompt }: { generationId: string; prompt?: string }) => {
       const [failed, setFailed] = React.useState(false)
-      if (failed) return (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}>
-          <CardThumbnail prompt={prompt} />
-        </div>
-      )
+      if (failed) return <CardThumbnail />
       return (
         <iframe
           src={`/preview/${generationId}/dist/index.html`}
@@ -2251,7 +2105,7 @@ document.addEventListener('click', function(e) {
                             <div style={{ position: 'relative', height: 150, background: '#f8fafc', overflow: 'hidden' }}>
                               {g.generationId && g.status === 'COMPLETED'
                                 ? <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
-                                : <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}><CardThumbnail prompt={g.prompt} /></div>}
+                                : <CardThumbnail />}
                               {loadingProjectId === g.generationId && (
                                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
                                   <div style={{ width: 20, height: 20, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
@@ -2344,7 +2198,7 @@ document.addEventListener('click', function(e) {
                           <div style={{ position: 'relative', height: 200, background: '#f8fafc', overflow: 'hidden' }}>
                             {g.generationId && g.status === 'COMPLETED'
                               ? <ProjectThumbnail generationId={g.generationId} prompt={g.prompt} />
-                              : <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.85)' }}><CardThumbnail prompt={g.prompt} /></div>}
+                              : <CardThumbnail />}
                             {loadingProjectId === g.generationId && (
                               <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
                                 <div style={{ width: 22, height: 22, border: '2px solid rgba(1,156,218,.25)', borderTopColor: '#019cda', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
