@@ -67,10 +67,9 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: talanted.westeurope.cloudapp.azure.com
       KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_PROXY_HEADERS: xforwarded
-      KC_HOSTNAME_URL: https://talanted.westeurope.cloudapp.azure.com
     volumes:
       - ./keycloak/realm-ai-ui.json:/opt/keycloak/data/import/realm-ai-ui.json:ro
       - ./keycloak/themes/ai-ui-theme:/opt/keycloak/themes/ai-ui-theme:ro
