@@ -39,11 +39,11 @@
       "enabled": true,
       "publicClient": true,
       "protocol": "openid-connect",
-      "redirectUris": ["http://localhost:5173/*", "http://localhost/*", "http://20.86.174.233/*", "http://20.86.174.233:5173/*"],
+      "redirectUris": ["http://localhost:5173/*", "http://localhost/*", "https://talanted.westeurope.cloudapp.azure.com/*", "http://20.73.80.248/*", "http://20.73.80.248:5173/*"],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost/*##http://20.86.174.233/*##http://20.86.174.233:5173/*"
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost/*##https://talanted.westeurope.cloudapp.azure.com/*##http://20.73.80.248/*"
       },
-      "webOrigins": ["http://localhost:5173", "http://localhost", "http://20.86.174.233", "http://20.86.174.233:5173"],
+      "webOrigins": ["http://localhost:5173", "http://localhost", "https://talanted.westeurope.cloudapp.azure.com", "http://20.73.80.248", "http://20.73.80.248:5173"],
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "implicitFlowEnabled": false,

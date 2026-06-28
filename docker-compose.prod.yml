@@ -152,8 +152,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
-      # Allow both direct port access and nginx port-80 origin
-      CORS_ALLOWED_ORIGINS: http://${VM_PUBLIC_IP},http://${VM_PUBLIC_IP}:5173
+      CORS_ALLOWED_ORIGINS: https://talanted.westeurope.cloudapp.azure.com,http://${VM_PUBLIC_IP},http://${VM_PUBLIC_IP}:5173
       APP_SECURITY_DEV_MODE: "false"
       # Issuer must match KC_HOSTNAME_URL (no port — nginx is the entry point)
       OAUTH_ISSUER: http://${VM_PUBLIC_IP}/realms/ai-ui
