@@ -26,7 +26,7 @@ RUN apt-get \
         -o APT::Get::AllowUnauthenticated=true \
         install -y --no-install-recommends docker-ce-cli docker-buildx-plugin && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get -o APT::Get::AllowUnauthenticated=true install -y nodejs && \
+    apt-get -o APT::Get::AllowUnauthenticated=true install -y nodejs npm && \
     rm -rf /var/lib/apt/lists/*
 
 USER jenkins
