@@ -258,7 +258,6 @@ pipeline {
                     passwordVariable: 'ACR_PASS'
                 )]) {
                     sh '''
-                        export DOCKER_BUILDKIT=1
                         echo "=== Login to Azure Container Registry ==="
                         echo "${ACR_PASS}" | docker login ${ACR_LOGIN_SERVER} -u ${ACR_USER} --password-stdin
 
