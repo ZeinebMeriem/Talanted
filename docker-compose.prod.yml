@@ -154,6 +154,15 @@ services:
       APP_SECURITY_DEV_MODE: "false"
       OAUTH_ISSUER: https://talanted.westeurope.cloudapp.azure.com/realms/ai-ui
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
+      APP_BFF_URL: https://talanted.westeurope.cloudapp.azure.com
+      APP_FRONTEND_URL: https://talanted.westeurope.cloudapp.azure.com
+      SPRING_MAIL_HOST: smtp.gmail.com
+      SPRING_MAIL_PORT: 587
+      SPRING_MAIL_USERNAME: meryemboukraa199@gmail.com
+      SPRING_MAIL_PASSWORD: asodzexjfruuwgec
+      SPRING_MAIL_FROM: meryemboukraa199@gmail.com
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
 
   frontend:
     image: ${ACR_LOGIN_SERVER}/frontend:${IMAGE_TAG:-latest}
