@@ -26,7 +26,7 @@ RUN apt-get \
         -o APT::Get::AllowUnauthenticated=true \
         install -y --no-install-recommends docker-ce-cli docker-buildx-plugin && \
     rm -rf /var/lib/apt/lists/* && \
-    curl -fsSL https://nodejs.org/dist/v20.19.2/node-v20.19.2-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1 && \
+    curl -fsSL https://nodejs.org/dist/v20.19.2/node-v20.19.2-linux-x64.tar.gz | tar -xz -C /usr/local --strip-components=1 && \
     node --version && npm --version
 
 USER jenkins
