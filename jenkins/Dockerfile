@@ -11,7 +11,7 @@ RUN apt-get \
     apt-get \
         -o APT::Get::AllowUnauthenticated=true \
         install -y --no-install-recommends \
-            ca-certificates curl gnupg maven python3 python3-pip ansible rsync && \
+            ca-certificates curl gnupg maven python3 python3-pip python3-venv ansible rsync && \
     install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \
@@ -24,7 +24,7 @@ RUN apt-get \
         update -qq && \
     apt-get \
         -o APT::Get::AllowUnauthenticated=true \
-        install -y --no-install-recommends docker-ce-cli && \
+        install -y --no-install-recommends docker-ce-cli docker-buildx-plugin && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get -o APT::Get::AllowUnauthenticated=true install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
