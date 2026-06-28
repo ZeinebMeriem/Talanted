@@ -157,7 +157,7 @@ function findNode(nodes: FileNode[], id: string): FileNode | null {
 }
 
 export function AiEditor({ accessToken, username = 'there', email, firstName, lastName, userSub, roles = [], onLogout, initialGenerationId, initialHomeTab }: { accessToken?: string; username?: string; email?: string; firstName?: string; lastName?: string; userSub?: string; roles?: string[]; onLogout?: () => void; initialGenerationId?: string | null; initialHomeTab?: 'create' | 'projects' | 'profile' | 'admin' }) {
-  const [projectName, setProjectName] = useState('my-awesome-app')
+  const [projectName, setProjectName] = useState('')
   const [customPrompt, setCustomPrompt] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
