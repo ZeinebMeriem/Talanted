@@ -264,7 +264,7 @@ pipeline {
 
                         echo "=== Building images (build #${BUILD_NUMBER}) ==="
                         # Frontend needs build-time VITE_ args so Vite bakes the correct public URLs
-                        BASE_URL="http://talanted.westeurope.cloudapp.azure.com"
+                        BASE_URL="https://talanted.westeurope.cloudapp.azure.com"
                         docker build \
                           --build-arg VITE_OIDC_AUTHORITY=${BASE_URL}/realms/ai-ui \
                           --build-arg VITE_OIDC_CLIENT_ID=ai-ui-frontend \
@@ -440,10 +440,10 @@ EOF
                     sleep 60
                     curl -f --retry 5 --retry-delay 10 http://${VM_PUBLIC_IP}:8000/health  || exit 1
                     curl -f --retry 5 --retry-delay 10 http://${VM_PUBLIC_IP}:8081/actuator/health || exit 1
-                    curl -f --retry 5 --retry-delay 10 http://${DOMAIN}/realms/ai-ui/.well-known/openid-configuration || exit 1
-                    curl -f --retry 3 --retry-delay 5  http://${DOMAIN}/ || exit 1
+                    curl -fk --retry 5 --retry-delay 10 https://${DOMAIN}/realms/ai-ui/.well-known/openid-configuration || exit 1
+                    curl -fk --retry 3 --retry-delay 5  https://${DOMAIN}/ || exit 1
                     echo "✅ Smoke tests passed"
-                    echo "   App      : http://${DOMAIN}  (nginx — main entry point)"
+                    echo "   App      : https://${DOMAIN}  (nginx — main entry point)"
                     echo "   API      : http://${VM_PUBLIC_IP}:8081  (direct)"
                     echo "   Keycloak : http://${VM_PUBLIC_IP}:8083  (direct)"
                     echo "   Grafana  : http://${VM_PUBLIC_IP}:3000"
