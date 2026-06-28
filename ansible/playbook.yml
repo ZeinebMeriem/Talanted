@@ -208,7 +208,52 @@
       args:
         chdir: "{{ app_dir }}"
 
-    # ── 11. Health check ──────────────────────────────────────────────────────
+    # ── 11. Configure Keycloak SMTP (after Keycloak is healthy) ──────────────
+    - name: Wait for Keycloak to be ready
+      uri:
+        url: "http://localhost:8083/realms/master"
+        status_code: 200
+      retries: 30
+      delay: 10
+      register: kc_ready
+      until: kc_ready.status == 200
+
+    - name: Get Keycloak admin token
+      uri:
+        url: "http://localhost:8083/realms/master/protocol/openid-connect/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          client_id: admin-cli
+          grant_type: password
+          username: admin
+          password: "{{ keycloak_admin_pass }}"
+        status_code: 200
+      register: kc_token
+
+    - name: Configure Keycloak SMTP
+      uri:
+        url: "http://localhost:8083/admin/realms/ai-ui"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ kc_token.json.access_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          smtpServer:
+            host: "{{ mail_host | default('smtp.gmail.com') }}"
+            port: "{{ mail_port | default('587') }}"
+            from: "{{ mail_from }}"
+            fromDisplayName: "Talented"
+            replyTo: "{{ mail_from }}"
+            auth: "true"
+            starttls: "true"
+            ssl: "false"
+            user: "{{ mail_username }}"
+            password: "{{ mail_password }}"
+        status_code: 204
+
+    # ── 12. Health check ──────────────────────────────────────────────────────
     - name: Wait for Spring BFF to be healthy
       uri:
         url: "http://localhost:8081/actuator/health"

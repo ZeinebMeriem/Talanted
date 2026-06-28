@@ -58,18 +58,28 @@ services:
       JENKINS_OPTS: "--httpPort=8080 -Djenkins.install.runSetupWizard=false"
       CASC_JENKINS_CONFIG: /var/jenkins_home/jenkins-config/jenkins-casc.yaml
       GITHUB_TOKEN: ${GITHUB_TOKEN:-changeme}
-      GITHUB_USER: ${GITHUB_USER:-MeriemBoukraa}
+      GITHUB_USER: ${GITHUB_USER:-ZeinebMeriem}
       SONAR_TOKEN: ${SONAR_TOKEN:-changeme}
       GITLAB_TOKEN: ${GITLAB_TOKEN:-changeme}
       DOCKER_REGISTRY_USER: ${DOCKER_REGISTRY_USER:-}
       DOCKER_REGISTRY_PASS: ${DOCKER_REGISTRY_PASS:-}
-      # DOCKER_HOST is picked up automatically from .env if set
+      ACR_USERNAME: ${ACR_USERNAME:-talantedacr2026}
+      ACR_PASSWORD: ${ACR_PASSWORD:-changeme}
+      GROQ_API_KEY: ${GROQ_API_KEY:-changeme}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/var/jenkins_home/jenkins-config
     user: root
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     extra_hosts:
       # Makes host.docker.internal resolvable on Linux hosts (no-op on Docker Desktop)
       - "host.docker.internal:host-gateway"
