@@ -3,7 +3,7 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 2, unit: 'HOURS')
+        timeout(time: 4, unit: 'HOURS')
         timestamps()
     }
 
@@ -258,6 +258,7 @@ pipeline {
                     passwordVariable: 'ACR_PASS'
                 )]) {
                     sh '''
+                        export DOCKER_BUILDKIT=1
                         echo "=== Login to Azure Container Registry ==="
                         echo "${ACR_PASS}" | docker login ${ACR_LOGIN_SERVER} -u ${ACR_USER} --password-stdin
 
