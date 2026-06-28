@@ -70,8 +70,7 @@ services:
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_PROXY_HEADERS: xforwarded
-      # No port — nginx routes port 80 → Keycloak; issuer/token URLs use port 80
-      KC_HOSTNAME_URL: http://${VM_PUBLIC_IP}
+      KC_HOSTNAME_URL: https://talanted.westeurope.cloudapp.azure.com
     volumes:
       - ./keycloak/realm-ai-ui.json:/opt/keycloak/data/import/realm-ai-ui.json:ro
       - ./keycloak/themes/ai-ui-theme:/opt/keycloak/themes/ai-ui-theme:ro
@@ -154,8 +153,7 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-ai-ui-files}
       CORS_ALLOWED_ORIGINS: https://talanted.westeurope.cloudapp.azure.com,http://${VM_PUBLIC_IP},http://${VM_PUBLIC_IP}:5173
       APP_SECURITY_DEV_MODE: "false"
-      # Issuer must match KC_HOSTNAME_URL (no port — nginx is the entry point)
-      OAUTH_ISSUER: http://${VM_PUBLIC_IP}/realms/ai-ui
+      OAUTH_ISSUER: https://talanted.westeurope.cloudapp.azure.com/realms/ai-ui
       OAUTH_JWKS_URI: http://keycloak:8080/realms/ai-ui/protocol/openid-connect/certs
 
   frontend:
