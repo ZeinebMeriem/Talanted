@@ -1880,7 +1880,40 @@ document.addEventListener('click', function(e) {
     )
   }
 
+  // IDE UI — real logic wired into MultiAgentGenerator slots
+  const _ideAppName = (apiResult as any)?.name || (apiResult as any)?.prompt?.slice(0, 40) || projectName || 'My Project'
 
+  // ── pre-compute meeting panel ──
+  let _meetingPanel: React.ReactNode = null
+  if (selectedGeneration?.meetingAnalysis) {
+    let ma: any = null
+    try { ma = JSON.parse(selectedGeneration.meetingAnalysis) } catch { /**/ }
+    if (ma) {
+      const funcReqs: any[] = ma.functional_requirements || ma.requirements || []
+      const nfReqs: any[] = ma.non_functional_requirements || []
+      const arch = ma.system_architecture
+      const meetingSummary = ma.summary
+      const ambiguities: any[] = ma.ambiguities || []
+      const risks: any[] = ma.risk_areas || []
+      const questions: any[] = ma.clarification_questions || []
+      const getMeetingText = (item: any) => typeof item === 'string' ? item : (item.description || item.text || item.insight || item.question || item.area || '')
+      const mSec: React.CSSProperties = { marginBottom: 20 }
+      const mHead: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#5480ba', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }
+      const mTag = (color: string): React.CSSProperties => ({ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: color, color: '#fff', marginLeft: 4 })
+      _meetingPanel = (
+        <div style={{ padding: '16px 14px' }}>
+          {meetingSummary?.overview && <div style={mSec}><div style={mHead}>Overview</div><p style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, margin: 0 }}>{meetingSummary.overview}</p></div>}
+          {funcReqs.length > 0 && <div style={mSec}><div style={mHead}>Functional Requirements <span style={mTag('#10b981')}>{funcReqs.length}</span></div><ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>{funcReqs.map((r: any, i: number) => <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4 }}>{getMeetingText(r)}{r.priority && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>({r.priority})</span>}</li>)}</ul></div>}
+          {nfReqs.length > 0 && <div style={mSec}><div style={mHead}>Non-Functional <span style={mTag('#019cda')}>{nfReqs.length}</span></div><ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>{nfReqs.map((r: any, i: number) => <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4 }}>{getMeetingText(r)}</li>)}</ul></div>}
+          {arch?.architecture_style && <div style={mSec}><div style={mHead}>Architecture</div><p style={{ fontSize: 12, color: '#475569', margin: '0 0 6px' }}><strong>Style:</strong> {arch.architecture_style}</p>{arch.system_layers?.length > 0 && <p style={{ fontSize: 12, color: '#475569', margin: '0 0 6px' }}><strong>Layers:</strong> {arch.system_layers.join(', ')}</p>}</div>}
+          {ambiguities.length > 0 && <div style={mSec}><div style={mHead}>Ambiguities <span style={mTag('#f59e0b')}>{ambiguities.length}</span></div><ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>{ambiguities.map((a: any, i: number) => <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4 }}>{getMeetingText(a)}</li>)}</ul></div>}
+          {risks.length > 0 && <div style={mSec}><div style={mHead}>Risk Areas <span style={mTag('#ef4444')}>{risks.length}</span></div><ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>{risks.map((r: any, i: number) => <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4 }}>{getMeetingText(r)}</li>)}</ul></div>}
+          {questions.length > 0 && <div style={mSec}><div style={mHead}>Open Questions <span style={mTag('#0284c7')}>{questions.length}</span></div><ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>{questions.map((q: any, i: number) => <li key={i} style={{ fontSize: 12, color: '#334155', marginBottom: 4 }}>{getMeetingText(q)}</li>)}</ul></div>}
+          {ma.completeness_score != null && <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0' }}><span style={{ fontSize: 12, color: '#64748b' }}>Completeness: </span><strong style={{ fontSize: 14, color: '#5480ba' }}>{ma.completeness_score}%</strong></div>}
+        </div>
+      )
+    }
+  }
 
   return (
     <ErrorBoundary>
