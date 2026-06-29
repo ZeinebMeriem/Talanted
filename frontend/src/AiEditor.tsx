@@ -1786,7 +1786,100 @@ document.addEventListener('click', function(e) {
             />
           )}
 
-          
+          {/* ── MY PROJECTS ── */}
+          {homeTab === 'projects' && (
+            <div style={{ padding: '32px 24px 80px' }}>
+              <MyProjectsGridHub
+                initialProjects={mappedProjects}
+                initialSelectedProjectId={activeProjectId || undefined}
+                onSelectProject={id => { setLoadingProjectId(id); void loadGeneration(id) }}
+                onOpenInIDE={id => { setLoadingProjectId(id); void loadGeneration(id) }}
+                onDeleteProject={async id => { await deleteGeneration(id, accessToken); void loadHistory() }}
+              />
+            </div>
+          )}
+
+          {/* ── ADMIN DASHBOARD ── */}
+          {homeTab === 'admin' && isAdmin && (
+            <AdminDashboard
+              onBackToWorkspace={() => setHomeTab('create')}
+              activeMenu={adminActiveMenu}
+              onMenuChange={setAdminActiveMenu}
+              accessToken={accessToken}
+            />
+          )}
+
+          {/* ── PROFILE ── */}
+          {homeTab === 'profile' && (
+            <>
+              <div style={{ padding: '40px 0 80px' }}>
+                <AccountSettings accessToken={accessToken} userSub={userSub} />
+              </div>
+            </>
+          )}
+
+          </div>{/* ── END CONTENT AREA ── */}
+        </main>
+
+        {showSuccessOverlay && !ideVisible && (
+          <div onClick={() => setShowSuccessOverlay(false)} style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(2,6,23,.88)', backdropFilter: 'blur(20px)' }}>
+            <div style={{ position: 'absolute', width: 480, height: 480, borderRadius: '50%', background: 'radial-gradient(circle, rgba(1,156,218,.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
+            <div onClick={e => e.stopPropagation()} style={{ position: 'relative', borderRadius: 24, padding: '44px 40px 36px', maxWidth: 400, width: '90%', textAlign: 'center', background: 'linear-gradient(145deg, rgba(15,23,42,.98), rgba(30,27,75,.95))', border: '1px solid rgba(1,156,218,.25)', boxShadow: '0 0 0 1px rgba(255,255,255,.04) inset, 0 32px 80px rgba(0,0,0,.6)' }}>
+              <h2 style={{ fontSize: 28, fontWeight: 900, color: '#f1f5f9', margin: '0 0 8px' }}>App Generated!</h2>
+              <p style={{ fontSize: 14, color: '#94a3b8', margin: '0 0 28px' }}>Your project is ready to explore in the editor.</p>
+              {liveScores?.globalScore != null && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderRadius: 20, background: 'rgba(1,156,218,.12)', border: '1px solid rgba(1,156,218,.25)', marginBottom: 24 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>Quality Score: {liveScores.globalScore}/100</span>
+                </div>
+              )}
+              <button onClick={() => { setShowSuccessOverlay(false); setIdeVisible(true) }} style={{ width: '100%', padding: '14px', borderRadius: 12, fontSize: 15, fontWeight: 700, background: 'linear-gradient(135deg, #019cda, #0369a1)', color: '#fff', border: 'none', cursor: 'pointer', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                Open Editor <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+              {apiResult?.generationId && (
+                <button onClick={() => { downloadGenerationZip(apiResult!.generationId!, accessToken); setShowSuccessOverlay(false) }} style={{ width: '100%', padding: '12px', borderRadius: 12, fontSize: 14, fontWeight: 600, background: 'rgba(255,255,255,.04)', color: '#cbd5e1', border: '1px solid rgba(255,255,255,.1)', cursor: 'pointer', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  Download Project ZIP
+                </button>
+              )}
+              <button onClick={() => setShowSuccessOverlay(false)} style={{ background: 'none', border: 'none', color: '#475569', fontSize: 13, cursor: 'pointer' }}>Back to workspace</button>
+            </div>
+          </div>
+        )}
+
+        <MeetingRecorder
+          isOpen={isMeetingRecorderOpen}
+          onClose={() => setIsMeetingRecorderOpen(false)}
+          onRequirementsExtracted={(prompt, analysis) => {
+            setCustomPrompt(prompt)
+            setPendingMeetingAnalysis(analysis)
+            setIsMeetingRecorderOpen(false)
+          }}
+        />
+        <JiraImportPage
+          isOpen={isJiraModalOpen}
+          onClose={() => setIsJiraModalOpen(false)}
+          accessToken={accessToken}
+        />
+        <FigmaImportModal
+          isOpen={isFigmaModalOpen}
+          onClose={() => setIsFigmaModalOpen(false)}
+          accessToken={accessToken}
+          onImport={(url, token, fileName) => {
+            setFigmaUrl(url)
+            setFigmaToken(token)
+            setFigmaFileName(fileName)
+            const autoPrompt = `Generate a React UI that faithfully reproduces the "${fileName}" Figma design. Implement every visible screen, component, and interaction.`
+            const autoName = fileName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 28) || 'figma-ui'
+            setCustomPrompt(autoPrompt)
+            setProjectName(autoName)
+            setShowCreateForm(false)
+            setHomeTab('create')
+            void startBuild(autoPrompt, autoName, url, token)
+          }}
+        />
+      </div>
+    )
+  }
+
 
 
   return (
