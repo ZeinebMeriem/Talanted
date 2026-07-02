@@ -1194,7 +1194,7 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  const startBuild = async (promptOverride?: string, nameOverride?: string, figmaUrlOverride?: string | null, figmaTokenOverride?: string | null) => {
+  const startBuild = async (promptOverride?: string, nameOverride?: string, figmaUrlOverride?: string | null, figmaTokenOverride?: string | null, meetingAnalysisOverride?: any) => {
     // ── Plan gate: project count ──────────────────────────────────────────
     const currentProjectCount = profileForPlan?.projectCount ?? 0
     if (!planLimits.checkProject(currentProjectCount)) return
@@ -1213,7 +1213,7 @@ document.addEventListener('click', function(e) {
 
       setLiveScores(null)
       setDocsGenerated(false)
-      const capturedMeetingAnalysis = pendingMeetingAnalysis
+      const capturedMeetingAnalysis = meetingAnalysisOverride !== undefined ? meetingAnalysisOverride : pendingMeetingAnalysis
       setPendingMeetingAnalysis(null)
       // Use override values when called immediately after setState (avoids React batching issue)
       const effectiveFigmaUrl   = figmaUrlOverride   !== undefined ? figmaUrlOverride   : figmaUrl
@@ -1849,9 +1849,11 @@ document.addEventListener('click', function(e) {
           isOpen={isMeetingRecorderOpen}
           onClose={() => setIsMeetingRecorderOpen(false)}
           onRequirementsExtracted={(prompt, analysis) => {
+            const autoName = prompt.trim().split(/\s+/).slice(0, 3).join('-').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24) || 'meeting-ui'
             setCustomPrompt(prompt)
-            setPendingMeetingAnalysis(analysis)
+            setProjectName(autoName)
             setIsMeetingRecorderOpen(false)
+            void startBuild(prompt, autoName, undefined, undefined, analysis)
           }}
         />
         <JiraImportPage
