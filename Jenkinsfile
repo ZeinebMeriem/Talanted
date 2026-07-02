@@ -65,6 +65,11 @@ pipeline {
             defaultValue: false,
             description: 'DANGER: Destroy all Azure infrastructure (use only to clean up)'
         )
+        booleanParam(
+            name: 'INJECT_SECRETS',
+            defaultValue: false,
+            description: 'Fast path: inject Stripe keys into VM .env and restart spring-bff only (no rebuild needed)'
+        )
     }
 
     stages {
@@ -76,6 +81,48 @@ pipeline {
                     echo "Checking out code..."
                     checkout scm
                     sh 'git log -1 --oneline'
+                }
+            }
+        }
+
+        // ── 1b. Inject Secrets (fast path — no rebuild) ───────────────────────
+        stage('Inject Secrets') {
+            when {
+                expression { params.INJECT_SECRETS == true }
+            }
+            steps {
+                script {
+                    env.VM_PUBLIC_IP = params.VM_PUBLIC_IP ?: '20.73.80.248'
+                }
+                withCredentials([
+                    sshUserPrivateKey(credentialsId: 'azure-vm-ssh-ke',         keyFileVariable: 'SSH_KEY_FILE'),
+                    string(credentialsId: 'stripe-secret-key',      variable: 'STRIPE_SECRET_KEY'),
+                    string(credentialsId: 'stripe-publishable-key', variable: 'STRIPE_PUBLISHABLE_KEY')
+                ]) {
+                    sh '''
+                        echo "=== Injecting Stripe secrets into VM .env ==="
+                        APP_DIR=/opt/ai-ui-generator
+
+                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY_FILE} azureuser@${VM_PUBLIC_IP} bash -s <<ENDSSH
+                            set -e
+                            cd ${APP_DIR}
+                            if grep -q "^STRIPE_SECRET_KEY=" .env 2>/dev/null; then
+                                sed -i "s|^STRIPE_SECRET_KEY=.*|STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}|" .env
+                            else
+                                echo "STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}" >> .env
+                            fi
+                            if grep -q "^STRIPE_PUBLISHABLE_KEY=" .env 2>/dev/null; then
+                                sed -i "s|^STRIPE_PUBLISHABLE_KEY=.*|STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}|" .env
+                            else
+                                echo "STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}" >> .env
+                            fi
+                            echo "--- Restarting spring-bff ---"
+                            docker compose up -d --no-deps spring-bff
+                            sleep 10
+                            docker compose exec -T spring-bff wget -qO- http://localhost:8080/actuator/health | grep -q UP && echo "spring-bff healthy" || echo "WARNING: still starting"
+ENDSSH
+                        echo "=== Done — Stripe keys injected ==="
+                    '''
                 }
             }
         }
@@ -384,8 +431,10 @@ pipeline {
                     }
                 }
                 withCredentials([
-                    sshUserPrivateKey(credentialsId: 'azure-vm-ssh-ke', keyFileVariable: 'SSH_KEY_FILE'),
-                    string(credentialsId: 'groq-api-key',               variable: 'GROQ_API_KEY'),
+                    sshUserPrivateKey(credentialsId: 'azure-vm-ssh-ke',         keyFileVariable: 'SSH_KEY_FILE'),
+                    string(credentialsId: 'groq-api-key',                        variable: 'GROQ_API_KEY'),
+                    string(credentialsId: 'stripe-secret-key',                   variable: 'STRIPE_SECRET_KEY'),
+                    string(credentialsId: 'stripe-publishable-key',              variable: 'STRIPE_PUBLISHABLE_KEY'),
                     usernamePassword(
                         credentialsId:    'azure-acr-credentials',
                         usernameVariable: 'ACR_USER',
@@ -416,6 +465,8 @@ EOF
                         export GRAFANA_PASSWORD=${GRAFANA_PASSWORD:-admin}
                         export GEMINI_API_KEY=${GEMINI_API_KEY:-}
                         export ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+                        export STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+                        export STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
 
                         ANSIBLE_CONFIG=${ANSIBLE_DIR}/ansible.cfg \
                         ansible-playbook \
