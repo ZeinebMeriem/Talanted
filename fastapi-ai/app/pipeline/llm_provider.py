@@ -803,9 +803,26 @@ def _build_fallback_chain(role: str, max_tokens: int, temperature: float) -> lis
     # Then Gemini (free, high quality)
     if os.getenv("GEMINI_API_KEY", "").strip():
         _try_add("gemini", _build_gemini_provider)
-    # Then Groq (fast, free)
+    # Then Groq (fast, free) — primary model + llama-3.1-8b-instant as secondary
+    # (each Groq model has its own daily token quota, so the fallback survives TPD exhaustion)
     if os.getenv("GROQ_API_KEY", "").strip():
         _try_add("groq", _build_groq_provider)
+        groq_key = os.getenv("GROQ_API_KEY", "").strip()
+        model_env = "GROQ_CODER_MODEL" if role == "coder" else "GROQ_PLANNER_MODEL"
+        primary_groq_model = os.getenv(model_env, "") or os.getenv("GROQ_MODEL", "") or ""
+        groq_fallback_model = "llama-3.1-8b-instant"
+        if primary_groq_model not in ("", groq_fallback_model):
+            try:
+                providers.append(OpenAiProvider(
+                    api_key=groq_key,
+                    base_url=os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+                    model=groq_fallback_model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ))
+                logger.info("%s: Added Groq fallback model %s", role.capitalize(), groq_fallback_model)
+            except Exception:
+                pass
     # Then Mistral
     if os.getenv("MISTRAL_API_KEY", "").strip():
         _try_add("mistral", _build_mistral_provider)

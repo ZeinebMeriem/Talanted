@@ -227,14 +227,19 @@ def internal_generate_stream(payload: GenerateRequest) -> StreamingResponse:
 @app.post("/internal/edit-file", response_model=EditFileResponse)
 def internal_edit_file(payload: EditFileRequest) -> EditFileResponse:
     import time
+    from fastapi import HTTPException
     active_generations.inc()
     t0 = time.monotonic()
     try:
         result = orchestrator.edit_file(payload)
         generation_requests_total.labels(type="edit", status="success").inc()
         return result
-    except Exception:
+    except Exception as exc:
         generation_requests_total.labels(type="edit", status="error").inc()
+        err_str = str(exc)
+        # Propagate rate-limit as 429 so callers show a useful message
+        if "429" in err_str or "rate_limit_exceeded" in err_str or "tokens per day" in err_str.lower():
+            raise HTTPException(status_code=429, detail=f"AI rate limit: {err_str[:300]}")
         raise
     finally:
         generation_duration_seconds.labels(type="edit").observe(time.monotonic() - t0)
