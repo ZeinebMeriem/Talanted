@@ -17,7 +17,7 @@ ENV VITE_BFF_BASE_URL=$VITE_BFF_BASE_URL
 ENV VITE_API_URL=$VITE_API_URL
 
 EXPOSE 5173
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=10s \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:5173 || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:5173 || exit 1
 RUN node_modules/.bin/vite build
 CMD ["npm", "run", "preview"]
