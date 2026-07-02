@@ -237,9 +237,9 @@ def internal_edit_file(payload: EditFileRequest) -> EditFileResponse:
     except Exception as exc:
         generation_requests_total.labels(type="edit", status="error").inc()
         err_str = str(exc)
-        # Propagate rate-limit as 429 so callers show a useful message
-        if "429" in err_str or "rate_limit_exceeded" in err_str or "tokens per day" in err_str.lower():
-            raise HTTPException(status_code=429, detail=f"AI rate limit: {err_str[:300]}")
+        # Propagate rate/size limits as 429 so callers show a useful message
+        if any(x in err_str for x in ("429", "413", "rate_limit_exceeded", "tokens per day", "Payload Too Large", "Request too large", "reduce your message", "all providers exhausted")):
+            raise HTTPException(status_code=429, detail=f"AI limit: {err_str[:300]}")
         raise
     finally:
         generation_duration_seconds.labels(type="edit").observe(time.monotonic() - t0)

@@ -237,14 +237,15 @@ export const useTed = ({ accessToken, enabled = true, generationId }: UseTedOpti
       } catch (err: any) {
         const msg: string = err?.message ?? 'unknown error'
         const isAuth = msg.includes('401')
-        const isRateLimit = msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('tokens per day')
+        const isRateLimit = msg.includes('429') || msg.includes('413') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('tokens per day') || msg.toLowerCase().includes('ai limit') || msg.toLowerCase().includes('payload too large') || msg.toLowerCase().includes('all providers exhausted')
+        const retryIn = msg.includes('try again in') ? msg.split('try again in')[1]?.split(/[.\n]/)[0]?.trim() : null
         const errMsg: TedMessageType = {
           id: `bot-err-${Date.now()}`,
           type: 'bot',
           text: isAuth
             ? '⚠️ Session expired. Please refresh the page and try again.'
             : isRateLimit
-              ? `⏳ AI rate limit reached — ${msg.includes('try again in') ? msg.split('try again in')[1]?.split('.')[0]?.trim() + ' — ' : ''}try again in a moment.`
+              ? `⏳ AI quota reached${retryIn ? ` — retry in ${retryIn}` : ''}. Try again in a moment.`
               : `❌ Could not apply: ${msg}. Try copying the code manually.`,
           timestamp: new Date(),
         }
