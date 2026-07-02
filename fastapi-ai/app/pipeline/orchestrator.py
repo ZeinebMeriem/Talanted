@@ -833,18 +833,21 @@ class Orchestrator:
                 "Return the complete file. No markdown, no explanation."
             )
             new_code = None
-            for attempt in range(2):
+            for attempt in range(4):
                 try:
                     new_code = codegen_agent.provider.chat(system_msg, edit_prompt)
                     break
                 except Exception as exc:
                     err_str = str(exc)
-                    is_transient = any(k in err_str for k in (
+                    is_rate_limit = "429" in err_str
+                    is_transient = is_rate_limit or any(k in err_str for k in (
                         "peer closed", "incomplete chunked", "RemoteProtocol",
-                        "timeout", "timed out", "connection reset", "429", "503",
+                        "timeout", "timed out", "connection reset", "503",
                     ))
-                    if is_transient and attempt == 0:
-                        logger.warning("edit_file: transient error on attempt 1, retrying — %s", err_str[:80])
+                    if is_transient and attempt < 3:
+                        wait = (3 * (2 ** attempt)) if is_rate_limit else 1
+                        logger.warning("edit_file: transient error (attempt %d/4), retrying in %ds — %s", attempt + 1, wait, err_str[:80])
+                        time.sleep(wait)
                         continue
                     logger.error("edit_file: LLM call failed — %s", exc)
                     raise

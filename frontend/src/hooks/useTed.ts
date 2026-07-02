@@ -236,12 +236,15 @@ export const useTed = ({ accessToken, enabled = true, generationId }: UseTedOpti
         onSuccess?.()
       } catch (err: any) {
         const isAuth = err?.message?.includes('401')
+        const isRateLimit = err?.message?.includes('429') || err?.message?.toLowerCase().includes('rate limit') || err?.message?.toLowerCase().includes('too many')
         const errMsg: TedMessageType = {
           id: `bot-err-${Date.now()}`,
           type: 'bot',
           text: isAuth
             ? '⚠️ Session expired. Please refresh the page and try again.'
-            : `❌ Could not apply: ${err?.message?.split(':')[0] ?? 'unknown error'}. Try copying the code manually.`,
+            : isRateLimit
+              ? '⏳ AI rate limit reached — wait a few seconds and try again.'
+              : `❌ Could not apply: ${err?.message?.split(':')[0] ?? 'unknown error'}. Try copying the code manually.`,
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, errMsg])
