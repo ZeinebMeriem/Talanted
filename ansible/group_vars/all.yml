@@ -20,3 +20,5 @@ internal_api_secret:  "{{ lookup('env', 'INTERNAL_API_SECRET') | default('change
 grafana_password:     "{{ lookup('env', 'GRAFANA_PASSWORD') | default('admin') }}"
 gemini_api_key:       "{{ lookup('env', 'GEMINI_API_KEY') | default('') }}"
 elevenlabs_api_key:   "{{ lookup('env', 'ELEVENLABS_API_KEY') | default('') }}"
+stripe_secret_key:      "{{ lookup('env', 'STRIPE_SECRET_KEY') | default('') }}"
+stripe_publishable_key: "{{ lookup('env', 'STRIPE_PUBLISHABLE_KEY') | default('') }}"

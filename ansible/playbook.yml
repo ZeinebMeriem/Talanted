@@ -191,6 +191,10 @@
           # Monitoring
           GRAFANA_PASSWORD={{ grafana_password }}
 
+          # Stripe Payments
+          STRIPE_SECRET_KEY={{ stripe_secret_key }}
+          STRIPE_PUBLISHABLE_KEY={{ stripe_publishable_key }}
+
           # Spring BFF
           APP_SECURITY_DEV_MODE=false
 
