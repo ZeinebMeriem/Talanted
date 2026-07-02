@@ -1185,6 +1185,14 @@ document.addEventListener('click', function(e) {
         }
       }
       setInspectModal(null)
+      const aiMsg: ChatMsg = {
+        role: 'ai',
+        text: resp.buildSuccess
+          ? `Done! Updated \`${activeFileName || 'App.tsx'}\`. Preview will reload.`
+          : `Applied changes but build had issues — check the Console tab for details.`
+      }
+      setChatMessages(prev => [...prev, { role: 'user', text: inspectInstruction }, aiMsg])
+      setRightTab('chat')
       setInspectInstruction('')
       setInspectMode(false)
     } catch (err: any) {
